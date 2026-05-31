@@ -1,9 +1,9 @@
 import styles from './CollectionMentionBadge.module.css'
 
 type CollectionMentionBadgeProps = {
-  name: string
+    name: string
 }
 
 export const CollectionMentionBadge = ({ name }: CollectionMentionBadgeProps) => {
-  return <span className={styles.badge}>collection: {name}</span>
+    return <span className={styles.badge}>collection: {name}</span>
 }

@@ -1,129 +1,129 @@
 .chat {
-  border: 1px solid var(--theme-elevation-150);
-  border-radius: 8px;
-  margin-bottom: 24px;
-  max-width: 920px;
-  padding: 20px;
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    max-width: 920px;
+    padding: 20px;
 }
 
 .chatHeader {
-  align-items: flex-start;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 16px;
+    align-items: flex-start;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
 }
 
 .chatTitle {
-  font-size: 18px;
-  line-height: 1.3;
-  margin: 0;
+    font-size: 18px;
+    line-height: 1.3;
+    margin: 0;
 }
 
 .chatDescription {
-  color: var(--theme-elevation-600);
-  font-size: 13px;
-  line-height: 1.4;
-  margin: 4px 0 0;
+    color: var(--theme-elevation-600);
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 4px 0 0;
 }
 
 .chatInputRow {
-  align-items: stretch;
-  display: flex;
-  gap: 12px;
-  position: relative;
+    align-items: stretch;
+    display: flex;
+    gap: 12px;
+    position: relative;
 }
 
 .chatInput {
-  background: transparent;
-  border: 0;
-  color: var(--theme-text);
-  font: inherit;
-  min-height: 84px;
-  padding: 0;
-  white-space: pre-wrap;
-  width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--theme-text);
+    font: inherit;
+    min-height: 84px;
+    padding: 0;
+    white-space: pre-wrap;
+    width: 100%;
 }
 
 .chatInput:focus {
-  outline: none;
+    outline: none;
 }
 
 .chatInput:empty::before {
-  color: var(--theme-elevation-400);
-  content: attr(data-placeholder);
+    color: var(--theme-elevation-400);
+    content: attr(data-placeholder);
 }
 
 .chatInputSurface {
-  background: var(--theme-input-bg);
-  border: 1px solid var(--theme-elevation-150);
-  border-radius: 4px;
-  flex: 1;
-  padding: 12px;
+    background: var(--theme-input-bg);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 4px;
+    flex: 1;
+    padding: 12px;
 }
 
 .chatInputSurface:focus-within {
-  border-color: var(--theme-success-500);
+    border-color: var(--theme-success-500);
 }
 
 .inlineBadge {
-  margin: 0 2px;
-  vertical-align: middle;
+    margin: 0 2px;
+    vertical-align: middle;
 }
 
 .chatButton {
-  align-self: flex-end;
-  background: var(--theme-text);
-  border: 0;
-  border-radius: 4px;
-  color: var(--theme-bg);
-  cursor: pointer;
-  font: inherit;
-  min-height: 40px;
-  padding: 0 18px;
+    align-self: flex-end;
+    background: var(--theme-text);
+    border: 0;
+    border-radius: 4px;
+    color: var(--theme-bg);
+    cursor: pointer;
+    font: inherit;
+    min-height: 40px;
+    padding: 0 18px;
 }
 
 .chatButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
+    cursor: not-allowed;
+    opacity: 0.45;
 }
 
 .chatError {
-  color: var(--theme-error-500);
-  font-size: 13px;
-  line-height: 1.4;
-  margin-top: 12px;
+    color: var(--theme-error-500);
+    font-size: 13px;
+    line-height: 1.4;
+    margin-top: 12px;
 }
 
 .debugInfo {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-elevation-150);
-  border-radius: 4px;
-  color: var(--theme-elevation-800);
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 12px 0 0;
-  max-height: 260px;
-  overflow: auto;
-  padding: 12px;
-  white-space: pre-wrap;
+    background: var(--theme-elevation-50);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 4px;
+    color: var(--theme-elevation-800);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 12px 0 0;
+    max-height: 260px;
+    overflow: auto;
+    padding: 12px;
+    white-space: pre-wrap;
 }
 
 .chatResponse {
-  background: var(--theme-elevation-50);
-  border: 1px solid var(--theme-elevation-100);
-  border-radius: 4px;
-  line-height: 1.5;
-  margin-top: 16px;
-  padding: 12px;
-  white-space: pre-wrap;
+    background: var(--theme-elevation-50);
+    border: 1px solid var(--theme-elevation-100);
+    border-radius: 4px;
+    line-height: 1.5;
+    margin-top: 16px;
+    padding: 12px;
+    white-space: pre-wrap;
 }
 
 @media (max-width: 768px) {
-  .chatInputRow {
-    flex-direction: column;
-  }
+    .chatInputRow {
+        flex-direction: column;
+    }
 
-  .chatButton {
-    align-self: stretch;
-  }
+    .chatButton {
+        align-self: stretch;
+    }
 }
