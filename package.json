@@ -115,5 +115,11 @@
     ]
   },
   "registry": "https://registry.npmjs.org/",
-  "dependencies": {}
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/groq": "^3.0.39",
+    "@ai-sdk/openai": "^3.0.67",
+    "ai": "^6.0.193",
+    "zod": "^4.4.3"
+  }
 }

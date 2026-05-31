@@ -1,6 +1,8 @@
 import type { CollectionSlug, Config } from 'payload'
 
-import { customEndpointHandler } from './endpoints/customEndpointHandler.js'
+import { aiApplyActionEndpointHandler } from './endpoints/aiApplyActionEndpointHandler.js'
+import { aiChatEndpointHandler } from './endpoints/aiChatEndpointHandler.js'
+import { aiMentionSuggestionsEndpointHandler } from './endpoints/aiMentionSuggestionsEndpointHandler.js'
 
 export type PayloadAiPluginConfig = {
   /**
@@ -8,6 +10,48 @@ export type PayloadAiPluginConfig = {
    */
   collections?: Partial<Record<CollectionSlug, true>>
   disabled?: boolean
+}
+
+const addAccountFields = (config: Config) => {
+  const adminUserSlug = config.admin?.user
+
+  if (!adminUserSlug || !config.collections) {
+    return
+  }
+
+  const userCollection = config.collections.find(
+    (collection) => collection.slug === adminUserSlug,
+  )
+
+  if (!userCollection) {
+    return
+  }
+
+  userCollection.fields.push(
+    {
+      name: 'aiProvider',
+      type: 'select',
+      defaultValue: 'openai',
+      options: [
+        {
+          label: 'Google Gemini',
+          value: 'google',
+        },
+        {
+          label: 'Groq',
+          value: 'groq',
+        },
+        {
+          label: 'OpenAI',
+          value: 'openai',
+        },
+      ],
+    },
+    {
+      name: 'aiApiKey',
+      type: 'text',
+    },
+  )
 }
 
 export const payloadAiPlugin =
@@ -45,6 +89,8 @@ export const payloadAiPlugin =
       }
     }
 
+    addAccountFields(config)
+
     /**
      * If the plugin is disabled, we still want to keep added collections/fields so the database schema is consistent which is important for migrations.
      * If your plugin heavily modifies the database schema, you may want to remove this property.
@@ -70,16 +116,23 @@ export const payloadAiPlugin =
     }
 
     config.admin.components.beforeDashboard.push(
-      `payload-ai-plugin/client#BeforeDashboardClient`,
-    )
-    config.admin.components.beforeDashboard.push(
-      `payload-ai-plugin/rsc#BeforeDashboardServer`,
+      `payload-ai-plugin/client#AIInput`,
     )
 
     config.endpoints.push({
-      handler: customEndpointHandler,
-      method: 'get',
-      path: '/my-plugin-endpoint',
+      handler: aiChatEndpointHandler,
+      method: 'post',
+      path: '/ai-chat',
+    })
+    config.endpoints.push({
+      handler: aiApplyActionEndpointHandler,
+      method: 'post',
+      path: '/ai-apply-action',
+    })
+    config.endpoints.push({
+      handler: aiMentionSuggestionsEndpointHandler,
+      method: 'post',
+      path: '/ai-mention-suggestions',
     })
 
     const incomingOnInit = config.onInit
