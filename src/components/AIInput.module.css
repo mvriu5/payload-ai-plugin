@@ -26,6 +26,40 @@
     margin: 4px 0 0;
 }
 
+.settings {
+    align-items: flex-end;
+    display: flex;
+    gap: 10px;
+}
+
+.setting {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settingLabel {
+    color: var(--theme-elevation-600);
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.select {
+    background: var(--theme-input-bg);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 4px;
+    color: var(--theme-text);
+    font: inherit;
+    min-height: 34px;
+    min-width: 160px;
+    padding: 0 10px;
+}
+
+.select:focus {
+    border-color: var(--theme-success-500);
+    outline: none;
+}
+
 .chatInputRow {
     align-items: stretch;
     display: flex;
@@ -119,8 +153,27 @@
 }
 
 @media (max-width: 768px) {
+    .chatHeader {
+        flex-direction: column;
+        gap: 12px;
+    }
+
     .chatInputRow {
         flex-direction: column;
+    }
+
+    .settings {
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .setting {
+        flex: 1;
+    }
+
+    .select {
+        min-width: 0;
+        width: 100%;
     }
 
     .chatButton {

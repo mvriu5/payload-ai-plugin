@@ -1,126 +1,167 @@
-import type { PayloadHandler } from "payload"
+import type { PayloadHandler } from "payload";
 
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createGroq } from "@ai-sdk/groq"
-import { createOpenAI } from "@ai-sdk/openai"
-import { generateText, stepCountIs } from "ai"
-import { z } from "zod"
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
+import { createMistral } from "@ai-sdk/mistral";
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText, stepCountIs } from "ai";
+import { z } from "zod";
+
+import {
+    defaultAIModels,
+    isAIProvider,
+    type AIProvider,
+} from "../ai/providerOptions.js";
 
 type AIChatBody = {
-    prompt?: string
-}
+    model?: string;
+    prompt?: string;
+    provider?: string;
+};
 
 type AIUser = {
-    aiApiKey?: string | null
-    aiProvider?: "google" | "groq" | "openai" | string | null
-}
+    aiApiKey?: string | null;
+    aiProvider?: AIProvider | string | null;
+};
 
 type AIChatDebug = {
-    model: string
-    provider: string
-    tools: string[]
-}
+    model: string;
+    provider: string;
+    tools: string[];
+};
 
 type CollectionInput = {
-    collection: string
-}
+    collection: string;
+};
 
 type DataInput = {
-    data: Record<string, unknown>
-}
+    data: Record<string, unknown>;
+};
 
 type DocIDInput = {
-    id: string
-}
+    id: string;
+};
 
 type LabelInput = {
-    label: string
-}
+    label: string;
+};
 
 type SlugInput = {
-    slug: string
-}
+    slug: string;
+};
+
+type FieldConfig = {
+    fields?: FieldConfig[];
+    hasMany?: boolean;
+    name?: string;
+    relationTo?: unknown;
+    required?: boolean;
+    type?: string;
+};
 
 export type AIActionProposal =
     | {
-          action: "create"
-          collection: string
-          data: Record<string, unknown>
-          label: string
+          action: "create";
+          collection: string;
+          data: Record<string, unknown>;
+          label: string;
       }
     | {
-          action: "delete"
-          collection: string
-          id: string
-          label: string
+          action: "delete";
+          collection: string;
+          id: string;
+          label: string;
       }
     | {
-          action: "update"
-          collection: string
-          data: Record<string, unknown>
-          id: string
-          label: string
+          action: "update";
+          collection: string;
+          data: Record<string, unknown>;
+          id: string;
+          label: string;
       }
     | {
-          action: "updateGlobal"
-          data: Record<string, unknown>
-          label: string
-          slug: string
-      }
-
-const defaultModels = {
-    google: "gemini-2.0-flash",
-    groq: "llama-3.3-70b-versatile",
-    openai: "gpt-4.1-mini",
-} as const
+          action: "updateGlobal";
+          data: Record<string, unknown>;
+          label: string;
+          slug: string;
+      };
 
 const getProviderConfig = ({
     apiKey,
+    model,
     provider,
 }: {
-    apiKey?: string | null
-    provider: string
+    apiKey?: string | null;
+    model?: string | null;
+    provider: AIProvider;
 }) => {
+    if (provider === "claude") {
+        return {
+            apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
+            modelID:
+                model || process.env.ANTHROPIC_MODEL || defaultAIModels.claude,
+        };
+    }
+
     if (provider === "google") {
         return {
             apiKey: apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY,
             modelID:
-                process.env.GOOGLE_GENERATIVE_AI_MODEL || defaultModels.google,
-        }
+                model ||
+                process.env.GOOGLE_GENERATIVE_AI_MODEL ||
+                defaultAIModels.google,
+        };
     }
 
     if (provider === "groq") {
         return {
             apiKey: apiKey || process.env.GROQ_API_KEY,
-            modelID: process.env.GROQ_MODEL || defaultModels.groq,
-        }
+            modelID: model || process.env.GROQ_MODEL || defaultAIModels.groq,
+        };
+    }
+
+    if (provider === "mistral") {
+        return {
+            apiKey: apiKey || process.env.MISTRAL_API_KEY,
+            modelID:
+                model || process.env.MISTRAL_MODEL || defaultAIModels.mistral,
+        };
     }
 
     return {
         apiKey: apiKey || process.env.OPENAI_API_KEY,
-        modelID: process.env.OPENAI_MODEL || defaultModels.openai,
-    }
-}
+        modelID: model || process.env.OPENAI_MODEL || defaultAIModels.openai,
+    };
+};
 
 const getModel = ({
     apiKey,
     modelID,
     provider,
 }: {
-    apiKey: string
-    modelID: string
-    provider: string
+    apiKey: string;
+    modelID: string;
+    provider: AIProvider;
 }) => {
+    if (provider === "claude") {
+        return createAnthropic({ apiKey })(modelID);
+    }
+
     if (provider === "google") {
-        return createGoogleGenerativeAI({ apiKey })(modelID)
+        return createGoogleGenerativeAI({ apiKey })(modelID);
     }
 
     if (provider === "groq") {
-        return createGroq({ apiKey })(modelID)
+        return createGroq({ apiKey })(modelID);
     }
 
-    return createOpenAI({ apiKey })(modelID)
-}
+    if (provider === "mistral") {
+        return createMistral({ apiKey })(modelID);
+    }
+
+    return createOpenAI({ apiKey })(modelID);
+};
 
 const getErrorDetails = (err: unknown) => {
     if (err instanceof Error) {
@@ -129,35 +170,56 @@ const getErrorDetails = (err: unknown) => {
             name: err.name,
             stack:
                 process.env.NODE_ENV === "development" ? err.stack : undefined,
-        }
+        };
     }
 
     return {
         message: String(err),
         name: "UnknownError",
-    }
-}
+    };
+};
+
+const describeField = (field: FieldConfig): Record<string, unknown> => {
+    return {
+        ...(field.name ? { name: field.name } : {}),
+        ...(field.type ? { type: field.type } : {}),
+        ...(field.required ? { required: field.required } : {}),
+        ...(field.hasMany ? { hasMany: field.hasMany } : {}),
+        ...(field.relationTo ? { relationTo: field.relationTo } : {}),
+        ...(field.fields ? { fields: field.fields.map(describeField) } : {}),
+    };
+};
 
 export const aiChatEndpointHandler: PayloadHandler = async (req) => {
     if (!req.user) {
-        return Response.json({ error: "Unauthorized" }, { status: 401 })
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = req.json
         ? ((await req.json().catch(() => null)) as AIChatBody | null)
-        : null
-    const prompt = body?.prompt?.trim()
+        : null;
+    const prompt = body?.prompt?.trim();
 
     if (!prompt) {
-        return Response.json({ error: "Prompt is required" }, { status: 400 })
+        return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    const user = req.user as AIUser
-    const provider = user.aiProvider || "openai"
+    const user = req.user as AIUser;
+    const requestedProvider = body?.provider || user.aiProvider || "openai";
+
+    if (!isAIProvider(requestedProvider)) {
+        return Response.json(
+            { error: `Unsupported AI provider: ${requestedProvider}` },
+            { status: 400 },
+        );
+    }
+
+    const provider = requestedProvider;
     const providerConfig = getProviderConfig({
         apiKey: user.aiApiKey,
+        model: body?.model,
         provider,
-    })
+    });
     const debug: AIChatDebug = {
         model: providerConfig.modelID,
         provider,
@@ -172,14 +234,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
             "proposeUpdateGlobal",
             "searchDocs",
         ],
-    }
-
-    if (!["google", "groq", "openai"].includes(provider)) {
-        return Response.json(
-            { error: `Unsupported AI provider: ${provider}` },
-            { status: 400 },
-        )
-    }
+    };
 
     if (!providerConfig.apiKey) {
         return Response.json(
@@ -188,17 +243,17 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 error: `Add a ${provider} API key to your account settings first.`,
             },
             { status: 400 },
-        )
+        );
     }
 
     try {
-        const proposals: AIActionProposal[] = []
+        const proposals: AIActionProposal[] = [];
         const collectionSlugs = req.payload.config.collections.map(
             (collection) => collection.slug,
-        )
+        );
         const collectionSlugSchema = z.enum(
             collectionSlugs as [string, ...string[]],
-        )
+        );
         const tools = {
             getDoc: {
                 description:
@@ -217,7 +272,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         id,
                         overrideAccess: false,
                         req,
-                    })
+                    });
                 },
             },
             listCollections: {
@@ -226,19 +281,12 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 inputSchema: z.object({}),
                 execute: async () => {
                     return req.payload.config.collections.map((collection) => ({
-                        fields: collection.fields.map((field) =>
-                            "name" in field
-                                ? {
-                                      name: field.name,
-                                      type: field.type,
-                                  }
-                                : {
-                                      type: field.type,
-                                  },
+                        fields: (collection.fields as FieldConfig[]).map(
+                            describeField,
                         ),
                         label: collection.labels?.plural || collection.slug,
                         slug: collection.slug,
-                    }))
+                    }));
                 },
             },
             getGlobal: {
@@ -249,10 +297,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 execute: async ({ slug }: SlugInput) => {
                     const globalConfig = req.payload.config.globals?.find(
                         (global) => global.slug === slug,
-                    )
+                    );
 
                     if (!globalConfig) {
-                        return { error: `Unknown global: ${slug}` }
+                        return { error: `Unknown global: ${slug}` };
                     }
 
                     return req.payload.findGlobal({
@@ -260,7 +308,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         overrideAccess: false,
                         req,
                         slug: slug as never,
-                    })
+                    });
                 },
             },
             listGlobals: {
@@ -283,12 +331,12 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                             label: global.label || global.slug,
                             slug: global.slug,
                         })) || []
-                    )
+                    );
                 },
             },
             proposeCreateDoc: {
                 description:
-                    "Prepare a CMS document creation proposal. This does not write to the database.",
+                    "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure.",
                 inputSchema: z.object({
                     collection: collectionSlugSchema,
                     data: z.record(z.string(), z.unknown()),
@@ -304,10 +352,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         collection,
                         data,
                         label,
-                    }
+                    };
 
-                    proposals.push(proposal)
-                    return proposal
+                    proposals.push(proposal);
+                    return proposal;
                 },
             },
             proposeDeleteDoc: {
@@ -328,15 +376,15 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         collection,
                         id,
                         label,
-                    }
+                    };
 
-                    proposals.push(proposal)
-                    return proposal
+                    proposals.push(proposal);
+                    return proposal;
                 },
             },
             proposeUpdateDoc: {
                 description:
-                    "Prepare a CMS document update proposal. This does not write to the database.",
+                    "Prepare a CMS document update proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure.",
                 inputSchema: z.object({
                     collection: collectionSlugSchema,
                     data: z.record(z.string(), z.unknown()),
@@ -355,10 +403,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         data,
                         id,
                         label,
-                    }
+                    };
 
-                    proposals.push(proposal)
-                    return proposal
+                    proposals.push(proposal);
+                    return proposal;
                 },
             },
             proposeUpdateGlobal: {
@@ -376,10 +424,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 }: DataInput & LabelInput & SlugInput) => {
                     const globalConfig = req.payload.config.globals?.find(
                         (global) => global.slug === slug,
-                    )
+                    );
 
                     if (!globalConfig) {
-                        return { error: `Unknown global: ${slug}` }
+                        return { error: `Unknown global: ${slug}` };
                     }
 
                     const proposal: AIActionProposal = {
@@ -387,10 +435,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         data,
                         label,
                         slug,
-                    }
+                    };
 
-                    proposals.push(proposal)
-                    return proposal
+                    proposals.push(proposal);
+                    return proposal;
                 },
             },
             searchDocs: {
@@ -405,11 +453,11 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     collection,
                     limit,
                     query,
-                }: CollectionInput & { limit: number, query?: string }) => {
+                }: CollectionInput & { limit: number; query?: string }) => {
                     const collectionConfig =
                         req.payload.config.collections.find(
                             (item) => item.slug === collection,
-                        )
+                        );
                     const searchableFields =
                         collectionConfig?.fields
                             .filter(
@@ -422,7 +470,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                             .map((field) =>
                                 "name" in field ? field.name : null,
                             )
-                            .filter(Boolean) || []
+                            .filter(Boolean) || [];
 
                     const where =
                         query && searchableFields.length > 0
@@ -433,7 +481,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                                       },
                                   })),
                               }
-                            : undefined
+                            : undefined;
 
                     return req.payload.find({
                         collection: collection as never,
@@ -442,10 +490,10 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                         overrideAccess: false,
                         req,
                         where,
-                    })
+                    });
                 },
             },
-        }
+        };
         const result = await generateText({
             model: getModel({
                 apiKey: providerConfig.apiKey,
@@ -462,17 +510,17 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 "Keep responses concise and mention proposed actions when relevant.",
             ].join("\n"),
             tools,
-        })
+        });
 
-        return Response.json({ debug, proposals, text: result.text })
+        return Response.json({ debug, proposals, text: result.text });
     } catch (err) {
-        const error = getErrorDetails(err)
+        const error = getErrorDetails(err);
 
         req.payload.logger.error({
             debug,
             err,
             msg: "AI chat request failed",
-        })
+        });
 
         return Response.json(
             {
@@ -481,6 +529,6 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 errorDetails: error,
             },
             { status: 500 },
-        )
+        );
     }
-}
+};
