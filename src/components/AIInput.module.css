@@ -61,10 +61,16 @@
 }
 
 .chatInputRow {
-    align-items: stretch;
+    position: relative;
+    width: 100%;
+}
+
+.chatActionsRow {
+    align-items: flex-end;
     display: flex;
     gap: 12px;
-    position: relative;
+    justify-content: space-between;
+    margin-top: 12px;
 }
 
 .chatInput {
@@ -91,8 +97,8 @@
     background: var(--theme-input-bg);
     border: 1px solid var(--theme-elevation-150);
     border-radius: 4px;
-    flex: 1;
     padding: 12px;
+    width: 100%;
 }
 
 .chatInputSurface:focus-within {
@@ -105,7 +111,6 @@
 }
 
 .chatButton {
-    align-self: flex-end;
     background: var(--theme-text);
     border: 0;
     border-radius: 4px;
@@ -159,6 +164,11 @@
     }
 
     .chatInputRow {
+        width: 100%;
+    }
+
+    .chatActionsRow {
+        align-items: stretch;
         flex-direction: column;
     }
 

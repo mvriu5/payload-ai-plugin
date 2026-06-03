@@ -5,9 +5,40 @@
     border-radius: 999px;
     color: var(--theme-text);
     display: inline-flex;
-    font-size: 12px;
+    font-size: 11px;
+    gap: 3px;
     line-height: 1;
-    min-height: 24px;
-    padding: 0 10px;
+    min-height: 20px;
+    padding: 0 8px;
+    position: relative;
+    top: -2px;
     white-space: nowrap;
+}
+
+.prefix {
+    color: var(--theme-elevation-500);
+}
+
+.name {
+    color: var(--theme-text);
+}
+
+.collection {
+    background: color-mix(in srgb, #2f7d68 12%, var(--theme-bg));
+    border-color: color-mix(in srgb, #2f7d68 28%, var(--theme-elevation-150));
+}
+
+.global {
+    background: color-mix(in srgb, #8b6f24 12%, var(--theme-bg));
+    border-color: color-mix(in srgb, #8b6f24 28%, var(--theme-elevation-150));
+}
+
+.block {
+    background: color-mix(in srgb, #5a6fa8 12%, var(--theme-bg));
+    border-color: color-mix(in srgb, #5a6fa8 28%, var(--theme-elevation-150));
+}
+
+.doc {
+    background: color-mix(in srgb, #7a5c9e 12%, var(--theme-bg));
+    border-color: color-mix(in srgb, #7a5c9e 28%, var(--theme-elevation-150));
 }

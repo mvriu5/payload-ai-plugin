@@ -14,6 +14,19 @@
     z-index: 10;
 }
 
+.group + .group {
+    margin-top: 6px;
+}
+
+.groupLabel {
+    color: var(--theme-elevation-500);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 6px 10px 4px;
+    text-transform: uppercase;
+}
+
 .option {
     align-items: center;
     background: transparent;

@@ -7,9 +7,23 @@ type AIApplyActionBody = {
 };
 
 type FieldConfig = {
+    blocks?: BlockConfig[];
+    defaultValue?: unknown;
     fields?: FieldConfig[];
     name?: string;
+    options?: (string | { value?: string })[];
     type?: string;
+};
+
+type BlockConfig = {
+    fields?: FieldConfig[];
+    slug: string;
+};
+
+type CollectionConfig = {
+    auth?: unknown;
+    fields: FieldConfig[];
+    slug: string;
 };
 
 type NormalizedData = {
@@ -17,6 +31,8 @@ type NormalizedData = {
     data: Record<string, unknown>;
     droppedFields: string[];
 };
+
+const SKIP_FIELD = Symbol("skipField");
 
 const isKnownCollection = (
     req: Parameters<PayloadHandler>[0],
@@ -41,6 +57,29 @@ const getNamedFields = (fields: FieldConfig[]) => {
     return fields.filter((field): field is FieldConfig & { name: string } =>
         Boolean(field.name),
     );
+};
+
+const isAuthCollection = (collectionConfig?: CollectionConfig | null) => {
+    return Boolean(collectionConfig?.auth);
+};
+
+const getCollectionFields = (collectionConfig?: CollectionConfig | null) => {
+    const fields = [...(collectionConfig?.fields || [])];
+
+    if (isAuthCollection(collectionConfig)) {
+        fields.push(
+            {
+                name: "email",
+                type: "email",
+            },
+            {
+                name: "password",
+                type: "text",
+            },
+        );
+    }
+
+    return fields;
 };
 
 const createLexicalText = (value: unknown) => {
@@ -103,10 +142,80 @@ const normalizeArrayValue = (field: FieldConfig, value: unknown) => {
     });
 };
 
-const normalizeFieldValue = (field: FieldConfig, value: unknown): unknown => {
+const getOptionValues = (field: FieldConfig) => {
+    return (field.options || [])
+        .map((option) => (typeof option === "string" ? option : option.value))
+        .filter((option): option is string => Boolean(option));
+};
+
+const normalizeOptionValue = (field: FieldConfig, value: unknown) => {
+    const optionValues = getOptionValues(field);
+    const stringValue = value === null ? "" : String(value);
+    const defaultValue =
+        typeof field.defaultValue === "string" ? field.defaultValue : null;
+
+    if (stringValue && optionValues.includes(stringValue)) {
+        return stringValue;
+    }
+
+    if (defaultValue && optionValues.includes(defaultValue)) {
+        return defaultValue;
+    }
+
+    return SKIP_FIELD;
+};
+
+const normalizeBlocksValue = (field: FieldConfig, value: unknown) => {
+    if (!Array.isArray(value)) return value;
+
+    return value
+        .map((item) => {
+            if (!isRecord(item)) return null;
+
+            const blockType =
+                typeof item.blockType === "string"
+                    ? item.blockType
+                    : typeof item.type === "string"
+                      ? item.type
+                      : typeof item.slug === "string"
+                        ? item.slug
+                        : null;
+
+            if (!blockType) return null;
+
+            const block = field.blocks?.find(
+                (candidate) => candidate.slug === blockType,
+            );
+
+            if (!block) return null;
+
+            const {
+                blockType: _blockType,
+                type: _type,
+                slug: _slug,
+                ...data
+            } = item;
+            const normalizedBlock = normalizeDataForFields(
+                block.fields || [],
+                data,
+            ).data;
+
+            return {
+                ...normalizedBlock,
+                blockType,
+            };
+        })
+        .filter(Boolean);
+};
+
+const normalizeFieldValue = (
+    field: FieldConfig,
+    value: unknown,
+): typeof SKIP_FIELD | unknown => {
     if (value === undefined) return value;
 
     if (field.type === "array") return normalizeArrayValue(field, value);
+    if (field.type === "blocks") return normalizeBlocksValue(field, value);
     if (field.type === "checkbox")
         return typeof value === "boolean" ? value : value === "true";
     if (field.type === "date") {
@@ -117,15 +226,46 @@ const normalizeFieldValue = (field: FieldConfig, value: unknown): unknown => {
         return normalizeDataForFields(field.fields || [], value).data;
     }
     if (field.type === "richText") return createLexicalText(value);
-    if (
-        ["email", "radio", "select", "text", "textarea"].includes(
-            field.type || "",
-        )
-    ) {
+    if (["radio", "select"].includes(field.type || "")) {
+        return normalizeOptionValue(field, value);
+    }
+    if (["email", "text", "textarea"].includes(field.type || "")) {
         return value === null ? value : String(value);
     }
 
     return value;
+};
+
+const normalizeAuthData = (
+    collectionConfig: CollectionConfig | undefined,
+    normalized: NormalizedData,
+) => {
+    if (!isAuthCollection(collectionConfig)) {
+        return normalized;
+    }
+
+    const email = normalized.data.email;
+    const password = normalized.data.password;
+
+    if (email !== undefined && typeof email !== "string") {
+        normalized.data.email = String(email);
+        normalized.coercedFields.push("email");
+    }
+
+    if (password !== undefined && typeof password !== "string") {
+        normalized.data.password = String(password);
+        normalized.coercedFields.push("password");
+    }
+
+    if (
+        typeof normalized.data.password === "string" &&
+        normalized.data.password.length > 0 &&
+        normalized.data.password.length < 8
+    ) {
+        throw new Error("Password must be at least 8 characters long.");
+    }
+
+    return normalized;
 };
 
 const getAliasFieldName = (
@@ -182,6 +322,11 @@ const normalizeDataForFields = (
         if (!field) continue;
 
         const normalizedValue = normalizeFieldValue(field, value);
+
+        if (normalizedValue === SKIP_FIELD) {
+            droppedFields.push(key);
+            continue;
+        }
 
         if (fieldName !== key || normalizedValue !== value) {
             coercedFields.push(key);
@@ -274,11 +419,44 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
 
         const collectionConfig = req.payload.config.collections.find(
             (collection) => collection.slug === proposal.collection,
+        ) as CollectionConfig | undefined;
+        normalized = normalizeAuthData(
+            collectionConfig,
+            normalizeDataForFields(
+                getCollectionFields(collectionConfig),
+                proposal.data,
+            ),
         );
-        normalized = normalizeDataForFields(
-            (collectionConfig?.fields || []) as FieldConfig[],
-            proposal.data,
-        );
+
+        if (
+            proposal.action === "create" &&
+            isAuthCollection(collectionConfig) &&
+            !normalized.data.password
+        ) {
+            return Response.json(
+                {
+                    error: "Password is required when creating a user.",
+                    normalized,
+                    proposal,
+                },
+                { status: 400 },
+            );
+        }
+
+        if (
+            proposal.action === "create" &&
+            isAuthCollection(collectionConfig) &&
+            !normalized.data.email
+        ) {
+            return Response.json(
+                {
+                    error: "Email is required when creating a user.",
+                    normalized,
+                    proposal,
+                },
+                { status: 400 },
+            );
+        }
 
         if (proposal.action === "create") {
             const doc = await req.payload.create({

@@ -15,9 +15,19 @@ import {
 } from "../ai/providerOptions.js";
 
 type AIChatBody = {
+    mentions?: AIChatMention[];
     model?: string;
     prompt?: string;
     provider?: string;
+};
+
+type AIChatMention = {
+    collection?: string;
+    id?: string;
+    label?: string;
+    parent?: string;
+    slug?: string;
+    type?: "block" | "collection" | "doc" | "global";
 };
 
 type AIUser = {
@@ -52,12 +62,23 @@ type SlugInput = {
 };
 
 type FieldConfig = {
+    blocks?: BlockConfig[];
     fields?: FieldConfig[];
     hasMany?: boolean;
+    label?: unknown;
     name?: string;
     relationTo?: unknown;
     required?: boolean;
     type?: string;
+};
+
+type BlockConfig = {
+    fields?: FieldConfig[];
+    labels?: {
+        plural?: unknown;
+        singular?: unknown;
+    };
+    slug: string;
 };
 
 export type AIActionProposal =
@@ -179,15 +200,284 @@ const getErrorDetails = (err: unknown) => {
     };
 };
 
+const getSerializableLabel = (label: unknown) => {
+    if (typeof label === "string") {
+        return label;
+    }
+
+    if (label && typeof label === "object") {
+        const firstLabel = Object.values(label).find(
+            (value) => typeof value === "string",
+        );
+
+        if (typeof firstLabel === "string") {
+            return firstLabel;
+        }
+    }
+
+    return undefined;
+};
+
+const getSerializableRelationTo = (relationTo: unknown) => {
+    if (typeof relationTo === "string") {
+        return relationTo;
+    }
+
+    if (
+        Array.isArray(relationTo) &&
+        relationTo.every((item) => typeof item === "string")
+    ) {
+        return relationTo;
+    }
+
+    return undefined;
+};
+
 const describeField = (field: FieldConfig): Record<string, unknown> => {
+    const label = getSerializableLabel(field.label);
+    const relationTo = getSerializableRelationTo(field.relationTo);
+
     return {
+        ...(label ? { label } : {}),
         ...(field.name ? { name: field.name } : {}),
         ...(field.type ? { type: field.type } : {}),
         ...(field.required ? { required: field.required } : {}),
         ...(field.hasMany ? { hasMany: field.hasMany } : {}),
-        ...(field.relationTo ? { relationTo: field.relationTo } : {}),
+        ...(relationTo ? { relationTo } : {}),
         ...(field.fields ? { fields: field.fields.map(describeField) } : {}),
+        ...(field.blocks ? { blocks: field.blocks.map(describeBlock) } : {}),
     };
+};
+
+const describeBlock = (block: BlockConfig): Record<string, unknown> => {
+    return {
+        fields: (block.fields || []).map(describeField),
+        label: getSerializableLabel(block.labels?.singular) || block.slug,
+        slug: block.slug,
+    };
+};
+
+const collectBlocks = ({
+    fields,
+    parent,
+}: {
+    fields: FieldConfig[];
+    parent: string;
+}) => {
+    const blocks: (Record<string, unknown> & {
+        parent: string;
+        slug: string;
+    })[] = [];
+
+    for (const field of fields) {
+        if (field.type === "blocks" && field.blocks) {
+            for (const block of field.blocks) {
+                blocks.push({
+                    ...describeBlock(block),
+                    parent,
+                    slug: block.slug,
+                });
+
+                blocks.push(
+                    ...collectBlocks({
+                        fields: block.fields || [],
+                        parent: `${parent}/${block.slug}`,
+                    }),
+                );
+            }
+        }
+
+        if (field.fields) {
+            blocks.push(
+                ...collectBlocks({
+                    fields: field.fields,
+                    parent,
+                }),
+            );
+        }
+    }
+
+    return blocks;
+};
+
+const isInternalCollection = (slug: string) => {
+    return slug.startsWith("payload-") || slug === "plugin-collection";
+};
+
+const getMentionContext = async ({
+    blockContexts,
+    collectionSlugs,
+    globalSlugs,
+    mentions,
+    req,
+}: {
+    blockContexts: (Record<string, unknown> & {
+        parent: string;
+        slug: string;
+    })[];
+    collectionSlugs: string[];
+    globalSlugs: string[];
+    mentions?: AIChatMention[];
+    req: Parameters<PayloadHandler>[0];
+}) => {
+    if (!mentions || mentions.length === 0) {
+        return [];
+    }
+
+    const context: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+
+    for (const mention of mentions.slice(0, 8)) {
+        if (mention.type === "collection" && mention.slug) {
+            const slug = mention.slug;
+            const key = `collection:${slug}`;
+
+            if (
+                seen.has(key) ||
+                isInternalCollection(slug) ||
+                !collectionSlugs.includes(slug)
+            ) {
+                continue;
+            }
+
+            const collectionConfig = req.payload.config.collections.find(
+                (collection) => collection.slug === slug,
+            );
+
+            if (!collectionConfig) {
+                continue;
+            }
+
+            seen.add(key);
+            context.push({
+                fields: (collectionConfig.fields as FieldConfig[]).map(
+                    describeField,
+                ),
+                label:
+                    collectionConfig.labels?.plural ||
+                    collectionConfig.labels?.singular ||
+                    slug,
+                slug,
+                type: "collection",
+            });
+        }
+
+        if (mention.type === "global" && mention.slug) {
+            const slug = mention.slug;
+            const key = `global:${slug}`;
+
+            if (seen.has(key) || !globalSlugs.includes(slug)) {
+                continue;
+            }
+
+            const globalConfig = req.payload.config.globals?.find(
+                (global) => global.slug === slug,
+            );
+
+            if (!globalConfig) {
+                continue;
+            }
+
+            const globalDoc = await req.payload
+                .findGlobal({
+                    depth: 2,
+                    overrideAccess: false,
+                    req,
+                    slug: slug as never,
+                })
+                .catch(() => null);
+
+            seen.add(key);
+            context.push({
+                doc: globalDoc,
+                fields: (globalConfig.fields as FieldConfig[]).map(
+                    describeField,
+                ),
+                label: globalConfig.label || slug,
+                slug,
+                type: "global",
+            });
+        }
+
+        if (mention.type === "block" && mention.slug) {
+            const matchingBlocks = blockContexts.filter(
+                (block) =>
+                    block.slug === mention.slug &&
+                    (!mention.parent || block.parent === mention.parent),
+            );
+
+            for (const block of matchingBlocks) {
+                const key = `block:${block.parent}:${block.slug}`;
+
+                if (seen.has(key)) {
+                    continue;
+                }
+
+                seen.add(key);
+                context.push({
+                    ...block,
+                    type: "block",
+                });
+            }
+        }
+
+        if (mention.type === "doc" && mention.collection && mention.id) {
+            const slug = mention.collection;
+            const key = `doc:${slug}:${mention.id}`;
+
+            if (
+                seen.has(key) ||
+                isInternalCollection(slug) ||
+                !collectionSlugs.includes(slug)
+            ) {
+                continue;
+            }
+
+            const doc = await req.payload
+                .findByID({
+                    collection: slug as never,
+                    depth: 2,
+                    id: mention.id,
+                    overrideAccess: false,
+                    req,
+                })
+                .catch(() => null);
+
+            if (!doc) {
+                continue;
+            }
+
+            seen.add(key);
+            context.push({
+                collection: slug,
+                doc,
+                id: mention.id,
+                label: mention.label || mention.id,
+                type: "doc",
+            });
+        }
+    }
+
+    return context;
+};
+
+const buildPromptWithMentionContext = ({
+    mentionContext,
+    prompt,
+}: {
+    mentionContext: Record<string, unknown>[];
+    prompt: string;
+}) => {
+    if (mentionContext.length === 0) {
+        return prompt;
+    }
+
+    return [
+        "The user selected the following Payload CMS references in the input. Treat inline text like `collection: Name` or `document: Name` as references to this context, not as literal content.",
+        JSON.stringify(mentionContext, null, 2),
+        "User request:",
+        prompt,
+    ].join("\n\n");
 };
 
 export const aiChatEndpointHandler: PayloadHandler = async (req) => {
@@ -251,6 +541,29 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
         const collectionSlugs = req.payload.config.collections.map(
             (collection) => collection.slug,
         );
+        const globalSlugs =
+            req.payload.config.globals?.map((global) => global.slug) || [];
+        const blockContexts = [
+            ...req.payload.config.collections.flatMap((collection) =>
+                collectBlocks({
+                    fields: collection.fields as FieldConfig[],
+                    parent: collection.slug,
+                }),
+            ),
+            ...(req.payload.config.globals?.flatMap((global) =>
+                collectBlocks({
+                    fields: global.fields as FieldConfig[],
+                    parent: global.slug,
+                }),
+            ) || []),
+        ];
+        const mentionContext = await getMentionContext({
+            blockContexts,
+            collectionSlugs,
+            globalSlugs,
+            mentions: body?.mentions,
+            req,
+        });
         const collectionSlugSchema = z.enum(
             collectionSlugs as [string, ...string[]],
         );
@@ -318,15 +631,8 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 execute: async () => {
                     return (
                         req.payload.config.globals?.map((global) => ({
-                            fields: global.fields.map((field) =>
-                                "name" in field
-                                    ? {
-                                          name: field.name,
-                                          type: field.type,
-                                      }
-                                    : {
-                                          type: field.type,
-                                      },
+                            fields: (global.fields as FieldConfig[]).map(
+                                describeField,
                             ),
                             label: global.label || global.slug,
                             slug: global.slug,
@@ -495,19 +801,24 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
             },
         };
         const result = await generateText({
+            maxOutputTokens: 700,
             model: getModel({
                 apiKey: providerConfig.apiKey,
                 modelID: providerConfig.modelID,
                 provider,
             }),
-            prompt,
+            prompt: buildPromptWithMentionContext({
+                mentionContext,
+                prompt,
+            }),
             stopWhen: stepCountIs(6),
             system: [
                 "You are a CMS assistant inside Payload CMS.",
                 "Use tools to inspect CMS schema and content before answering content questions.",
+                "When mention context is provided, use it as the selected CMS scope and prefer it over guessing collection names.",
                 "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
                 "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
-                "Keep responses concise and mention proposed actions when relevant.",
+                "Keep the visible response under 80 words. Put concrete changes in proposal tool calls instead of long prose.",
             ].join("\n"),
             tools,
         });

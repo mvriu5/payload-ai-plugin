@@ -42,9 +42,81 @@ type CurrentUserResponse = {
     } | null;
 };
 
+type AIMention = {
+    collection?: string;
+    id?: string;
+    label: string;
+    parent?: string;
+    slug: string;
+    type: "block" | "collection" | "doc" | "global";
+};
+
+const isAbortError = (err: unknown) => {
+    return err instanceof DOMException && err.name === "AbortError";
+};
+
+type FieldWithBlocks = {
+    blocks?: {
+        fields?: FieldWithBlocks[];
+        labels?: {
+            plural?: unknown;
+            singular?: unknown;
+        };
+        slug: string;
+    }[];
+    fields?: FieldWithBlocks[];
+    name?: string;
+    type?: string;
+};
+
+const collectBlockOptions = ({
+    fields,
+    parent,
+}: {
+    fields: FieldWithBlocks[];
+    parent: string;
+}): CollectionMentionOption[] => {
+    const options: CollectionMentionOption[] = [];
+
+    for (const field of fields) {
+        if (field.type === "blocks" && field.blocks) {
+            for (const block of field.blocks) {
+                options.push({
+                    label: getCollectionLabel(
+                        block.labels?.singular,
+                        block.slug,
+                    ),
+                    parent,
+                    slug: block.slug,
+                    type: "block",
+                });
+
+                options.push(
+                    ...collectBlockOptions({
+                        fields: block.fields || [],
+                        parent: `${parent}/${block.slug}`,
+                    }),
+                );
+            }
+        }
+
+        if (field.fields) {
+            options.push(
+                ...collectBlockOptions({
+                    fields: field.fields,
+                    parent,
+                }),
+            );
+        }
+    }
+
+    return options;
+};
+
 export const AIInput = () => {
     const { config } = useConfig();
     const editorRef = useRef<HTMLDivElement>(null);
+    const mentionPopoverRef = useRef<HTMLDivElement>(null);
     const [prompt, setPrompt] = useState("");
     const [settingsProvider, setSettingsProvider] = useState<AIProvider | null>(
         null,
@@ -58,6 +130,7 @@ export const AIInput = () => {
     const [documentSuggestions, setDocumentSuggestions] = useState<
         CollectionMentionOption[]
     >([]);
+    const [mentions, setMentions] = useState<AIMention[]>([]);
     const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<
         number[]
     >([]);
@@ -82,33 +155,40 @@ export const AIInput = () => {
         const abortController = new AbortController();
 
         const fetchCurrentUser = async () => {
-            const res = await fetch(
-                formatAdminURL({
-                    apiRoute: config.routes.api,
-                    path: `/${adminUserSlug}/me`,
-                }),
-                {
-                    signal: abortController.signal,
-                },
-            );
+            try {
+                const res = await fetch(
+                    formatAdminURL({
+                        apiRoute: config.routes.api,
+                        path: `/${adminUserSlug}/me`,
+                    }),
+                    {
+                        signal: abortController.signal,
+                    },
+                );
 
-            if (!res.ok) {
+                if (!res.ok) {
+                    setSettingsProvider(null);
+                    setSelectedModel("");
+                    return;
+                }
+
+                const result = (await res.json()) as CurrentUserResponse;
+                const provider = result.user?.aiProvider;
+
+                if (!provider || !isAIProvider(provider)) {
+                    setSettingsProvider(null);
+                    setSelectedModel("");
+                    return;
+                }
+
+                setSettingsProvider(provider);
+                setSelectedModel(defaultAIModels[provider]);
+            } catch (err) {
+                if (isAbortError(err)) return;
+
                 setSettingsProvider(null);
                 setSelectedModel("");
-                return;
             }
-
-            const result = (await res.json()) as CurrentUserResponse;
-            const provider = result.user?.aiProvider;
-
-            if (!provider || !isAIProvider(provider)) {
-                setSettingsProvider(null);
-                setSelectedModel("");
-                return;
-            }
-
-            setSettingsProvider(provider);
-            setSelectedModel(defaultAIModels[provider]);
         };
 
         void fetchCurrentUser();
@@ -126,19 +206,49 @@ export const AIInput = () => {
             slug: collection.slug,
             type: "collection",
         }));
+    const globals: CollectionMentionOption[] =
+        config.globals?.map((global) => ({
+            label: getCollectionLabel(global.label, global.slug),
+            slug: global.slug,
+            type: "global",
+        })) || [];
+    const blocks: CollectionMentionOption[] = [
+        ...config.collections.flatMap((collection) =>
+            collectBlockOptions({
+                fields: collection.fields as FieldWithBlocks[],
+                parent: collection.slug,
+            }),
+        ),
+        ...(config.globals?.flatMap((global) =>
+            collectBlockOptions({
+                fields: global.fields as FieldWithBlocks[],
+                parent: global.slug,
+            }),
+        ) || []),
+    ];
+    const mentionOptions = [...collections, ...globals, ...blocks];
 
     const filteredCollections = collections.filter((collection) =>
         collection.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
     );
+    const filteredMentionOptions = mentionOptions.filter((option) =>
+        option.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
+    );
     const mentionSuggestions =
         filteredCollections.length < 3
-            ? [...filteredCollections, ...documentSuggestions]
-            : filteredCollections;
+            ? [...filteredMentionOptions, ...documentSuggestions]
+            : filteredMentionOptions;
+    const documentSuggestionCollection =
+        filteredCollections.length === 1 ? filteredCollections[0]?.slug : null;
 
     useEffect(() => {
         const trimmedQuery = mentionQuery.trim();
 
-        if (!mentionRange || !trimmedQuery || filteredCollections.length >= 3) {
+        if (
+            !mentionRange ||
+            (!trimmedQuery && !documentSuggestionCollection) ||
+            filteredCollections.length >= 3
+        ) {
             setDocumentSuggestions([]);
             return;
         }
@@ -146,32 +256,39 @@ export const AIInput = () => {
         const abortController = new AbortController();
 
         const fetchDocumentSuggestions = async () => {
-            const res = await fetch(
-                formatAdminURL({
-                    apiRoute: config.routes.api,
-                    path: "/ai-mention-suggestions",
-                }),
-                {
-                    body: JSON.stringify({
-                        collectionMatches: filteredCollections.length,
-                        query: trimmedQuery,
+            try {
+                const res = await fetch(
+                    formatAdminURL({
+                        apiRoute: config.routes.api,
+                        path: "/ai-mention-suggestions",
                     }),
-                    headers: { "Content-Type": "application/json" },
-                    method: "POST",
-                    signal: abortController.signal,
-                },
-            );
+                    {
+                        body: JSON.stringify({
+                            collectionMatches: filteredCollections.length,
+                            collectionSlug: documentSuggestionCollection,
+                            query: trimmedQuery,
+                        }),
+                        headers: { "Content-Type": "application/json" },
+                        method: "POST",
+                        signal: abortController.signal,
+                    },
+                );
 
-            if (!res.ok) {
+                if (!res.ok) {
+                    setDocumentSuggestions([]);
+                    return;
+                }
+
+                const result = (await res.json()) as {
+                    suggestions?: CollectionMentionOption[];
+                };
+
+                setDocumentSuggestions(result.suggestions || []);
+            } catch (err) {
+                if (isAbortError(err)) return;
+
                 setDocumentSuggestions([]);
-                return;
             }
-
-            const result = (await res.json()) as {
-                suggestions?: CollectionMentionOption[];
-            };
-
-            setDocumentSuggestions(result.suggestions || []);
         };
 
         void fetchDocumentSuggestions();
@@ -180,6 +297,7 @@ export const AIInput = () => {
     }, [
         config.routes.api,
         filteredCollections.length,
+        documentSuggestionCollection,
         mentionQuery,
         mentionRange,
     ]);
@@ -207,6 +325,65 @@ export const AIInput = () => {
         selection?.addRange(range);
     };
 
+    const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let currentOffset = 0;
+        let node = walker.nextNode();
+
+        while (node) {
+            const nextOffset = currentOffset + (node.textContent?.length || 0);
+
+            if (offset <= nextOffset) {
+                return {
+                    node,
+                    offset: offset - currentOffset,
+                };
+            }
+
+            currentOffset = nextOffset;
+            node = walker.nextNode();
+        }
+
+        const textNode = document.createTextNode("");
+        element.append(textNode);
+
+        return {
+            node: textNode,
+            offset: 0,
+        };
+    };
+
+    const replaceTextRangeWithBadge = ({
+        badge,
+        editor,
+        end,
+        start,
+    }: {
+        badge: HTMLSpanElement;
+        editor: HTMLElement;
+        end: number;
+        start: number;
+    }) => {
+        const startPosition = getTextNodeAtOffset(editor, start);
+        const endPosition = getTextNodeAtOffset(editor, end);
+        const range = document.createRange();
+        const trailingSpace = document.createTextNode(" ");
+
+        range.setStart(startPosition.node, startPosition.offset);
+        range.setEnd(endPosition.node, endPosition.offset);
+        range.deleteContents();
+        range.insertNode(trailingSpace);
+        range.insertNode(badge);
+
+        const selection = window.getSelection();
+        const caretRange = document.createRange();
+
+        caretRange.setStartAfter(trailingSpace);
+        caretRange.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(caretRange);
+    };
+
     const updateMentionState = (value: string, caretPosition: number) => {
         const valueBeforeCaret = value.slice(0, caretPosition);
         const match = /(?:^|\s)@([\w-]*)$/.exec(valueBeforeCaret);
@@ -223,31 +400,82 @@ export const AIInput = () => {
         setMentionRange({ end: caretPosition, start: atIndex });
     };
 
+    const clearInput = () => {
+        setPrompt("");
+        setMentions([]);
+        if (editorRef.current) editorRef.current.textContent = "";
+    };
+
+    const getProposalViewURL = (proposal: AIActionProposal) => {
+        const adminRoute = config.routes.admin || "/admin";
+
+        if (proposal.action === "updateGlobal" && proposal.slug) {
+            return `${adminRoute}/globals/${proposal.slug}`;
+        }
+
+        if (proposal.collection && proposal.id) {
+            return `${adminRoute}/collections/${proposal.collection}/${proposal.id}`;
+        }
+
+        return null;
+    };
+
     const insertMention = (suggestion: CollectionMentionOption) => {
         const editor = editorRef.current;
         if (!mentionRange || !editor) return;
 
         const beforeMention = prompt.slice(0, mentionRange.start);
         const afterMention = prompt.slice(mentionRange.end);
-        const badgeText =
-            suggestion.type === "collection"
-                ? `collection: ${suggestion.label}`
-                : `document: ${suggestion.label}`;
+        const badgeType =
+            suggestion.type === "doc" ? "document" : suggestion.type;
+        const badgePrefix = `${badgeType}:`;
+        const badgeText = `${badgePrefix} ${suggestion.label}`;
         const promptText =
-            suggestion.type === "collection"
-                ? badgeText
-                : `${badgeText} (${suggestion.collection}/${suggestion.id})`;
+            suggestion.type === "doc"
+                ? `${badgeText} (${suggestion.collection}/${suggestion.id})`
+                : badgeText;
         const badge = document.createElement("span");
 
-        badge.className = `${badgeStyles.badge} ${styles.inlineBadge}`;
+        badge.className = [
+            badgeStyles.badge,
+            badgeStyles[suggestion.type],
+            styles.inlineBadge,
+        ].join(" ");
         badge.contentEditable = "false";
-        badge.textContent = badgeText;
+        badge.append(
+            Object.assign(document.createElement("span"), {
+                className: badgeStyles.prefix,
+                textContent: `${badgePrefix} `,
+            }),
+            Object.assign(document.createElement("span"), {
+                className: badgeStyles.name,
+                textContent: suggestion.label,
+            }),
+        );
 
-        editor.textContent = beforeMention;
-        editor.append(badge, document.createTextNode(` ${afterMention}`));
-        moveCaretToEnd(editor);
+        replaceTextRangeWithBadge({
+            badge,
+            editor,
+            end: mentionRange.end,
+            start: mentionRange.start,
+        });
+        editor.focus();
 
         setPrompt(`${beforeMention}${promptText} ${afterMention}`);
+        setMentions((currentMentions) => {
+            const mentionExists = currentMentions.some(
+                (mention) =>
+                    mention.type === suggestion.type &&
+                    mention.slug === suggestion.slug &&
+                    mention.parent === suggestion.parent &&
+                    mention.collection === suggestion.collection &&
+                    mention.id === suggestion.id,
+            );
+
+            if (mentionExists) return currentMentions;
+
+            return [...currentMentions, suggestion];
+        });
         setMentionQuery("");
         setMentionRange(null);
         setDocumentSuggestions([]);
@@ -258,11 +486,7 @@ export const AIInput = () => {
         if (!trimmedPrompt) return;
 
         setIsLoading(true);
-        setError("");
-        setResponse("");
-        setProposals([]);
         setAppliedProposalIndexes([]);
-        setDebugInfo(null);
 
         try {
             const res = await fetch(
@@ -272,6 +496,7 @@ export const AIInput = () => {
                 }),
                 {
                     body: JSON.stringify({
+                        mentions,
                         model: selectedModel,
                         prompt: trimmedPrompt,
                     }),
@@ -295,14 +520,18 @@ export const AIInput = () => {
                         ? { errorDetails: result.errorDetails }
                         : {}),
                 });
+                setProposals([]);
+                setResponse("");
                 throw new Error(result.error || "AI request failed");
             }
 
+            setDebugInfo(null);
+            setError("");
             setResponse(result.text || "");
             setProposals(result.proposals || []);
-            setPrompt("");
-            if (editorRef.current) editorRef.current.textContent = "";
         } catch (err) {
+            setProposals([]);
+            setResponse("");
             setError(err instanceof Error ? err.message : "AI request failed");
         } finally {
             setIsLoading(false);
@@ -329,15 +558,30 @@ export const AIInput = () => {
             const result = (await res.json()) as {
                 error?: string;
                 errorDetails?: Record<string, unknown>;
+                normalized?: Record<string, unknown>;
+                proposal?: AIActionProposal;
             };
-            if (!res.ok)
+            if (!res.ok) {
+                setDebugInfo({
+                    ...(result.errorDetails
+                        ? { errorDetails: result.errorDetails }
+                        : {}),
+                    ...(result.normalized
+                        ? { normalized: result.normalized }
+                        : {}),
+                    ...(result.proposal ? { proposal: result.proposal } : {}),
+                });
+                setProposals([]);
+                setResponse("");
                 throw new Error(result.error || "Could not apply proposal");
+            }
 
             setAppliedProposalIndexes([]);
             setDebugInfo(null);
             setError("");
             setProposals([]);
             setResponse("");
+            clearInput();
         } catch (err) {
             setError(
                 err instanceof Error ? err.message : "Could not apply proposal",
@@ -356,6 +600,60 @@ export const AIInput = () => {
                         Ask AI to draft, improve, or analyze content.
                     </p>
                 </div>
+            </div>
+            <div className={styles.chatInputRow}>
+                <div className={styles.chatInputSurface}>
+                    <div
+                        className={styles.chatInput}
+                        contentEditable
+                        data-placeholder="Ask AI..."
+                        onInput={(event) => {
+                            const value = event.currentTarget.innerText;
+
+                            setPrompt(value);
+                            if (!value.trim()) {
+                                setMentions([]);
+                            }
+                            updateMentionState(
+                                value,
+                                getCaretOffset(event.currentTarget),
+                            );
+                        }}
+                        onKeyDown={(event) => {
+                            if (
+                                event.key === "ArrowDown" &&
+                                mentionRange &&
+                                mentionSuggestions.length > 0
+                            ) {
+                                const firstOption =
+                                    mentionPopoverRef.current?.querySelector<HTMLButtonElement>(
+                                        "button",
+                                    );
+                                if (firstOption) {
+                                    event.preventDefault();
+                                    firstOption.focus();
+                                    return;
+                                }
+                            }
+                            if (event.key === "Enter" && !event.shiftKey) {
+                                event.preventDefault();
+                                void handleSubmit();
+                            }
+                        }}
+                        ref={editorRef}
+                        role="textbox"
+                        suppressContentEditableWarning
+                    />
+                </div>
+                {mentionRange ? (
+                    <CollectionMentionPopover
+                        containerRef={mentionPopoverRef}
+                        onSelect={insertMention}
+                        suggestions={mentionSuggestions}
+                    />
+                ) : null}
+            </div>
+            <div className={styles.chatActionsRow}>
                 <div className={styles.settings}>
                     <label className={styles.setting}>
                         <span className={styles.settingLabel}>Model</span>
@@ -387,39 +685,6 @@ export const AIInput = () => {
                         </select>
                     </label>
                 </div>
-            </div>
-            <div className={styles.chatInputRow}>
-                <div className={styles.chatInputSurface}>
-                    <div
-                        className={styles.chatInput}
-                        contentEditable
-                        data-placeholder="Ask AI..."
-                        onInput={(event) => {
-                            const value = event.currentTarget.innerText;
-
-                            setPrompt(value);
-                            updateMentionState(
-                                value,
-                                getCaretOffset(event.currentTarget),
-                            );
-                        }}
-                        onKeyDown={(event) => {
-                            if (event.key === "Enter" && !event.shiftKey) {
-                                event.preventDefault();
-                                void handleSubmit();
-                            }
-                        }}
-                        ref={editorRef}
-                        role="textbox"
-                        suppressContentEditableWarning
-                    />
-                </div>
-                {mentionRange ? (
-                    <CollectionMentionPopover
-                        onSelect={insertMention}
-                        suggestions={mentionSuggestions}
-                    />
-                ) : null}
                 <button
                     className={styles.chatButton}
                     disabled={
@@ -434,18 +699,25 @@ export const AIInput = () => {
                     {isLoading ? "Sending..." : "Send"}
                 </button>
             </div>
-            {error ? <div className={styles.chatError}>{error}</div> : null}
-            {debugInfo && Object.keys(debugInfo).length > 0 ? (
-                <pre className={styles.debugInfo}>
-                    {JSON.stringify(debugInfo, null, 2)}
-                </pre>
-            ) : null}
-            {response ? (
-                <div className={styles.chatResponse}>{response}</div>
-            ) : null}
             <AIActionProposalList
                 appliedProposalIndexes={appliedProposalIndexes}
+                description={response}
+                error={error}
+                errorDetails={debugInfo}
+                getViewURL={getProposalViewURL}
                 isApplying={isApplying}
+                onDismiss={() => {
+                    setAppliedProposalIndexes([]);
+                    setDebugInfo(null);
+                    setError("");
+                    setProposals([]);
+                    setResponse("");
+                    clearInput();
+                }}
+                onDismissError={() => {
+                    setError("");
+                    setDebugInfo(null);
+                }}
                 onApply={(proposal, _index) =>
                     void handleApplyProposal(proposal)
                 }
