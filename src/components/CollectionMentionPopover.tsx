@@ -16,13 +16,14 @@ type CollectionMentionPopoverProps = {
     onSelect: (suggestion: CollectionMentionOption) => void;
 };
 
-const suggestionGroups: {
-    label: string;
-    type: CollectionMentionOption["type"];
-}[] = [
+const suggestionGroups: { label: string, type: CollectionMentionOption["type"] }[] = [
     {
         label: "Collections",
         type: "collection",
+    },
+    {
+        label: "Collection items",
+        type: "doc",
     },
     {
         label: "Globals",
@@ -32,44 +33,57 @@ const suggestionGroups: {
         label: "Blocks",
         type: "block",
     },
-    {
-        label: "Documents",
-        type: "doc",
-    },
 ];
 
 const getSuggestionTitle = (suggestion: CollectionMentionOption) => {
     if (suggestion.type === "collection") return `@${suggestion.slug}`;
     if (suggestion.type === "global") return `@${suggestion.slug}`;
     if (suggestion.type === "block") return `@${suggestion.slug}`;
-
     return suggestion.label;
 };
 
 const getSuggestionLabel = (suggestion: CollectionMentionOption) => {
     if (suggestion.type === "collection") return suggestion.label;
     if (suggestion.type === "global") return "global";
-    if (suggestion.type === "block") {
-        return suggestion.parent ? `${suggestion.parent} block` : "block";
-    }
-
-    return `${suggestion.collection} document`;
+    if (suggestion.type === "block") return `${suggestion.parent} block`;
+    return `${suggestion.collection} item`;
 };
 
-export const CollectionMentionPopover = ({
-    containerRef,
-    onSelect,
-    suggestions,
-}: CollectionMentionPopoverProps) => {
+export const CollectionMentionPopover = ({ containerRef, onSelect, suggestions }: CollectionMentionPopoverProps) => {
     if (suggestions.length === 0) return null;
+
+    const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, suggestion: CollectionMentionOption) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(suggestion);
+            return;
+        }
+
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+
+        const popover = event.currentTarget.closest(`.${styles.popover}`,);
+        if (!popover) return;
+
+        const buttons = Array.from(popover.querySelectorAll("button"));
+        const currentIndex = buttons.indexOf(event.currentTarget);
+        if (currentIndex === -1) return;
+
+        event.preventDefault();
+        const nextIndex = event.key === "ArrowDown"
+            ? Math.min(currentIndex + 1, buttons.length - 1)
+            : Math.max(currentIndex - 1, 0);
+        (buttons[nextIndex] as HTMLButtonElement | undefined)?.focus();
+    }
+
+    const onMouseDown = (event: React.MouseEvent<HTMLButtonElement>, suggestion: CollectionMentionOption) => {
+        event.preventDefault();
+        onSelect(suggestion);
+    }
 
     return (
         <div className={styles.popover} ref={containerRef}>
             {suggestionGroups.map((group) => {
-                const groupSuggestions = suggestions.filter(
-                    (suggestion) => suggestion.type === group.type,
-                );
-
+                const groupSuggestions = suggestions.filter((s) => s.type === group.type);
                 if (groupSuggestions.length === 0) return null;
 
                 return (
@@ -79,48 +93,8 @@ export const CollectionMentionPopover = ({
                             <button
                                 className={styles.option}
                                 key={`${suggestion.type}-${suggestion.slug}-${suggestion.parent || ""}-${suggestion.collection || ""}-${suggestion.id || ""}`}
-                                onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    onSelect(suggestion);
-                                }}
-                                onKeyDown={(event) => {
-                                    if (
-                                        event.key === "Enter" ||
-                                        event.key === " "
-                                    ) {
-                                        event.preventDefault();
-                                        onSelect(suggestion);
-                                        return;
-                                    }
-
-                                    if (
-                                        event.key !== "ArrowDown" &&
-                                        event.key !== "ArrowUp"
-                                    )
-                                        return;
-
-                                    const popover = event.currentTarget.closest(
-                                        `.${styles.popover}`,
-                                    );
-                                    if (!popover) return;
-
-                                    const buttons = Array.from(
-                                        popover.querySelectorAll("button"),
-                                    );
-                                    const currentIndex =
-                                        buttons.indexOf(event.currentTarget);
-                                    if (currentIndex === -1) return;
-
-                                    event.preventDefault();
-                                    const nextIndex =
-                                        event.key === "ArrowDown"
-                                            ? Math.min(
-                                                  currentIndex + 1,
-                                                  buttons.length - 1,
-                                              )
-                                            : Math.max(currentIndex - 1, 0);
-                                    (buttons[nextIndex] as HTMLButtonElement | undefined)?.focus();
-                                }}
+                                onMouseDown={(e) => onMouseDown(e, suggestion)}
+                                onKeyDown={(e) => onKeyDown(e, suggestion)}
                                 type="button"
                             >
                                 <span className={styles.slug}>

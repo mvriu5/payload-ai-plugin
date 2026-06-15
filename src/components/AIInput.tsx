@@ -228,16 +228,19 @@ export const AIInput = () => {
     ];
     const mentionOptions = [...collections, ...globals, ...blocks];
 
-    const filteredCollections = collections.filter((collection) =>
-        collection.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
+    const normalizedMentionQuery = mentionQuery.toLowerCase();
+    const filteredCollections = collections.filter(
+        (collection) =>
+            collection.slug.toLowerCase().includes(normalizedMentionQuery) ||
+            collection.label.toLowerCase().includes(normalizedMentionQuery),
     );
     const filteredMentionOptions = mentionOptions.filter((option) =>
-        option.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
+        option.slug.toLowerCase().includes(normalizedMentionQuery),
     );
-    const mentionSuggestions =
-        filteredCollections.length < 3
-            ? [...filteredMentionOptions, ...documentSuggestions]
-            : filteredMentionOptions;
+    const mentionSuggestions = [
+        ...filteredMentionOptions,
+        ...documentSuggestions,
+    ];
     const documentSuggestionCollection =
         filteredCollections.length === 1 ? filteredCollections[0]?.slug : null;
 
@@ -246,8 +249,7 @@ export const AIInput = () => {
 
         if (
             !mentionRange ||
-            (!trimmedQuery && !documentSuggestionCollection) ||
-            filteredCollections.length >= 3
+            (!trimmedQuery && !documentSuggestionCollection)
         ) {
             setDocumentSuggestions([]);
             return;
@@ -264,9 +266,10 @@ export const AIInput = () => {
                     }),
                     {
                         body: JSON.stringify({
-                            collectionMatches: filteredCollections.length,
                             collectionSlug: documentSuggestionCollection,
-                            query: trimmedQuery,
+                            query: documentSuggestionCollection
+                                ? ""
+                                : trimmedQuery,
                         }),
                         headers: { "Content-Type": "application/json" },
                         method: "POST",
@@ -296,7 +299,6 @@ export const AIInput = () => {
         return () => abortController.abort();
     }, [
         config.routes.api,
-        filteredCollections.length,
         documentSuggestionCollection,
         mentionQuery,
         mentionRange,

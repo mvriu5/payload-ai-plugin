@@ -34,19 +34,12 @@ type NormalizedData = {
 
 const SKIP_FIELD = Symbol("skipField");
 
-const isKnownCollection = (
-    req: Parameters<PayloadHandler>[0],
-    collection: string,
-) => {
-    return req.payload.config.collections.some(
-        (item) => item.slug === collection,
-    );
+const isKnownCollection = (req: Parameters<PayloadHandler>[0], collection: string) => {
+    return req.payload.config.collections.some((item) => item.slug === collection);
 };
 
 const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
-    return (
-        req.payload.config.globals?.some((item) => item.slug === slug) || false
-    );
+    return (req.payload.config.globals?.some((item) => item.slug === slug) || false);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -54,9 +47,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 };
 
 const getNamedFields = (fields: FieldConfig[]) => {
-    return fields.filter((field): field is FieldConfig & { name: string } =>
-        Boolean(field.name),
-    );
+    return fields.filter((field): field is FieldConfig & { name: string } => Boolean(field.name));
 };
 
 const isAuthCollection = (collectionConfig?: CollectionConfig | null) => {
@@ -86,10 +77,7 @@ const createLexicalText = (value: unknown) => {
     if (isRecord(value) && isRecord(value.root)) return value;
 
     const text = Array.isArray(value) ? value.join("\n") : String(value || "");
-    const lines = text
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+    const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
 
     return {
         root: {
@@ -134,10 +122,7 @@ const normalizeArrayValue = (field: FieldConfig, value: unknown) => {
     if (!itemLabelField) return value;
 
     return value.map((item) => {
-        if (!isRecord(item)) {
-            return { [itemLabelField.name]: item };
-        }
-
+        if (!isRecord(item)) return { [itemLabelField.name]: item };
         return normalizeDataForFields(childFields, item).data;
     });
 };
@@ -151,98 +136,58 @@ const getOptionValues = (field: FieldConfig) => {
 const normalizeOptionValue = (field: FieldConfig, value: unknown) => {
     const optionValues = getOptionValues(field);
     const stringValue = value === null ? "" : String(value);
-    const defaultValue =
-        typeof field.defaultValue === "string" ? field.defaultValue : null;
+    const defaultValue = typeof field.defaultValue === "string" ? field.defaultValue : null;
 
-    if (stringValue && optionValues.includes(stringValue)) {
-        return stringValue;
-    }
-
-    if (defaultValue && optionValues.includes(defaultValue)) {
-        return defaultValue;
-    }
-
+    if (stringValue && optionValues.includes(stringValue)) return stringValue;
+    if (defaultValue && optionValues.includes(defaultValue)) return defaultValue;
     return SKIP_FIELD;
 };
 
 const normalizeBlocksValue = (field: FieldConfig, value: unknown) => {
     if (!Array.isArray(value)) return value;
 
-    return value
-        .map((item) => {
-            if (!isRecord(item)) return null;
+    return value.map((item) => {
+        if (!isRecord(item)) return null;
 
-            const blockType =
-                typeof item.blockType === "string"
-                    ? item.blockType
-                    : typeof item.type === "string"
-                      ? item.type
-                      : typeof item.slug === "string"
-                        ? item.slug
-                        : null;
+        const blockType = typeof item.blockType === "string"
+            ? item.blockType
+            : typeof item.type === "string"
+                ? item.type
+                : typeof item.slug === "string"
+                    ? item.slug
+                    : null;
 
-            if (!blockType) return null;
+        if (!blockType) return null;
 
-            const block = field.blocks?.find(
-                (candidate) => candidate.slug === blockType,
-            );
+        const block = field.blocks?.find((candidate) => candidate.slug === blockType);
+        if (!block) return null;
 
-            if (!block) return null;
+        const { blockType: _blockType, type: _type, slug: _slug, ...data } = item;
+        const normalizedBlock = normalizeDataForFields(block.fields || [], data).data;
 
-            const {
-                blockType: _blockType,
-                type: _type,
-                slug: _slug,
-                ...data
-            } = item;
-            const normalizedBlock = normalizeDataForFields(
-                block.fields || [],
-                data,
-            ).data;
-
-            return {
-                ...normalizedBlock,
-                blockType,
-            };
-        })
-        .filter(Boolean);
+        return { ...normalizedBlock, blockType };
+    }).filter(Boolean);
 };
 
-const normalizeFieldValue = (
-    field: FieldConfig,
-    value: unknown,
-): typeof SKIP_FIELD | unknown => {
+const normalizeFieldValue = (field: FieldConfig, value: unknown): typeof SKIP_FIELD | unknown => {
     if (value === undefined) return value;
 
     if (field.type === "array") return normalizeArrayValue(field, value);
     if (field.type === "blocks") return normalizeBlocksValue(field, value);
-    if (field.type === "checkbox")
-        return typeof value === "boolean" ? value : value === "true";
+    if (field.type === "checkbox") return typeof value === "boolean" ? value : value === "true";
+    if (field.type === "group" && isRecord(value)) return normalizeDataForFields(field.fields || [], value).data;
+    if (field.type === "richText") return createLexicalText(value);
+    if (["radio", "select"].includes(field.type || "")) return normalizeOptionValue(field, value);
+    if (["email", "text", "textarea"].includes(field.type || "")) return value === null ? value : String(value);
     if (field.type === "date") {
         const date = new Date(String(value));
         return Number.isNaN(date.getTime()) ? value : date.toISOString();
     }
-    if (field.type === "group" && isRecord(value)) {
-        return normalizeDataForFields(field.fields || [], value).data;
-    }
-    if (field.type === "richText") return createLexicalText(value);
-    if (["radio", "select"].includes(field.type || "")) {
-        return normalizeOptionValue(field, value);
-    }
-    if (["email", "text", "textarea"].includes(field.type || "")) {
-        return value === null ? value : String(value);
-    }
-
     return value;
 };
 
-const normalizeAuthData = (
-    collectionConfig: CollectionConfig | undefined,
-    normalized: NormalizedData,
-) => {
-    if (!isAuthCollection(collectionConfig)) {
-        return normalized;
-    }
+const normalizeAuthData = (collectionConfig: CollectionConfig | undefined, normalized: NormalizedData) => {
+    if (!isAuthCollection(collectionConfig)) return normalized;
 
     const email = normalized.data.email;
     const password = normalized.data.password;
@@ -257,21 +202,14 @@ const normalizeAuthData = (
         normalized.coercedFields.push("password");
     }
 
-    if (
-        typeof normalized.data.password === "string" &&
-        normalized.data.password.length > 0 &&
-        normalized.data.password.length < 8
-    ) {
+    if (typeof normalized.data.password === "string" && normalized.data.password.length > 0 && normalized.data.password.length < 8) {
         throw new Error("Password must be at least 8 characters long.");
     }
 
     return normalized;
 };
 
-const getAliasFieldName = (
-    key: string,
-    fieldsByName: Map<string, FieldConfig>,
-) => {
+const getAliasFieldName = (key: string, fieldsByName: Map<string, FieldConfig>) => {
     if (fieldsByName.has(key)) return key;
 
     if (key.endsWith("Date")) {
@@ -290,14 +228,9 @@ const normalizeLooseKnownFieldValue = (key: string, value: unknown) => {
     return value;
 };
 
-const normalizeDataForFields = (
-    fields: FieldConfig[],
-    data: Record<string, unknown>,
-): NormalizedData => {
+const normalizeDataForFields = (fields: FieldConfig[], data: Record<string, unknown>): NormalizedData => {
     const namedFields = getNamedFields(fields);
-    const fieldsByName = new Map(
-        namedFields.map((field) => [field.name, field]),
-    );
+    const fieldsByName = new Map(namedFields.map((field) => [field.name, field]));
     const normalizedData: Record<string, unknown> = {};
     const droppedFields: string[] = [];
     const coercedFields: string[] = [];
@@ -359,37 +292,22 @@ const getErrorDetails = (err: unknown) => {
 };
 
 export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
-    if (!req.user)
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = req.json
-        ? ((await req.json().catch(() => null)) as AIApplyActionBody | null)
-        : null;
+    const body = req.json ? ((await req.json().catch(() => null)) as AIApplyActionBody | null) : null;
 
     const proposal = body?.proposal;
-    if (!proposal)
-        return Response.json(
-            { error: "Proposal is required" },
-            { status: 400 },
-        );
+    if (!proposal) return Response.json({ error: "Proposal is required" }, { status: 400 });
 
     let normalized: NormalizedData | undefined;
 
     try {
         if (proposal.action === "updateGlobal") {
             if (!isKnownGlobal(req, proposal.slug))
-                return Response.json(
-                    { error: "Unknown global" },
-                    { status: 400 },
-                );
+                return Response.json({ error: "Unknown global" }, { status: 400 });
 
-            const globalConfig = req.payload.config.globals?.find(
-                (global) => global.slug === proposal.slug,
-            );
-            normalized = normalizeDataForFields(
-                (globalConfig?.fields || []) as FieldConfig[],
-                proposal.data,
-            );
+            const globalConfig = req.payload.config.globals?.find((global) => global.slug === proposal.slug,);
+            normalized = normalizeDataForFields((globalConfig?.fields || []) as FieldConfig[], proposal.data);
             const doc = await req.payload.updateGlobal({
                 data: normalized.data,
                 overrideAccess: false,
@@ -401,10 +319,7 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
         }
 
         if (!isKnownCollection(req, proposal.collection))
-            return Response.json(
-                { error: "Unknown collection" },
-                { status: 400 },
-            );
+            return Response.json({ error: "Unknown collection" }, { status: 400 });
 
         if (proposal.action === "delete") {
             const doc = await req.payload.delete({
@@ -417,22 +332,13 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
             return Response.json({ doc, status: "applied" });
         }
 
-        const collectionConfig = req.payload.config.collections.find(
-            (collection) => collection.slug === proposal.collection,
-        ) as CollectionConfig | undefined;
+        const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === proposal.collection) as CollectionConfig | undefined;
         normalized = normalizeAuthData(
             collectionConfig,
-            normalizeDataForFields(
-                getCollectionFields(collectionConfig),
-                proposal.data,
-            ),
+            normalizeDataForFields(getCollectionFields(collectionConfig), proposal.data)
         );
 
-        if (
-            proposal.action === "create" &&
-            isAuthCollection(collectionConfig) &&
-            !normalized.data.password
-        ) {
+        if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.password) {
             return Response.json(
                 {
                     error: "Password is required when creating a user.",
@@ -443,11 +349,7 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
             );
         }
 
-        if (
-            proposal.action === "create" &&
-            isAuthCollection(collectionConfig) &&
-            !normalized.data.email
-        ) {
+        if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.email) {
             return Response.json(
                 {
                     error: "Email is required when creating a user.",

@@ -52,7 +52,7 @@
     font: inherit;
     min-height: 34px;
     min-width: 160px;
-    padding: 0 10px;
+    padding: 0 28px 0 10px;
 }
 
 .select:focus {

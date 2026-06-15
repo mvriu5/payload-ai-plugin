@@ -106,22 +106,36 @@ export type AIActionProposal =
           data: Record<string, unknown>;
           label: string;
           slug: string;
-      };
+    };
 
-const getProviderConfig = ({
-    apiKey,
-    model,
-    provider,
-}: {
+interface ProviderConfig {
     apiKey?: string | null;
     model?: string | null;
     provider: AIProvider;
-}) => {
+}
+
+interface ModelConfig {
+    apiKey: string;
+    model: string;
+    provider: AIProvider;
+}
+
+interface MentionContext {
+    blockContexts: (Record<string, unknown> & {
+        parent: string;
+        slug: string;
+    })[];
+    collectionSlugs: string[];
+    globalSlugs: string[];
+    mentions?: AIChatMention[];
+    req: Parameters<PayloadHandler>[0];
+}
+
+const getProviderConfig = ({ apiKey, model, provider }: ProviderConfig) => {
     if (provider === "claude") {
         return {
             apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
-            modelID:
-                model || process.env.ANTHROPIC_MODEL || defaultAIModels.claude,
+            modelID: model || process.env.ANTHROPIC_MODEL || defaultAIModels.claude,
         };
     }
 
@@ -156,32 +170,12 @@ const getProviderConfig = ({
     };
 };
 
-const getModel = ({
-    apiKey,
-    modelID,
-    provider,
-}: {
-    apiKey: string;
-    modelID: string;
-    provider: AIProvider;
-}) => {
-    if (provider === "claude") {
-        return createAnthropic({ apiKey })(modelID);
-    }
-
-    if (provider === "google") {
-        return createGoogleGenerativeAI({ apiKey })(modelID);
-    }
-
-    if (provider === "groq") {
-        return createGroq({ apiKey })(modelID);
-    }
-
-    if (provider === "mistral") {
-        return createMistral({ apiKey })(modelID);
-    }
-
-    return createOpenAI({ apiKey })(modelID);
+const getModel = ({ apiKey, model, provider }: ModelConfig) => {
+    if (provider === "claude") return createAnthropic({ apiKey })(model);
+    if (provider === "google") return createGoogleGenerativeAI({ apiKey })(model);
+    if (provider === "groq") return createGroq({ apiKey })(model);
+    if (provider === "mistral") return createMistral({ apiKey })(model);
+    return createOpenAI({ apiKey })(model);
 };
 
 const getErrorDetails = (err: unknown) => {
@@ -189,8 +183,7 @@ const getErrorDetails = (err: unknown) => {
         return {
             message: err.message,
             name: err.name,
-            stack:
-                process.env.NODE_ENV === "development" ? err.stack : undefined,
+            stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
         };
     }
 
@@ -257,13 +250,7 @@ const describeBlock = (block: BlockConfig): Record<string, unknown> => {
     };
 };
 
-const collectBlocks = ({
-    fields,
-    parent,
-}: {
-    fields: FieldConfig[];
-    parent: string;
-}) => {
+const collectBlocks = ({ fields, parent }: { fields: FieldConfig[], parent: string }) => {
     const blocks: (Record<string, unknown> & {
         parent: string;
         slug: string;
@@ -300,29 +287,10 @@ const collectBlocks = ({
     return blocks;
 };
 
-const isInternalCollection = (slug: string) => {
-    return slug.startsWith("payload-") || slug === "plugin-collection";
-};
+const isInternalCollection = (slug: string) => slug.startsWith("payload-") || slug === "plugin-collection";
 
-const getMentionContext = async ({
-    blockContexts,
-    collectionSlugs,
-    globalSlugs,
-    mentions,
-    req,
-}: {
-    blockContexts: (Record<string, unknown> & {
-        parent: string;
-        slug: string;
-    })[];
-    collectionSlugs: string[];
-    globalSlugs: string[];
-    mentions?: AIChatMention[];
-    req: Parameters<PayloadHandler>[0];
-}) => {
-    if (!mentions || mentions.length === 0) {
-        return [];
-    }
+const getMentionContext = async ({ blockContexts, collectionSlugs, globalSlugs, mentions, req }: MentionContext) => {
+    if (!mentions || mentions.length === 0) return [];
 
     const context: Record<string, unknown>[] = [];
     const seen = new Set<string>();
@@ -332,27 +300,14 @@ const getMentionContext = async ({
             const slug = mention.slug;
             const key = `collection:${slug}`;
 
-            if (
-                seen.has(key) ||
-                isInternalCollection(slug) ||
-                !collectionSlugs.includes(slug)
-            ) {
-                continue;
-            }
+            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugs.includes(slug)) continue;
 
-            const collectionConfig = req.payload.config.collections.find(
-                (collection) => collection.slug === slug,
-            );
-
-            if (!collectionConfig) {
-                continue;
-            }
+            const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === slug)
+            if (!collectionConfig) continue;
 
             seen.add(key);
             context.push({
-                fields: (collectionConfig.fields as FieldConfig[]).map(
-                    describeField,
-                ),
+                fields: (collectionConfig.fields as FieldConfig[]).map(describeField,),
                 label:
                     collectionConfig.labels?.plural ||
                     collectionConfig.labels?.singular ||
@@ -366,17 +321,10 @@ const getMentionContext = async ({
             const slug = mention.slug;
             const key = `global:${slug}`;
 
-            if (seen.has(key) || !globalSlugs.includes(slug)) {
-                continue;
-            }
+            if (seen.has(key) || !globalSlugs.includes(slug)) continue
 
-            const globalConfig = req.payload.config.globals?.find(
-                (global) => global.slug === slug,
-            );
-
-            if (!globalConfig) {
-                continue;
-            }
+            const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug);
+            if (!globalConfig) continue;
 
             const globalDoc = await req.payload
                 .findGlobal({
@@ -390,9 +338,7 @@ const getMentionContext = async ({
             seen.add(key);
             context.push({
                 doc: globalDoc,
-                fields: (globalConfig.fields as FieldConfig[]).map(
-                    describeField,
-                ),
+                fields: (globalConfig.fields as FieldConfig[]).map(describeField),
                 label: globalConfig.label || slug,
                 slug,
                 type: "global",
@@ -400,18 +346,15 @@ const getMentionContext = async ({
         }
 
         if (mention.type === "block" && mention.slug) {
-            const matchingBlocks = blockContexts.filter(
-                (block) =>
-                    block.slug === mention.slug &&
-                    (!mention.parent || block.parent === mention.parent),
+            const matchingBlocks = blockContexts.filter((block) =>
+                block.slug === mention.slug &&
+                (!mention.parent || block.parent === mention.parent),
             );
 
             for (const block of matchingBlocks) {
                 const key = `block:${block.parent}:${block.slug}`;
 
-                if (seen.has(key)) {
-                    continue;
-                }
+                if (seen.has(key)) continue;
 
                 seen.add(key);
                 context.push({
@@ -425,13 +368,7 @@ const getMentionContext = async ({
             const slug = mention.collection;
             const key = `doc:${slug}:${mention.id}`;
 
-            if (
-                seen.has(key) ||
-                isInternalCollection(slug) ||
-                !collectionSlugs.includes(slug)
-            ) {
-                continue;
-            }
+            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugs.includes(slug)) continue;
 
             const doc = await req.payload
                 .findByID({
@@ -443,9 +380,7 @@ const getMentionContext = async ({
                 })
                 .catch(() => null);
 
-            if (!doc) {
-                continue;
-            }
+            if (!doc) continue;
 
             seen.add(key);
             context.push({
@@ -461,16 +396,8 @@ const getMentionContext = async ({
     return context;
 };
 
-const buildPromptWithMentionContext = ({
-    mentionContext,
-    prompt,
-}: {
-    mentionContext: Record<string, unknown>[];
-    prompt: string;
-}) => {
-    if (mentionContext.length === 0) {
-        return prompt;
-    }
+const buildPromptWithMentionContext = ({ mentionContext, prompt }: { mentionContext: Record<string, unknown>[], prompt: string }) => {
+    if (mentionContext.length === 0) return prompt;
 
     return [
         "The user selected the following Payload CMS references in the input. Treat inline text like `collection: Name` or `document: Name` as references to this context, not as literal content.",
@@ -481,28 +408,18 @@ const buildPromptWithMentionContext = ({
 };
 
 export const aiChatEndpointHandler: PayloadHandler = async (req) => {
-    if (!req.user) {
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = req.json
-        ? ((await req.json().catch(() => null)) as AIChatBody | null)
-        : null;
+    const body = req.json ? ((await req.json().catch(() => null)) as AIChatBody | null) : null;
+
     const prompt = body?.prompt?.trim();
-
-    if (!prompt) {
-        return Response.json({ error: "Prompt is required" }, { status: 400 });
-    }
+    if (!prompt) return Response.json({ error: "Prompt is required" }, { status: 400 });
 
     const user = req.user as AIUser;
     const requestedProvider = body?.provider || user.aiProvider || "openai";
 
-    if (!isAIProvider(requestedProvider)) {
-        return Response.json(
-            { error: `Unsupported AI provider: ${requestedProvider}` },
-            { status: 400 },
-        );
-    }
+    if (!isAIProvider(requestedProvider))
+        return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 });
 
     const provider = requestedProvider;
     const providerConfig = getProviderConfig({
@@ -538,11 +455,8 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
 
     try {
         const proposals: AIActionProposal[] = [];
-        const collectionSlugs = req.payload.config.collections.map(
-            (collection) => collection.slug,
-        );
-        const globalSlugs =
-            req.payload.config.globals?.map((global) => global.slug) || [];
+        const collectionSlugs = req.payload.config.collections.map((collection) => collection.slug);
+        const globalSlugs = req.payload.config.globals?.map((global) => global.slug) || [];
         const blockContexts = [
             ...req.payload.config.collections.flatMap((collection) =>
                 collectBlocks({
@@ -564,9 +478,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
             mentions: body?.mentions,
             req,
         });
-        const collectionSlugSchema = z.enum(
-            collectionSlugs as [string, ...string[]],
-        );
+        const collectionSlugSchema = z.enum(collectionSlugs as [string, ...string[]]);
         const tools = {
             getDoc: {
                 description:
@@ -594,9 +506,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 inputSchema: z.object({}),
                 execute: async () => {
                     return req.payload.config.collections.map((collection) => ({
-                        fields: (collection.fields as FieldConfig[]).map(
-                            describeField,
-                        ),
+                        fields: (collection.fields as FieldConfig[]).map(describeField),
                         label: collection.labels?.plural || collection.slug,
                         slug: collection.slug,
                     }));
@@ -608,13 +518,8 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     slug: z.string().min(1),
                 }),
                 execute: async ({ slug }: SlugInput) => {
-                    const globalConfig = req.payload.config.globals?.find(
-                        (global) => global.slug === slug,
-                    );
-
-                    if (!globalConfig) {
-                        return { error: `Unknown global: ${slug}` };
-                    }
+                    const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug);
+                    if (!globalConfig) return { error: `Unknown global: ${slug}` };
 
                     return req.payload.findGlobal({
                         depth: 2,
@@ -648,11 +553,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     data: z.record(z.string(), z.unknown()),
                     label: z.string().min(1),
                 }),
-                execute: async ({
-                    collection,
-                    data,
-                    label,
-                }: CollectionInput & DataInput & LabelInput) => {
+                execute: async ({ collection, data, label }: CollectionInput & DataInput & LabelInput) => {
                     const proposal: AIActionProposal = {
                         action: "create",
                         collection,
@@ -665,18 +566,13 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                 },
             },
             proposeDeleteDoc: {
-                description:
-                    "Prepare a CMS document deletion proposal. This does not write to the database.",
+                description: "Prepare a CMS document deletion proposal. This does not write to the database.",
                 inputSchema: z.object({
                     collection: collectionSlugSchema,
                     id: z.string().min(1),
                     label: z.string().min(1),
                 }),
-                execute: async ({
-                    collection,
-                    id,
-                    label,
-                }: CollectionInput & DocIDInput & LabelInput) => {
+                execute: async ({ collection, id, label }: CollectionInput & DocIDInput & LabelInput) => {
                     const proposal: AIActionProposal = {
                         action: "delete",
                         collection,
@@ -697,12 +593,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     id: z.string().min(1),
                     label: z.string().min(1),
                 }),
-                execute: async ({
-                    collection,
-                    data,
-                    id,
-                    label,
-                }: CollectionInput & DataInput & DocIDInput & LabelInput) => {
+                execute: async ({ collection, data, id, label }: CollectionInput & DataInput & DocIDInput & LabelInput) => {
                     const proposal: AIActionProposal = {
                         action: "update",
                         collection,
@@ -723,18 +614,9 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     label: z.string().min(1),
                     slug: z.string().min(1),
                 }),
-                execute: async ({
-                    data,
-                    label,
-                    slug,
-                }: DataInput & LabelInput & SlugInput) => {
-                    const globalConfig = req.payload.config.globals?.find(
-                        (global) => global.slug === slug,
-                    );
-
-                    if (!globalConfig) {
-                        return { error: `Unknown global: ${slug}` };
-                    }
+                execute: async ({ data, label, slug }: DataInput & LabelInput & SlugInput) => {
+                    const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug);
+                    if (!globalConfig) return { error: `Unknown global: ${slug}` };
 
                     const proposal: AIActionProposal = {
                         action: "updateGlobal",
@@ -755,39 +637,23 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     limit: z.number().int().min(1).max(10).default(5),
                     query: z.string().optional(),
                 }),
-                execute: async ({
-                    collection,
-                    limit,
-                    query,
-                }: CollectionInput & { limit: number; query?: string }) => {
-                    const collectionConfig =
-                        req.payload.config.collections.find(
-                            (item) => item.slug === collection,
-                        );
-                    const searchableFields =
-                        collectionConfig?.fields
-                            .filter(
-                                (field) =>
-                                    "name" in field &&
-                                    ["email", "text", "textarea"].includes(
-                                        field.type,
-                                    ),
-                            )
-                            .map((field) =>
-                                "name" in field ? field.name : null,
-                            )
-                            .filter(Boolean) || [];
+                execute: async ({ collection, limit, query }: CollectionInput & { limit: number; query?: string }) => {
+                    const collectionConfig = req.payload.config.collections.find((item) => item.slug === collection);
+                    const searchableFields = collectionConfig?.fields.filter((field) =>
+                            "name" in field &&
+                            ["email", "text", "textarea"].includes(field.type))
+                        .map((field) => "name" in field ? field.name : null)
+                        .filter(Boolean) || [];
 
-                    const where =
-                        query && searchableFields.length > 0
-                            ? {
-                                  or: searchableFields.map((field) => ({
-                                      [field as string]: {
-                                          contains: query,
-                                      },
-                                  })),
-                              }
-                            : undefined;
+                    const where = query && searchableFields.length > 0
+                        ? {
+                                or: searchableFields.map((field) => ({
+                                    [field as string]: {
+                                        contains: query,
+                                    },
+                                })),
+                            }
+                        : undefined;
 
                     return req.payload.find({
                         collection: collection as never,
@@ -804,7 +670,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
             maxOutputTokens: 700,
             model: getModel({
                 apiKey: providerConfig.apiKey,
-                modelID: providerConfig.modelID,
+                model: providerConfig.modelID,
                 provider,
             }),
             prompt: buildPromptWithMentionContext({

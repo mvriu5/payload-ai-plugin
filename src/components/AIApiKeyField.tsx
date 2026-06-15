@@ -16,24 +16,14 @@ const getLabel = (label: unknown, fallback: string) => {
     return fallback;
 };
 
-export const AIApiKeyField: TextFieldClientComponent = ({
-    field,
-    inputRef,
-    path,
-    readOnly,
-}) => {
-    const { disabled, errorMessage, setValue, showError, value } =
-        useField<string>({ path });
+const getFieldClassName = ({ className, isReadOnly, showError }: { className?: string, isReadOnly?: boolean, showError?: boolean }) =>
+    ["field-type", "password", className, showError ? "error" : null, isReadOnly ? "read-only" : null]
+        .filter(Boolean)
+        .join(" ");
+
+export const AIApiKeyField: TextFieldClientComponent = ({ field, inputRef, path, readOnly }) => {
+    const { disabled, errorMessage, setValue, showError, value } = useField<string>({ path });
     const fieldID = `field-${path.replace(/\./g, "__")}`;
-    const label = getLabel(field.label, field.name);
-    const description =
-        typeof field.admin?.description === "string"
-            ? field.admin.description
-            : null;
-    const placeholder =
-        typeof field.admin?.placeholder === "string"
-            ? field.admin.placeholder
-            : undefined;
     const isReadOnly = readOnly || disabled || field.admin?.disabled;
 
     const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -42,18 +32,14 @@ export const AIApiKeyField: TextFieldClientComponent = ({
 
     return (
         <div
-            className={[
-                "field-type",
-                "password",
-                field.admin?.className,
-                showError ? "error" : null,
-                isReadOnly ? "read-only" : null,
-            ]
-                .filter(Boolean)
-                .join(" ")}
+            className={getFieldClassName({
+                className: field.admin?.className,
+                isReadOnly,
+                showError,
+            })}
         >
             <label className="field-label" htmlFor={fieldID}>
-                {label}
+                {field?.label?.toString()}
                 {field.required ? <span className="required">*</span> : null}
             </label>
             <div className="field-type__wrap">
@@ -66,14 +52,12 @@ export const AIApiKeyField: TextFieldClientComponent = ({
                     id={fieldID}
                     name={path}
                     onChange={handleChange}
-                    placeholder={placeholder}
+                    placeholder={field.admin?.placeholder?.toString()}
                     ref={inputRef}
                     type="password"
                     value={value || ""}
                 />
-                {description ? (
-                    <div className="field-description">{description}</div>
-                ) : null}
+                <div className="field-description">{field.admin?.description?.toString()}</div>
             </div>
         </div>
     );

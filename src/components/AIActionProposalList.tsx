@@ -26,7 +26,6 @@ const maxDescriptionLength = 220;
 
 const getDescriptionPreview = (description: string) => {
     if (description.length <= maxDescriptionLength) return description;
-
     return `${description.slice(0, maxDescriptionLength).trim()}...`;
 };
 
@@ -43,26 +42,23 @@ export const AIActionProposalList = ({
     proposals,
 }: AIActionProposalListProps) => {
     if (proposals.length === 0 && !error && !description) return null;
-    const descriptionPreview = description
-        ? getDescriptionPreview(description)
-        : "";
-    const isDescriptionTruncated =
-        Boolean(description) && descriptionPreview !== description;
+    const descriptionPreview = description ? getDescriptionPreview(description) : "";
+    const isDescriptionTruncated = Boolean(description) && descriptionPreview !== description;
 
     return (
         <div className={styles.list}>
-            {error ? (
+            {error && (
                 <div className={`${styles.item} ${styles.errorItem}`}>
                     <div>
                         <div className={styles.label}>AI request failed</div>
                         <div className={styles.description}>{error}</div>
-                        {errorDetails ? (
+                        {errorDetails && (
                             <pre className={styles.proposalDetails}>
                                 {JSON.stringify(errorDetails, null, 2)}
                             </pre>
-                        ) : null}
+                        )}
                     </div>
-                    {onDismissError ? (
+                    {onDismissError && (
                         <button
                             className={styles.button}
                             onClick={onDismissError}
@@ -70,10 +66,10 @@ export const AIActionProposalList = ({
                         >
                             Dismiss
                         </button>
-                    ) : null}
+                    )}
                 </div>
-            ) : null}
-            {!error && proposals.length === 0 && description ? (
+            )}
+            {!error && proposals.length === 0 && description && (
                 <div className={styles.item}>
                     <div>
                         <div className={styles.label}>AI response</div>
@@ -92,7 +88,7 @@ export const AIActionProposalList = ({
                         ) : null}
                     </div>
                 </div>
-            ) : null}
+            )}
             {proposals.map((proposal, index) => {
                 const isApplied = appliedProposalIndexes.includes(index);
                 const viewURL = getViewURL?.(proposal);
@@ -109,12 +105,12 @@ export const AIActionProposalList = ({
                                 {proposal.collection || proposal.slug}
                                 {proposal.id ? ` #${proposal.id}` : ""}
                             </div>
-                            {description ? (
+                            {description && (
                                 <div className={styles.description}>
                                     {descriptionPreview}
                                 </div>
-                            ) : null}
-                            {description && isDescriptionTruncated ? (
+                            )}
+                            {description && isDescriptionTruncated && (
                                 <details className={styles.details}>
                                     <summary className={styles.summary}>
                                         Full response
@@ -123,7 +119,7 @@ export const AIActionProposalList = ({
                                         {description}
                                     </pre>
                                 </details>
-                            ) : null}
+                            )}
                             <details className={styles.details}>
                                 <summary className={styles.summary}>
                                     Details
@@ -135,7 +131,7 @@ export const AIActionProposalList = ({
                         </div>
                         <div className={styles.footer}>
                             <div className={styles.viewAction}>
-                                {viewURL ? (
+                                {viewURL && (
                                     <a
                                         className={styles.secondaryButton}
                                         href={viewURL}
@@ -144,10 +140,10 @@ export const AIActionProposalList = ({
                                     >
                                         View
                                     </a>
-                                ) : null}
+                                )}
                             </div>
                             <div className={styles.actions}>
-                                {onDismiss ? (
+                                {onDismiss && (
                                     <button
                                         className={styles.secondaryButton}
                                         onClick={onDismiss}
@@ -155,7 +151,7 @@ export const AIActionProposalList = ({
                                     >
                                         Dismiss
                                     </button>
-                                ) : null}
+                                )}
                                 <button
                                     className={styles.button}
                                     disabled={isApplying || isApplied}

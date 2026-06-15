@@ -1,20 +1,16 @@
 import type { PayloadHandler } from "payload";
 
 type MentionSuggestionsBody = {
-    collectionMatches?: number;
     collectionSlug?: string | null;
     query?: string;
 };
 
-const isInternalCollectionSlug = (slug: string) => {
-    return slug.startsWith("payload-") || slug === "plugin-collection";
-};
+const isInternalCollectionSlug = (slug: string) => slug.startsWith("payload-") || slug === "plugin-collection";
 
 const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
-    const titleField =
-        useAsTitle && typeof doc[useAsTitle] === "string"
-            ? doc[useAsTitle]
-            : null;
+    const titleField = useAsTitle && typeof doc[useAsTitle] === "string"
+        ? doc[useAsTitle]
+        : null;
 
     return (
         titleField ||
@@ -26,39 +22,28 @@ const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
     ).toString();
 };
 
-export const aiMentionSuggestionsEndpointHandler: PayloadHandler = async (
-    req,
-) => {
-    if (!req.user)
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
+export const aiMentionSuggestionsEndpointHandler: PayloadHandler = async (req) => {
+    if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = req.json
-        ? ((await req
-              .json()
-              .catch(() => null)) as MentionSuggestionsBody | null)
+        ? ((await req.json().catch(() => null)) as MentionSuggestionsBody | null)
         : null;
     const query = body?.query?.trim();
-    const collectionMatches = body?.collectionMatches || 0;
     const collectionSlug = body?.collectionSlug?.trim();
 
-    if ((!query && !collectionSlug) || collectionMatches >= 3)
-        return Response.json({ suggestions: [] });
+    if (!query && !collectionSlug) return Response.json({ suggestions: [] });
 
     const suggestions = [];
     const collections = req.payload.config.collections.filter((collection) => {
         if (isInternalCollectionSlug(collection.slug)) return false;
         if (collectionSlug) return collection.slug === collectionSlug;
-
         return true;
     });
 
     for (const collection of collections) {
-        const searchableFields = collection.fields
-            .filter(
-                (field) =>
-                    "name" in field &&
-                    ["email", "text", "textarea"].includes(field.type),
-            )
+        const searchableFields = collection.fields.filter((field) =>
+                "name" in field &&
+                ["email", "text", "textarea"].includes(field.type))
             .map((field) => ("name" in field ? field.name : null))
             .filter(Boolean);
 
