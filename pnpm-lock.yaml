@@ -91,8 +91,8 @@ importers:
         specifier: 5.7.3
         version: 5.7.3
       vite-tsconfig-paths:
-        specifier: 6.0.5
-        version: 6.0.5(typescript@5.7.3)(vite@7.3.3(@types/node@22.19.9)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0))
+        specifier: 6.1.1
+        version: 6.1.1(typescript@5.7.3)(vite@7.3.3(@types/node@22.19.9)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0))
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.19.9)(happy-dom@20.9.0)(vite@7.3.3(@types/node@22.19.9)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0))
@@ -4021,8 +4021,8 @@ packages:
   vfile-message@4.0.3:
     resolution: {integrity: sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==}
 
-  vite-tsconfig-paths@6.0.5:
-    resolution: {integrity: sha512-f/WvY6ekHykUF1rWJUAbCU7iS/5QYDIugwpqJA+ttwKbxSbzNlqlE8vZSrsnxNQciUW+z6lvhlXMaEyZn9MSig==}
+  vite-tsconfig-paths@6.1.1:
+    resolution: {integrity: sha512-2cihq7zliibCCZ8P9cKJrQBkfgdvcFkOOc3Y02o3GWUDLgqjWsZudaoiuOwO/gzTzy17cS5F7ZPo4bsnS4DGkg==}
     peerDependencies:
       vite: '*'
 
@@ -8193,7 +8193,7 @@ snapshots:
       '@types/unist': 3.0.3
       unist-util-stringify-position: 4.0.0
 
-  vite-tsconfig-paths@6.0.5(typescript@5.7.3)(vite@7.3.3(@types/node@22.19.9)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0)):
+  vite-tsconfig-paths@6.1.1(typescript@5.7.3)(vite@7.3.3(@types/node@22.19.9)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0)):
     dependencies:
       debug: 4.4.3
       globrex: 0.1.2
