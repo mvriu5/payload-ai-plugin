@@ -6,6 +6,10 @@ type AIApplyActionBody = {
     proposal?: AIActionProposal;
 };
 
+type AIApplyActionEndpointOptions = {
+    collections?: string[];
+};
+
 type FieldConfig = {
     blocks?: BlockConfig[];
     defaultValue?: unknown;
@@ -36,6 +40,12 @@ const SKIP_FIELD = Symbol("skipField");
 
 const isKnownCollection = (req: Parameters<PayloadHandler>[0], collection: string) => {
     return req.payload.config.collections.some((item) => item.slug === collection);
+};
+
+const isAllowedCollection = (req: Parameters<PayloadHandler>[0], collection: string, collections?: string[]) => {
+    if (!collections) return isKnownCollection(req, collection);
+
+    return collections.includes(collection) && isKnownCollection(req, collection);
 };
 
 const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
@@ -291,7 +301,7 @@ const getErrorDetails = (err: unknown) => {
     };
 };
 
-export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
+export const createAIApplyActionEndpointHandler = (options: AIApplyActionEndpointOptions = {}): PayloadHandler => async (req) => {
     if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = req.json ? ((await req.json().catch(() => null)) as AIApplyActionBody | null) : null;
@@ -318,7 +328,7 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
             return Response.json({ doc, normalized, status: "applied" });
         }
 
-        if (!isKnownCollection(req, proposal.collection))
+        if (!isAllowedCollection(req, proposal.collection, options.collections))
             return Response.json({ error: "Unknown collection" }, { status: 400 });
 
         if (proposal.action === "delete") {
@@ -400,3 +410,5 @@ export const aiApplyActionEndpointHandler: PayloadHandler = async (req) => {
         );
     }
 };
+
+export const aiApplyActionEndpointHandler = createAIApplyActionEndpointHandler();

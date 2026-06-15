@@ -1,13 +1,21 @@
 import type { CollectionSlug, Config } from "payload";
 
 import { aiProviders } from "./ai/providerOptions.js";
-import { aiApplyActionEndpointHandler } from "./endpoints/aiApplyActionEndpointHandler.js";
-import { aiChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
-import { aiMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
+import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEndpointHandler.js";
+import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
+import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
 
 export type PayloadAiPluginConfig = {
     collections?: Partial<Record<CollectionSlug, true>>;
     disabled?: boolean;
+};
+
+const getEnabledCollections = (collections?: PayloadAiPluginConfig["collections"]) => {
+    if (!collections) return undefined;
+
+    return Object.entries(collections)
+        .filter(([, enabled]) => enabled)
+        .map(([slug]) => slug);
 };
 
 const addAccountFields = (config: Config) => {
@@ -37,6 +45,9 @@ const addAccountFields = (config: Config) => {
 };
 
 export const payloadAiPlugin = (pluginOptions: PayloadAiPluginConfig) => (config: Config): Config => {
+    const incomingOnInit = config.onInit;
+    const enabledCollections = getEnabledCollections(pluginOptions.collections);
+
     if (!config.collections) config.collections = [];
 
     addAccountFields(config);
@@ -45,25 +56,31 @@ export const payloadAiPlugin = (pluginOptions: PayloadAiPluginConfig) => (config
     if (!config.endpoints) config.endpoints = [];
     if (!config.admin) config.admin = {};
     if (!config.admin.components) config.admin.components = {};
-    if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = [];
 
+    if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = [];
     config.admin.components.beforeDashboard.push(`payload-ai-plugin/client#AIInput`);
+
     config.endpoints.push({
-        handler: aiChatEndpointHandler,
+        handler: createAIChatEndpointHandler({ collections: enabledCollections }),
         method: "post",
         path: "/ai-chat",
     });
     config.endpoints.push({
-        handler: aiApplyActionEndpointHandler,
+        handler: createAIApplyActionEndpointHandler({ collections: enabledCollections }),
         method: "post",
         path: "/ai-apply-action",
     });
     config.endpoints.push({
-        handler: aiMentionSuggestionsEndpointHandler,
+        handler: createAIMentionSuggestionsEndpointHandler({ collections: enabledCollections }),
         method: "post",
         path: "/ai-mention-suggestions",
     });
 
-    config.onInit = async (payload) => await config.onInit?.(payload);
+    if (incomingOnInit) {
+        config.onInit = async (payload) => {
+            await incomingOnInit(payload);
+        };
+    }
+
     return config;
 };

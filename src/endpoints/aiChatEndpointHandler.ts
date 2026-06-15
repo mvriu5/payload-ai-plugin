@@ -131,6 +131,10 @@ interface MentionContext {
     req: Parameters<PayloadHandler>[0];
 }
 
+type AIChatEndpointOptions = {
+    collections?: string[];
+};
+
 const getProviderConfig = ({ apiKey, model, provider }: ProviderConfig) => {
     if (provider === "claude") {
         return {
@@ -289,6 +293,16 @@ const collectBlocks = ({ fields, parent }: { fields: FieldConfig[], parent: stri
 
 const isInternalCollection = (slug: string) => slug.startsWith("payload-") || slug === "plugin-collection";
 
+const getAllowedCollectionSlugs = (req: Parameters<PayloadHandler>[0], collections?: string[]) => {
+    const configuredSlugs = req.payload.config.collections
+        .map((collection) => collection.slug)
+        .filter((slug) => !isInternalCollection(slug));
+
+    if (!collections) return configuredSlugs;
+
+    return configuredSlugs.filter((slug) => collections.includes(slug));
+};
+
 const getMentionContext = async ({ blockContexts, collectionSlugs, globalSlugs, mentions, req }: MentionContext) => {
     if (!mentions || mentions.length === 0) return [];
 
@@ -407,7 +421,7 @@ const buildPromptWithMentionContext = ({ mentionContext, prompt }: { mentionCont
     ].join("\n\n");
 };
 
-export const aiChatEndpointHandler: PayloadHandler = async (req) => {
+export const createAIChatEndpointHandler = (options: AIChatEndpointOptions = {}): PayloadHandler => async (req) => {
     if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = req.json ? ((await req.json().catch(() => null)) as AIChatBody | null) : null;
@@ -455,10 +469,21 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
 
     try {
         const proposals: AIActionProposal[] = [];
-        const collectionSlugs = req.payload.config.collections.map((collection) => collection.slug);
+        const collectionSlugs = getAllowedCollectionSlugs(req, options.collections);
         const globalSlugs = req.payload.config.globals?.map((global) => global.slug) || [];
+        const allowedCollections = req.payload.config.collections.filter((collection) =>
+            collectionSlugs.includes(collection.slug),
+        );
+
+        if (collectionSlugs.length === 0) {
+            return Response.json(
+                { debug, error: "No AI-enabled collections are configured." },
+                { status: 400 },
+            );
+        }
+
         const blockContexts = [
-            ...req.payload.config.collections.flatMap((collection) =>
+            ...allowedCollections.flatMap((collection) =>
                 collectBlocks({
                     fields: collection.fields as FieldConfig[],
                     parent: collection.slug,
@@ -505,7 +530,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     "List all Payload CMS collections available in this app.",
                 inputSchema: z.object({}),
                 execute: async () => {
-                    return req.payload.config.collections.map((collection) => ({
+                    return allowedCollections.map((collection) => ({
                         fields: (collection.fields as FieldConfig[]).map(describeField),
                         label: collection.labels?.plural || collection.slug,
                         slug: collection.slug,
@@ -638,7 +663,7 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
                     query: z.string().optional(),
                 }),
                 execute: async ({ collection, limit, query }: CollectionInput & { limit: number; query?: string }) => {
-                    const collectionConfig = req.payload.config.collections.find((item) => item.slug === collection);
+                    const collectionConfig = allowedCollections.find((item) => item.slug === collection);
                     const searchableFields = collectionConfig?.fields.filter((field) =>
                             "name" in field &&
                             ["email", "text", "textarea"].includes(field.type))
@@ -709,3 +734,5 @@ export const aiChatEndpointHandler: PayloadHandler = async (req) => {
         );
     }
 };
+
+export const aiChatEndpointHandler = createAIChatEndpointHandler();

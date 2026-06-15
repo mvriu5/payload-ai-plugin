@@ -5,7 +5,18 @@ type MentionSuggestionsBody = {
     query?: string;
 };
 
+type AIMentionSuggestionsEndpointOptions = {
+    collections?: string[];
+};
+
 const isInternalCollectionSlug = (slug: string) => slug.startsWith("payload-") || slug === "plugin-collection";
+
+const isAllowedCollectionSlug = (slug: string, collections?: string[]) => {
+    if (isInternalCollectionSlug(slug)) return false;
+    if (!collections) return true;
+
+    return collections.includes(slug);
+};
 
 const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
     const titleField = useAsTitle && typeof doc[useAsTitle] === "string"
@@ -22,7 +33,7 @@ const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
     ).toString();
 };
 
-export const aiMentionSuggestionsEndpointHandler: PayloadHandler = async (req) => {
+export const createAIMentionSuggestionsEndpointHandler = (options: AIMentionSuggestionsEndpointOptions = {}): PayloadHandler => async (req) => {
     if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = req.json
@@ -35,7 +46,7 @@ export const aiMentionSuggestionsEndpointHandler: PayloadHandler = async (req) =
 
     const suggestions = [];
     const collections = req.payload.config.collections.filter((collection) => {
-        if (isInternalCollectionSlug(collection.slug)) return false;
+        if (!isAllowedCollectionSlug(collection.slug, options.collections)) return false;
         if (collectionSlug) return collection.slug === collectionSlug;
         return true;
     });
@@ -80,3 +91,5 @@ export const aiMentionSuggestionsEndpointHandler: PayloadHandler = async (req) =
 
     return Response.json({ suggestions: suggestions.slice(0, 5) });
 };
+
+export const aiMentionSuggestionsEndpointHandler = createAIMentionSuggestionsEndpointHandler();
