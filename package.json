@@ -99,7 +99,6 @@
       "unrs-resolver"
     ]
   },
-  "registry": "https://registry.npmjs.org/",
   "knip": {
     "entry": [
       "dev/payload.config.ts",
