@@ -1,6 +1,6 @@
 {
   "name": "@mvriu5/payload-ai",
-  "version": "0.5.0",
+  "version": "0.5.6",
   "description": "AI assistant plugin for Payload CMS with provider selection, CMS mentions, and signed action proposals.",
   "keywords": [
     "payload",
@@ -69,18 +69,18 @@
     "@types/react-dom": "19.2.3",
     "copyfiles": "2.4.1",
     "cross-env": "^7.0.3",
-    "eslint": "^9.23.0",
+    "eslint": "^10.5.0",
     "graphql": "^16.8.1",
     "knip": "^6.16.1",
     "next": "16.2.6",
     "payload": "3.84.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "rimraf": "3.0.2",
+    "rimraf": "6.1.3",
     "sharp": "0.34.2",
     "typescript": "5.7.3",
     "vite-tsconfig-paths": "6.0.5",
-    "vitest": "4.1.0"
+    "vitest": "4.1.9"
   },
   "peerDependencies": {
     "payload": "^3.84.1"
@@ -99,7 +99,6 @@
       "unrs-resolver"
     ]
   },
-  "registry": "https://registry.npmjs.org/",
   "knip": {
     "entry": [
       "dev/payload.config.ts",
