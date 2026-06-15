@@ -2,9 +2,12 @@
 
 import { useConfig } from "@payloadcms/ui";
 import { formatAdminURL } from "payload/shared";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
-import { aiProviderModels } from "../ai/providerOptions.js";
+import {
+  getResolvedAIModelConfig,
+  type AIModelConfig,
+} from "../ai/providerOptions.js";
 import {
   getSerializableLabel,
   isInternalCollection,
@@ -43,6 +46,12 @@ type FieldWithBlocks = {
   fields?: FieldWithBlocks[];
   name?: string;
   type?: string;
+};
+
+type PayloadAiAdminCustom = {
+  payloadAiPlugin?: {
+    models?: AIModelConfig;
+  };
 };
 
 const collectBlockOptions = ({
@@ -91,9 +100,17 @@ export const AIInput = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const mentionPopoverRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
+  const configuredModels = (
+    config.admin?.custom as PayloadAiAdminCustom | undefined
+  )?.payloadAiPlugin?.models;
+  const aiModelConfig = useMemo(
+    () => getResolvedAIModelConfig(configuredModels),
+    [configuredModels],
+  );
   const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
     adminUserSlug: config.admin?.user,
     apiRoute: config.routes.api,
+    defaultModels: aiModelConfig.defaults,
   });
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionRange, setMentionRange] = useState<null | {
@@ -512,7 +529,7 @@ export const AIInput = () => {
                 <option value="">Select provider in account settings</option>
               ) : null}
               {settingsProvider
-                ? aiProviderModels[settingsProvider].map((model) => (
+                ? aiModelConfig.providers[settingsProvider].map((model) => (
                     <option key={model.value} value={model.value}>
                       {model.label}
                     </option>

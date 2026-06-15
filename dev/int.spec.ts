@@ -75,6 +75,14 @@ describe("payloadAiPlugin", () => {
       collections: {
         posts: true,
       },
+      models: {
+        defaults: {
+          openai: "custom-openai-model",
+        },
+        providers: {
+          openai: [{ label: "Custom OpenAI", value: "custom-openai-model" }],
+        },
+      },
     })(config);
 
     const userCollection = result.collections?.find(
@@ -97,6 +105,16 @@ describe("payloadAiPlugin", () => {
         "/ai-mention-suggestions",
       ]),
     );
+    expect(result.admin?.custom?.payloadAiPlugin).toMatchObject({
+      models: {
+        defaults: {
+          openai: "custom-openai-model",
+        },
+        providers: {
+          openai: [{ label: "Custom OpenAI", value: "custom-openai-model" }],
+        },
+      },
+    });
 
     await result.onInit?.({} as never);
     expect(onInit).toHaveBeenCalledTimes(1);

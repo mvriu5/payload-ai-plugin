@@ -1,52 +1,64 @@
 import type { CollectionSlug, Config } from "payload";
 
-import { aiProviders } from "./ai/providerOptions.js";
+import {
+  aiProviders,
+  getResolvedAIModelConfig,
+  type AIModelConfig,
+} from "./ai/providerOptions.js";
 import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEndpointHandler.js";
 import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
 import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
 
 export type PayloadAiPluginConfig = {
-    collections?: Partial<Record<CollectionSlug, true>>;
-    disabled?: boolean;
+  collections?: Partial<Record<CollectionSlug, true>>;
+  disabled?: boolean;
+  models?: AIModelConfig;
 };
 
-const getEnabledCollections = (collections?: PayloadAiPluginConfig["collections"]) => {
-    if (!collections) return undefined;
+const getEnabledCollections = (
+  collections?: PayloadAiPluginConfig["collections"],
+) => {
+  if (!collections) return undefined;
 
-    return Object.entries(collections)
-        .filter(([, enabled]) => enabled)
-        .map(([slug]) => slug);
+  return Object.entries(collections)
+    .filter(([, enabled]) => enabled)
+    .map(([slug]) => slug);
 };
 
 const addAccountFields = (config: Config) => {
-    const adminUserSlug = config.admin?.user;
-    if (!adminUserSlug || !config.collections) return;
+  const adminUserSlug = config.admin?.user;
+  if (!adminUserSlug || !config.collections) return;
 
-    const userCollection = config.collections.find((c) => c.slug === adminUserSlug);
-    if (!userCollection) return;
+  const userCollection = config.collections.find(
+    (c) => c.slug === adminUserSlug,
+  );
+  if (!userCollection) return;
 
-    userCollection.fields.push(
-        {
-            name: "aiProvider",
-            type: "select",
-            defaultValue: "openai",
-            options: aiProviders,
+  userCollection.fields.push(
+    {
+      name: "aiProvider",
+      type: "select",
+      defaultValue: "openai",
+      options: aiProviders,
+    },
+    {
+      name: "aiApiKey",
+      type: "text",
+      admin: {
+        components: {
+          Field: "payload-ai-plugin/client#AIApiKeyField",
         },
-        {
-            name: "aiApiKey",
-            type: "text",
-            admin: {
-                components: {
-                    Field: "payload-ai-plugin/client#AIApiKeyField",
-                },
-            },
-        },
-    );
+      },
+    },
+  );
 };
 
-export const payloadAiPlugin = (pluginOptions: PayloadAiPluginConfig) => (config: Config): Config => {
+export const payloadAiPlugin =
+  (pluginOptions: PayloadAiPluginConfig) =>
+  (config: Config): Config => {
     const incomingOnInit = config.onInit;
     const enabledCollections = getEnabledCollections(pluginOptions.collections);
+    const modelConfig = getResolvedAIModelConfig(pluginOptions.models);
 
     if (!config.collections) config.collections = [];
 
@@ -55,32 +67,48 @@ export const payloadAiPlugin = (pluginOptions: PayloadAiPluginConfig) => (config
     if (pluginOptions.disabled) return config;
     if (!config.endpoints) config.endpoints = [];
     if (!config.admin) config.admin = {};
+    config.admin.custom = {
+      ...(config.admin.custom || {}),
+      payloadAiPlugin: {
+        ...((config.admin.custom?.payloadAiPlugin as
+          | Record<string, unknown>
+          | undefined) || {}),
+        models: modelConfig,
+      },
+    };
     if (!config.admin.components) config.admin.components = {};
 
-    if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = [];
-    config.admin.components.beforeDashboard.push(`payload-ai-plugin/client#AIInput`);
+    if (!config.admin.components.beforeDashboard)
+      config.admin.components.beforeDashboard = [];
+    config.admin.components.beforeDashboard.push(
+      `payload-ai-plugin/client#AIInput`,
+    );
 
     config.endpoints.push({
-        handler: createAIChatEndpointHandler({ collections: enabledCollections }),
-        method: "post",
-        path: "/ai-chat",
+      handler: createAIChatEndpointHandler({ collections: enabledCollections }),
+      method: "post",
+      path: "/ai-chat",
     });
     config.endpoints.push({
-        handler: createAIApplyActionEndpointHandler({ collections: enabledCollections }),
-        method: "post",
-        path: "/ai-apply-action",
+      handler: createAIApplyActionEndpointHandler({
+        collections: enabledCollections,
+      }),
+      method: "post",
+      path: "/ai-apply-action",
     });
     config.endpoints.push({
-        handler: createAIMentionSuggestionsEndpointHandler({ collections: enabledCollections }),
-        method: "post",
-        path: "/ai-mention-suggestions",
+      handler: createAIMentionSuggestionsEndpointHandler({
+        collections: enabledCollections,
+      }),
+      method: "post",
+      path: "/ai-mention-suggestions",
     });
 
     if (incomingOnInit) {
-        config.onInit = async (payload) => {
-            await incomingOnInit(payload);
-        };
+      config.onInit = async (payload) => {
+        await incomingOnInit(payload);
+      };
     }
 
     return config;
-};
+  };

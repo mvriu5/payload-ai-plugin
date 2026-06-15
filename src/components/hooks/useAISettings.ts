@@ -3,11 +3,7 @@
 import { formatAdminURL } from "payload/shared";
 import { useEffect, useState } from "react";
 
-import {
-  defaultAIModels,
-  isAIProvider,
-  type AIProvider,
-} from "../../ai/providerOptions.js";
+import { isAIProvider, type AIProvider } from "../../ai/providerOptions.js";
 import { isAbortError } from "./utils.js";
 
 type CurrentUserResponse = {
@@ -19,9 +15,11 @@ type CurrentUserResponse = {
 export const useAISettings = ({
   adminUserSlug,
   apiRoute,
+  defaultModels,
 }: {
   adminUserSlug?: string;
   apiRoute: string;
+  defaultModels: Record<AIProvider, string>;
 }) => {
   const [settingsProvider, setSettingsProvider] = useState<AIProvider | null>(
     null,
@@ -65,7 +63,7 @@ export const useAISettings = ({
         }
 
         setSettingsProvider(provider);
-        setSelectedModel(defaultAIModels[provider]);
+        setSelectedModel(defaultModels[provider]);
       } catch (err) {
         if (isAbortError(err)) return;
 
@@ -77,7 +75,7 @@ export const useAISettings = ({
     void fetchCurrentUser();
 
     return () => abortController.abort();
-  }, [adminUserSlug, apiRoute]);
+  }, [adminUserSlug, apiRoute, defaultModels]);
 
   return {
     selectedModel,
