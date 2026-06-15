@@ -45,19 +45,12 @@ const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
   );
 };
 
-const getErrorDetails = (err: unknown) => {
+const getErrorMessage = (err: unknown) => {
   if (err instanceof Error) {
-    return {
-      message: err.message,
-      name: err.name,
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    };
+    return err.message;
   }
 
-  return {
-    message: String(err),
-    name: "UnknownError",
-  };
+  return String(err);
 };
 
 export const createAIApplyActionEndpointHandler =
@@ -179,8 +172,6 @@ export const createAIApplyActionEndpointHandler =
 
       return Response.json({ doc, normalized, status: "applied" });
     } catch (err) {
-      const errorDetails = getErrorDetails(err);
-
       req.payload.logger.error({
         err,
         msg: "AI apply action failed",
@@ -189,8 +180,7 @@ export const createAIApplyActionEndpointHandler =
 
       return Response.json(
         {
-          error: errorDetails.message,
-          errorDetails,
+          error: getErrorMessage(err),
           normalized,
           proposal,
         },

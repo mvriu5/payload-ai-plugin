@@ -370,16 +370,12 @@ export const AIInput = () => {
       const result = (await res.json()) as {
         debug?: Record<string, unknown>;
         error?: string;
-        errorDetails?: Record<string, unknown>;
         proposals?: AIActionProposal[];
         text?: string;
       };
 
       if (!res.ok) {
-        setDebugInfo({
-          ...(result.debug ? { debug: result.debug } : {}),
-          ...(result.errorDetails ? { errorDetails: result.errorDetails } : {}),
-        });
+        setDebugInfo(result.debug ? { debug: result.debug } : null);
         setProposals([]);
         setResponse("");
         throw new Error(result.error || "AI request failed");
@@ -417,13 +413,11 @@ export const AIInput = () => {
 
       const result = (await res.json()) as {
         error?: string;
-        errorDetails?: Record<string, unknown>;
         normalized?: Record<string, unknown>;
         proposal?: AIActionProposal;
       };
       if (!res.ok) {
         setDebugInfo({
-          ...(result.errorDetails ? { errorDetails: result.errorDetails } : {}),
           ...(result.normalized ? { normalized: result.normalized } : {}),
           ...(result.proposal ? { proposal: result.proposal } : {}),
         });

@@ -91,19 +91,12 @@ type AIChatEndpointOptions = {
   collections?: string[];
 };
 
-const getErrorDetails = (err: unknown) => {
+const getErrorMessage = (err: unknown) => {
   if (err instanceof Error) {
-    return {
-      message: err.message,
-      name: err.name,
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    };
+    return err.message;
   }
 
-  return {
-    message: String(err),
-    name: "UnknownError",
-  };
+  return String(err);
 };
 
 export const createAIChatEndpointHandler =
@@ -175,7 +168,7 @@ export const createAIChatEndpointHandler =
 
       if (collectionSlugs.length === 0) {
         return Response.json(
-          { debug, error: "No AI-enabled collections are configured." },
+          { error: "No AI-enabled collections are configured." },
           { status: 400 },
         );
       }
@@ -450,8 +443,6 @@ export const createAIChatEndpointHandler =
 
       return Response.json({ debug, proposals, text: result.text });
     } catch (err) {
-      const error = getErrorDetails(err);
-
       req.payload.logger.error({
         debug,
         err,
@@ -460,9 +451,7 @@ export const createAIChatEndpointHandler =
 
       return Response.json(
         {
-          debug,
-          error: error.message,
-          errorDetails: error,
+          error: getErrorMessage(err),
         },
         { status: 500 },
       );
