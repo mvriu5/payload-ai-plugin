@@ -97,6 +97,3 @@ export const createAIMentionSuggestionsEndpointHandler =
 
     return Response.json({ suggestions: suggestions.slice(0, 5) });
   };
-
-export const aiMentionSuggestionsEndpointHandler =
-  createAIMentionSuggestionsEndpointHandler();

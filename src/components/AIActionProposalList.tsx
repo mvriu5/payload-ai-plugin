@@ -1,4 +1,5 @@
 import styles from "./AIActionProposalList.module.css";
+import { redactSensitiveData } from "../ai/sensitiveData.js";
 
 export type AIActionProposal = {
   _aiSignature?: {
@@ -17,7 +18,6 @@ type AIActionProposalListProps = {
   appliedProposalIndexes: number[];
   description?: string;
   error?: string;
-  errorDetails?: Record<string, unknown> | null;
   getViewURL?: (proposal: AIActionProposal) => string | null;
   isApplying: boolean;
   onDismiss?: () => void;
@@ -33,11 +33,23 @@ const getDescriptionPreview = (description: string) => {
   return `${description.slice(0, maxDescriptionLength).trim()}...`;
 };
 
+const getSafeProposalDetails = (proposal: AIActionProposal) => {
+  const redactedProposal = redactSensitiveData(proposal) as AIActionProposal;
+
+  if (redactedProposal._aiSignature) {
+    redactedProposal._aiSignature = {
+      expiresAt: redactedProposal._aiSignature.expiresAt,
+      value: "[redacted]",
+    };
+  }
+
+  return redactedProposal;
+};
+
 export const AIActionProposalList = ({
   appliedProposalIndexes,
   description,
   error,
-  errorDetails,
   getViewURL,
   isApplying,
   onDismiss,
@@ -59,11 +71,6 @@ export const AIActionProposalList = ({
           <div>
             <div className={styles.label}>AI request failed</div>
             <div className={styles.description}>{error}</div>
-            {errorDetails && (
-              <pre className={styles.proposalDetails}>
-                {JSON.stringify(errorDetails, null, 2)}
-              </pre>
-            )}
           </div>
           {onDismissError && (
             <button
@@ -114,7 +121,7 @@ export const AIActionProposalList = ({
               <details className={styles.details}>
                 <summary className={styles.summary}>Details</summary>
                 <pre className={styles.proposalDetails}>
-                  {JSON.stringify(proposal, null, 2)}
+                  {JSON.stringify(getSafeProposalDetails(proposal), null, 2)}
                 </pre>
               </details>
             </div>

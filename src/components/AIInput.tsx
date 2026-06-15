@@ -17,7 +17,6 @@ import {
   type AIActionProposal,
 } from "./AIActionProposalList.js";
 import styles from "./AIInput.module.css";
-import badgeStyles from "./CollectionMentionBadge.module.css";
 import {
   CollectionMentionPopover,
   type CollectionMentionOption,
@@ -121,9 +120,6 @@ export const AIInput = () => {
   const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<
     number[]
   >([]);
-  const [debugInfo, setDebugInfo] = useState<null | Record<string, unknown>>(
-    null,
-  );
   const [response, setResponse] = useState("");
   const [error, setError] = useState("");
   const [proposals, setProposals] = useState<AIActionProposal[]>([]);
@@ -316,18 +312,18 @@ export const AIInput = () => {
     const badge = document.createElement("span");
 
     badge.className = [
-      badgeStyles.badge,
-      badgeStyles[suggestion.type],
+      styles.badge,
+      styles[suggestion.type],
       styles.inlineBadge,
     ].join(" ");
     badge.contentEditable = "false";
     badge.append(
       Object.assign(document.createElement("span"), {
-        className: badgeStyles.prefix,
+        className: styles.prefix,
         textContent: `${badgePrefix} `,
       }),
       Object.assign(document.createElement("span"), {
-        className: badgeStyles.name,
+        className: styles.name,
         textContent: suggestion.label,
       }),
     );
@@ -385,20 +381,17 @@ export const AIInput = () => {
       );
 
       const result = (await res.json()) as {
-        debug?: Record<string, unknown>;
         error?: string;
         proposals?: AIActionProposal[];
         text?: string;
       };
 
       if (!res.ok) {
-        setDebugInfo(result.debug ? { debug: result.debug } : null);
         setProposals([]);
         setResponse("");
         throw new Error(result.error || "AI request failed");
       }
 
-      setDebugInfo(null);
       setError("");
       setResponse(result.text || "");
       setProposals(result.proposals || []);
@@ -430,21 +423,14 @@ export const AIInput = () => {
 
       const result = (await res.json()) as {
         error?: string;
-        normalized?: Record<string, unknown>;
-        proposal?: AIActionProposal;
       };
       if (!res.ok) {
-        setDebugInfo({
-          ...(result.normalized ? { normalized: result.normalized } : {}),
-          ...(result.proposal ? { proposal: result.proposal } : {}),
-        });
         setProposals([]);
         setResponse("");
         throw new Error(result.error || "Could not apply proposal");
       }
 
       setAppliedProposalIndexes([]);
-      setDebugInfo(null);
       setError("");
       setProposals([]);
       setResponse("");
@@ -553,12 +539,10 @@ export const AIInput = () => {
         appliedProposalIndexes={appliedProposalIndexes}
         description={response}
         error={error}
-        errorDetails={debugInfo}
         getViewURL={getProposalViewURL}
         isApplying={isApplying}
         onDismiss={() => {
           setAppliedProposalIndexes([]);
-          setDebugInfo(null);
           setError("");
           setProposals([]);
           setResponse("");
@@ -566,7 +550,6 @@ export const AIInput = () => {
         }}
         onDismissError={() => {
           setError("");
-          setDebugInfo(null);
         }}
         onApply={(proposal, _index) => void handleApplyProposal(proposal)}
         proposals={proposals}

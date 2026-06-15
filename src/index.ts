@@ -9,14 +9,16 @@ import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEnd
 import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
 import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
 
-export type PayloadAiPluginConfig = {
+export type PayloadAiPluginOptions = {
   collections?: Partial<Record<CollectionSlug, true>>;
   disabled?: boolean;
   models?: AIModelConfig;
 };
 
+export type PayloadAiPluginConfig = PayloadAiPluginOptions;
+
 const getEnabledCollections = (
-  collections?: PayloadAiPluginConfig["collections"],
+  collections?: PayloadAiPluginOptions["collections"],
 ) => {
   if (!collections) return undefined;
 
@@ -54,7 +56,7 @@ const addAccountFields = (config: Config) => {
 };
 
 export const payloadAiPlugin =
-  (pluginOptions: PayloadAiPluginConfig) =>
+  (pluginOptions: PayloadAiPluginOptions) =>
   (config: Config): Config => {
     const incomingOnInit = config.onInit;
     const enabledCollections = getEnabledCollections(pluginOptions.collections);

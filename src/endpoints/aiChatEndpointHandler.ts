@@ -9,6 +9,7 @@ import {
 } from "../ai/proposals.js";
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js";
 import { isAIProvider, type AIProvider } from "../ai/providerOptions.js";
+import { containsSensitiveData } from "../ai/sensitiveData.js";
 import {
   buildPromptWithMentionContext,
   collectBlocks,
@@ -91,14 +92,6 @@ type AIChatEndpointOptions = {
   collections?: string[];
 };
 
-const getErrorMessage = (err: unknown) => {
-  if (err instanceof Error) {
-    return err.message;
-  }
-
-  return String(err);
-};
-
 export const createAIChatEndpointHandler =
   (options: AIChatEndpointOptions = {}): PayloadHandler =>
   async (req) => {
@@ -147,7 +140,6 @@ export const createAIChatEndpointHandler =
     if (!providerConfig.apiKey) {
       return Response.json(
         {
-          debug,
           error: `Add a ${provider} API key to your account settings first.`,
         },
         { status: 400 },
@@ -156,6 +148,20 @@ export const createAIChatEndpointHandler =
 
     try {
       const proposals: AIActionProposal[] = [];
+      const addSignedProposal = <Proposal extends AIActionProposal>(
+        proposal: Proposal,
+      ) => {
+        if ("data" in proposal && containsSensitiveData(proposal.data)) {
+          return {
+            error: "Proposal contains sensitive fields and cannot be created.",
+          };
+        }
+
+        const signedProposal = signAIActionProposal(proposal);
+
+        proposals.push(signedProposal);
+        return signedProposal;
+      };
       const collectionSlugs = getAllowedCollectionSlugs(
         req,
         options.collections,
@@ -278,10 +284,7 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            const signedProposal = signAIActionProposal(proposal);
-
-            proposals.push(signedProposal);
-            return signedProposal;
+            return addSignedProposal(proposal);
           },
         },
         proposeDeleteDoc: {
@@ -304,10 +307,7 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            const signedProposal = signAIActionProposal(proposal);
-
-            proposals.push(signedProposal);
-            return signedProposal;
+            return addSignedProposal(proposal);
           },
         },
         proposeUpdateDoc: {
@@ -333,10 +333,7 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            const signedProposal = signAIActionProposal(proposal);
-
-            proposals.push(signedProposal);
-            return signedProposal;
+            return addSignedProposal(proposal);
           },
         },
         proposeUpdateGlobal: {
@@ -364,10 +361,7 @@ export const createAIChatEndpointHandler =
               slug,
             };
 
-            const signedProposal = signAIActionProposal(proposal);
-
-            proposals.push(signedProposal);
-            return signedProposal;
+            return addSignedProposal(proposal);
           },
         },
         searchDocs: {
@@ -441,7 +435,7 @@ export const createAIChatEndpointHandler =
         tools,
       });
 
-      return Response.json({ debug, proposals, text: result.text });
+      return Response.json({ proposals, text: result.text });
     } catch (err) {
       req.payload.logger.error({
         debug,
@@ -451,11 +445,9 @@ export const createAIChatEndpointHandler =
 
       return Response.json(
         {
-          error: getErrorMessage(err),
+          error: "AI request failed.",
         },
         { status: 500 },
       );
     }
   };
-
-export const aiChatEndpointHandler = createAIChatEndpointHandler();

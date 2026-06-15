@@ -1,4 +1,4 @@
-export const getSerializableLabel = (label: unknown, fallback?: string) => {
+export const getSerializableLabel = (label: unknown, fallback = "") => {
   if (typeof label === "string") return label;
 
   if (label && typeof label === "object") {

@@ -1,9 +1,9 @@
-export type AIProviderModelOption = {
+type AIProviderModelOption = {
   label: string;
   value: string;
 };
 
-export const aiProviderModels = {
+const aiProviderModels = {
   claude: [
     { label: "Claude 3 Haiku", value: "claude-3-haiku-20240307" },
     { label: "Claude Sonnet 4.5", value: "claude-sonnet-4-5" },
@@ -37,7 +37,7 @@ export const aiProviderModels = {
 
 export type AIProvider = keyof typeof aiProviderModels;
 
-export type AIProviderModels = Record<AIProvider, AIProviderModelOption[]>;
+type AIProviderModels = Record<AIProvider, AIProviderModelOption[]>;
 
 export const aiProviders: { label: string; value: AIProvider }[] = [
   { label: "Claude", value: "claude" },

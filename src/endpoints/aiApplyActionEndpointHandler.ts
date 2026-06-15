@@ -1,6 +1,7 @@
 import type { PayloadHandler } from "payload";
 
 import { verifyAIActionProposal } from "../ai/proposals.js";
+import { containsSensitiveData } from "../ai/sensitiveData.js";
 import {
   getCollectionFields,
   isAuthCollection,
@@ -18,6 +19,34 @@ type AIApplyActionBody = {
 
 type AIApplyActionEndpointOptions = {
   collections?: string[];
+};
+
+type AppliedDoc = {
+  id?: unknown;
+};
+
+type ProposalMeta = {
+  action?: unknown;
+  collection?: unknown;
+  id?: unknown;
+  slug?: unknown;
+};
+
+const getProposalMeta = (
+  proposal?: Partial<AIActionProposal>,
+): ProposalMeta => {
+  if (!proposal) return {};
+
+  return {
+    action: proposal.action,
+    collection: "collection" in proposal ? proposal.collection : undefined,
+    id: "id" in proposal ? proposal.id : undefined,
+    slug: "slug" in proposal ? proposal.slug : undefined,
+  };
+};
+
+const getAppliedDocReference = (doc: AppliedDoc | null | undefined) => {
+  return doc?.id === undefined ? undefined : { id: doc.id };
 };
 
 const isKnownCollection = (
@@ -45,12 +74,36 @@ const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
   );
 };
 
-const getErrorMessage = (err: unknown) => {
-  if (err instanceof Error) {
-    return err.message;
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
+
+const isActionProposal = (proposal: unknown): proposal is AIActionProposal => {
+  if (!isRecord(proposal) || typeof proposal.label !== "string") return false;
+
+  if (proposal.action === "create") {
+    return typeof proposal.collection === "string" && isRecord(proposal.data);
   }
 
-  return String(err);
+  if (proposal.action === "update") {
+    return (
+      typeof proposal.collection === "string" &&
+      typeof proposal.id === "string" &&
+      isRecord(proposal.data)
+    );
+  }
+
+  if (proposal.action === "delete") {
+    return (
+      typeof proposal.collection === "string" && typeof proposal.id === "string"
+    );
+  }
+
+  if (proposal.action === "updateGlobal") {
+    return typeof proposal.slug === "string" && isRecord(proposal.data);
+  }
+
+  return false;
 };
 
 export const createAIApplyActionEndpointHandler =
@@ -69,6 +122,13 @@ export const createAIApplyActionEndpointHandler =
     if (!verifyAIActionProposal(proposal))
       return Response.json(
         { error: "Proposal signature is invalid or expired." },
+        { status: 400 },
+      );
+    if (!isActionProposal(proposal))
+      return Response.json({ error: "Proposal is invalid." }, { status: 400 });
+    if ("data" in proposal && containsSensitiveData(proposal.data))
+      return Response.json(
+        { error: "Proposal contains sensitive fields and cannot be applied." },
         { status: 400 },
       );
 
@@ -93,7 +153,10 @@ export const createAIApplyActionEndpointHandler =
           slug: proposal.slug as never,
         });
 
-        return Response.json({ doc, normalized, status: "applied" });
+        return Response.json({
+          doc: getAppliedDocReference(doc),
+          status: "applied",
+        });
       }
 
       if (!isAllowedCollection(req, proposal.collection, options.collections))
@@ -107,7 +170,10 @@ export const createAIApplyActionEndpointHandler =
           req,
         });
 
-        return Response.json({ doc, status: "applied" });
+        return Response.json({
+          doc: getAppliedDocReference(doc),
+          status: "applied",
+        });
       }
 
       const collectionConfig = req.payload.config.collections.find(
@@ -129,8 +195,6 @@ export const createAIApplyActionEndpointHandler =
         return Response.json(
           {
             error: "Password is required when creating a user.",
-            normalized,
-            proposal,
           },
           { status: 400 },
         );
@@ -144,8 +208,6 @@ export const createAIApplyActionEndpointHandler =
         return Response.json(
           {
             error: "Email is required when creating a user.",
-            normalized,
-            proposal,
           },
           { status: 400 },
         );
@@ -159,7 +221,10 @@ export const createAIApplyActionEndpointHandler =
           req,
         });
 
-        return Response.json({ doc, normalized, status: "applied" });
+        return Response.json({
+          doc: getAppliedDocReference(doc),
+          status: "applied",
+        });
       }
 
       const doc = await req.payload.update({
@@ -170,24 +235,22 @@ export const createAIApplyActionEndpointHandler =
         req,
       });
 
-      return Response.json({ doc, normalized, status: "applied" });
+      return Response.json({
+        doc: getAppliedDocReference(doc),
+        status: "applied",
+      });
     } catch (err) {
       req.payload.logger.error({
         err,
         msg: "AI apply action failed",
-        proposal,
+        proposal: getProposalMeta(proposal),
       });
 
       return Response.json(
         {
-          error: getErrorMessage(err),
-          normalized,
-          proposal,
+          error: "Could not apply proposal.",
         },
         { status: 400 },
       );
     }
   };
-
-export const aiApplyActionEndpointHandler =
-  createAIApplyActionEndpointHandler();
