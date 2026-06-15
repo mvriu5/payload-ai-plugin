@@ -3,6 +3,10 @@ import type { PayloadHandler } from "payload";
 import { generateText, stepCountIs } from "ai";
 import { z } from "zod";
 
+import {
+  signAIActionProposal,
+  type AIActionSignature,
+} from "../ai/proposals.js";
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js";
 import { isAIProvider, type AIProvider } from "../ai/providerOptions.js";
 import {
@@ -53,7 +57,7 @@ type SlugInput = {
   slug: string;
 };
 
-export type AIActionProposal =
+export type AIActionProposal = (
   | {
       action: "create";
       collection: string;
@@ -78,7 +82,10 @@ export type AIActionProposal =
       data: Record<string, unknown>;
       label: string;
       slug: string;
-    };
+    }
+) & {
+  _aiSignature?: AIActionSignature;
+};
 
 type AIChatEndpointOptions = {
   collections?: string[];
@@ -278,8 +285,10 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            proposals.push(proposal);
-            return proposal;
+            const signedProposal = signAIActionProposal(proposal);
+
+            proposals.push(signedProposal);
+            return signedProposal;
           },
         },
         proposeDeleteDoc: {
@@ -302,8 +311,10 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            proposals.push(proposal);
-            return proposal;
+            const signedProposal = signAIActionProposal(proposal);
+
+            proposals.push(signedProposal);
+            return signedProposal;
           },
         },
         proposeUpdateDoc: {
@@ -329,8 +340,10 @@ export const createAIChatEndpointHandler =
               label,
             };
 
-            proposals.push(proposal);
-            return proposal;
+            const signedProposal = signAIActionProposal(proposal);
+
+            proposals.push(signedProposal);
+            return signedProposal;
           },
         },
         proposeUpdateGlobal: {
@@ -358,8 +371,10 @@ export const createAIChatEndpointHandler =
               slug,
             };
 
-            proposals.push(proposal);
-            return proposal;
+            const signedProposal = signAIActionProposal(proposal);
+
+            proposals.push(signedProposal);
+            return signedProposal;
           },
         },
         searchDocs: {

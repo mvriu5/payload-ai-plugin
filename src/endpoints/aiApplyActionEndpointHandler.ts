@@ -1,5 +1,6 @@
 import type { PayloadHandler } from "payload";
 
+import { verifyAIActionProposal } from "../ai/proposals.js";
 import {
   getCollectionFields,
   isAuthCollection,
@@ -72,6 +73,11 @@ export const createAIApplyActionEndpointHandler =
     const proposal = body?.proposal;
     if (!proposal)
       return Response.json({ error: "Proposal is required" }, { status: 400 });
+    if (!verifyAIActionProposal(proposal))
+      return Response.json(
+        { error: "Proposal signature is invalid or expired." },
+        { status: 400 },
+      );
 
     let normalized: NormalizedData | undefined;
 
@@ -193,4 +199,5 @@ export const createAIApplyActionEndpointHandler =
     }
   };
 
-export const aiApplyActionEndpointHandler = createAIApplyActionEndpointHandler();
+export const aiApplyActionEndpointHandler =
+  createAIApplyActionEndpointHandler();
