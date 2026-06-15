@@ -30,4 +30,4 @@ jobs:
 
       - run: pnpm install
       - run: pnpm test --if-present
-      - run: npm publish --provenance
+      - run: npm publish --provenance --access public
