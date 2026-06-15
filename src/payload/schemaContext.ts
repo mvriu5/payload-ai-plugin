@@ -1,5 +1,7 @@
 import type { PayloadHandler } from "payload";
 
+import { getSerializableLabel, isInternalCollection } from "./shared.js";
+
 export type AIChatMention = {
   collection?: string;
   id?: string;
@@ -38,24 +40,6 @@ type MentionContext = {
   globalSlugs: string[];
   mentions?: AIChatMention[];
   req: Parameters<PayloadHandler>[0];
-};
-
-const getSerializableLabel = (label: unknown) => {
-  if (typeof label === "string") {
-    return label;
-  }
-
-  if (label && typeof label === "object") {
-    const firstLabel = Object.values(label).find(
-      (value) => typeof value === "string",
-    );
-
-    if (typeof firstLabel === "string") {
-      return firstLabel;
-    }
-  }
-
-  return undefined;
 };
 
 const getSerializableRelationTo = (relationTo: unknown) => {
@@ -139,9 +123,6 @@ export const collectBlocks = ({
 
   return blocks;
 };
-
-export const isInternalCollection = (slug: string) =>
-  slug.startsWith("payload-") || slug === "plugin-collection";
 
 export const getAllowedCollectionSlugs = (
   req: Parameters<PayloadHandler>[0],

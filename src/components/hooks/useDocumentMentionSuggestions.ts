@@ -4,6 +4,7 @@ import { formatAdminURL } from "payload/shared";
 import { useEffect, useState } from "react";
 
 import type { CollectionMentionOption } from "../CollectionMentionPopover.js";
+import { isAbortError } from "./utils.js";
 
 type MentionRange = {
   end: number;
@@ -11,18 +12,21 @@ type MentionRange = {
 };
 
 interface DocumentMentionSuggestions {
-    apiRoute: string;
-    documentSuggestionCollection?: null | string;
-    mentionQuery: string;
-    mentionRange: MentionRange | null;
+  apiRoute: string;
+  documentSuggestionCollection?: null | string;
+  mentionQuery: string;
+  mentionRange: MentionRange | null;
 }
 
-const isAbortError = (err: unknown) => {
-  return err instanceof DOMException && err.name === "AbortError";
-};
-
-export const useDocumentMentionSuggestions = ({ apiRoute, documentSuggestionCollection, mentionQuery,  mentionRange}: DocumentMentionSuggestions) => {
-  const [documentSuggestions, setDocumentSuggestions] = useState<CollectionMentionOption[]>([]);
+export const useDocumentMentionSuggestions = ({
+  apiRoute,
+  documentSuggestionCollection,
+  mentionQuery,
+  mentionRange,
+}: DocumentMentionSuggestions) => {
+  const [documentSuggestions, setDocumentSuggestions] = useState<
+    CollectionMentionOption[]
+  >([]);
 
   useEffect(() => {
     const trimmedQuery = mentionQuery.trim();

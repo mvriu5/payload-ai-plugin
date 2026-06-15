@@ -6,6 +6,10 @@ import { useRef, useState } from "react";
 
 import { aiProviderModels } from "../ai/providerOptions.js";
 import {
+  getSerializableLabel,
+  isInternalCollection,
+} from "../payload/shared.js";
+import {
   AIActionProposalList,
   type AIActionProposal,
 } from "./AIActionProposalList.js";
@@ -17,21 +21,6 @@ import {
 } from "./CollectionMentionPopover.js";
 import { useAISettings } from "./hooks/useAISettings.js";
 import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js";
-
-const getCollectionLabel = (label: unknown, fallback: string) => {
-  if (typeof label === "string") return label;
-
-  if (label && typeof label === "object") {
-    const firstLabel = Object.values(label)[0];
-    if (typeof firstLabel === "string") return firstLabel;
-  }
-
-  return fallback;
-};
-
-const isInternalCollection = (slug: string) => {
-  return slug.startsWith("payload-") || slug === "plugin-collection";
-};
 
 type AIMention = {
   collection?: string;
@@ -69,7 +58,7 @@ const collectBlockOptions = ({
     if (field.type === "blocks" && field.blocks) {
       for (const block of field.blocks) {
         options.push({
-          label: getCollectionLabel(block.labels?.singular, block.slug),
+          label: getSerializableLabel(block.labels?.singular, block.slug),
           parent,
           slug: block.slug,
           type: "block",
@@ -127,13 +116,13 @@ export const AIInput = () => {
   const collections: CollectionMentionOption[] = config.collections
     .filter((collection) => !isInternalCollection(collection.slug))
     .map((collection) => ({
-      label: getCollectionLabel(collection.labels?.singular, collection.slug),
+      label: getSerializableLabel(collection.labels?.singular, collection.slug),
       slug: collection.slug,
       type: "collection",
     }));
   const globals: CollectionMentionOption[] =
     config.globals?.map((global) => ({
-      label: getCollectionLabel(global.label, global.slug),
+      label: getSerializableLabel(global.label, global.slug),
       slug: global.slug,
       type: "global",
     })) || [];

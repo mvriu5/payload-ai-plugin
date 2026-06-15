@@ -8,6 +8,7 @@ import {
   isAIProvider,
   type AIProvider,
 } from "../../ai/providerOptions.js";
+import { isAbortError } from "./utils.js";
 
 type CurrentUserResponse = {
   user?: {
@@ -15,12 +16,16 @@ type CurrentUserResponse = {
   } | null;
 };
 
-const isAbortError = (err: unknown) => {
-  return err instanceof DOMException && err.name === "AbortError";
-};
-
-export const useAISettings = ({ adminUserSlug, apiRoute }: { adminUserSlug?: string, apiRoute: string }) => {
-  const [settingsProvider, setSettingsProvider] = useState<AIProvider | null>(null,);
+export const useAISettings = ({
+  adminUserSlug,
+  apiRoute,
+}: {
+  adminUserSlug?: string;
+  apiRoute: string;
+}) => {
+  const [settingsProvider, setSettingsProvider] = useState<AIProvider | null>(
+    null,
+  );
   const [selectedModel, setSelectedModel] = useState("");
 
   useEffect(() => {
