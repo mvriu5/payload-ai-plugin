@@ -1,124 +1,117 @@
 {
-  "name": "@mvriu5/payload-ai",
-  "version": "0.5.7",
-  "description": "AI assistant plugin for Payload CMS with provider selection, CMS mentions, and signed action proposals.",
-  "keywords": [
-    "payload",
-    "payloadcms",
-    "payload-plugin",
-    "ai",
-    "cms",
-    "openai",
-    "anthropic",
-    "google-generative-ai",
-    "mistral"
-  ],
-  "author": "Marius",
-  "license": "MIT",
-  "homepage": "https://github.com/mvriu5/payload-ai-plugin#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mvriu5/payload-ai-plugin.git"
-  },
-  "bugs": {
-    "url": "https://github.com/mvriu5/payload-ai-plugin/issues"
-  },
-  "type": "module",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "name": "@mvriu5/payload-ai",
+    "version": "0.5.7",
+    "description": "AI assistant plugin for Payload CMS with provider selection, CMS mentions, and signed action proposals.",
+    "keywords": [
+        "payload",
+        "payloadcms",
+        "payload-plugin",
+        "ai",
+        "cms",
+        "openai",
+        "anthropic",
+        "google-generative-ai",
+        "mistral"
+    ],
+    "author": "Marius",
+    "license": "MIT",
+    "homepage": "https://github.com/mvriu5/payload-ai-plugin#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mvriu5/payload-ai-plugin.git"
     },
-    "./client": {
-      "import": "./dist/exports/client.js",
-      "types": "./dist/exports/client.d.ts",
-      "default": "./dist/exports/client.js"
+    "bugs": {
+        "url": "https://github.com/mvriu5/payload-ai-plugin/issues"
+    },
+    "type": "module",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./client": {
+            "import": "./dist/exports/client.js",
+            "types": "./dist/exports/client.d.ts",
+            "default": "./dist/exports/client.js"
+        }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "pnpm copyfiles && pnpm build:types && pnpm build:swc",
+        "build:swc": "swc ./src -d ./dist --config-file .swcrc --strip-leading-paths",
+        "build:types": "tsc --outDir dist --rootDir ./src",
+        "clean": "rimraf {dist,*.tsbuildinfo}",
+        "copyfiles": "copyfiles -u 1 \"src/**/*.{html,css,scss,ttf,woff,woff2,eot,svg,jpg,png,json}\" dist/",
+        "dev": "next dev dev --turbo",
+        "dev:generate-importmap": "pnpm dev:payload generate:importmap",
+        "dev:generate-types": "pnpm dev:payload generate:types",
+        "dev:payload": "cross-env PAYLOAD_CONFIG_PATH=./dev/payload.config.ts payload",
+        "generate:importmap": "pnpm dev:generate-importmap",
+        "generate:types": "pnpm dev:generate-types",
+        "lint": "eslint",
+        "lint:fix": "eslint ./src --fix",
+        "prepublishOnly": "pnpm clean && pnpm build"
+    },
+    "devDependencies": {
+        "@payloadcms/db-postgres": "3.84.1",
+        "@payloadcms/next": "3.84.1",
+        "@payloadcms/richtext-lexical": "3.84.1",
+        "@payloadcms/ui": "3.84.1",
+        "@swc/cli": "0.8.1",
+        "@types/node": "25.9.3",
+        "@types/react": "19.2.17",
+        "@types/react-dom": "19.2.3",
+        "copyfiles": "2.4.1",
+        "cross-env": "^7.0.3",
+        "eslint": "^10.5.0",
+        "graphql": "^16.8.1",
+        "knip": "^6.16.1",
+        "next": "16.2.9",
+        "payload": "3.84.1",
+        "prettier": "^3.8.4",
+        "react": "19.2.7",
+        "react-dom": "19.2.6",
+        "rimraf": "6.1.3",
+        "sharp": "0.35.1",
+        "typescript": "5.9.3",
+        "vite-tsconfig-paths": "6.1.1",
+        "vitest": "4.1.9"
+    },
+    "peerDependencies": {
+        "payload": "^3.84.1"
+    },
+    "engines": {
+        "node": "^18.20.2 || >=20.9.0",
+        "pnpm": "^9 || ^10 || ^11"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "knip": {
+        "entry": [
+            "dev/payload.config.ts",
+            "dev/next.config.mjs",
+            "dev/app/**/*.{ts,tsx}"
+        ],
+        "ignore": [
+            "dev/payload-types.ts"
+        ],
+        "project": [
+            "src/**/*.{ts,tsx}",
+            "dev/**/*.{ts,tsx,mjs}"
+        ]
+    },
+    "dependencies": {
+        "@ai-sdk/anthropic": "^3.0.81",
+        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/mistral": "^3.0.37",
+        "@ai-sdk/openai": "^3.0.67",
+        "ai": "^6.0.193",
+        "zod": "^4.4.3"
     }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "pnpm copyfiles && pnpm build:types && pnpm build:swc",
-    "build:swc": "swc ./src -d ./dist --config-file .swcrc --strip-leading-paths",
-    "build:types": "tsc --outDir dist --rootDir ./src",
-    "clean": "rimraf {dist,*.tsbuildinfo}",
-    "copyfiles": "copyfiles -u 1 \"src/**/*.{html,css,scss,ttf,woff,woff2,eot,svg,jpg,png,json}\" dist/",
-    "dev": "next dev dev --turbo",
-    "dev:generate-importmap": "pnpm dev:payload generate:importmap",
-    "dev:generate-types": "pnpm dev:payload generate:types",
-    "dev:payload": "cross-env PAYLOAD_CONFIG_PATH=./dev/payload.config.ts payload",
-    "generate:importmap": "pnpm dev:generate-importmap",
-    "generate:types": "pnpm dev:generate-types",
-    "lint": "eslint",
-    "lint:fix": "eslint ./src --fix",
-    "prepublishOnly": "pnpm clean && pnpm build"
-  },
-  "devDependencies": {
-    "@payloadcms/db-postgres": "3.84.1",
-    "@payloadcms/next": "3.84.1",
-    "@payloadcms/richtext-lexical": "3.84.1",
-    "@payloadcms/ui": "3.84.1",
-    "@swc/cli": "0.8.1",
-    "@types/node": "25.9.3",
-    "@types/react": "19.2.17",
-    "@types/react-dom": "19.2.3",
-    "copyfiles": "2.4.1",
-    "cross-env": "^7.0.3",
-    "eslint": "^10.5.0",
-    "graphql": "^16.8.1",
-    "knip": "^6.16.1",
-    "next": "16.2.9",
-    "payload": "3.84.1",
-    "prettier": "^3.8.4",
-    "react": "19.2.7",
-    "react-dom": "19.2.6",
-    "rimraf": "6.1.3",
-    "sharp": "0.35.1",
-    "typescript": "5.9.3",
-    "vite-tsconfig-paths": "6.1.1",
-    "vitest": "4.1.9"
-  },
-  "peerDependencies": {
-    "payload": "^3.84.1"
-  },
-  "engines": {
-    "node": "^18.20.2 || >=20.9.0",
-    "pnpm": "^9 || ^10"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "sharp",
-      "esbuild",
-      "unrs-resolver"
-    ]
-  },
-  "knip": {
-    "entry": [
-      "dev/payload.config.ts",
-      "dev/next.config.mjs",
-      "dev/app/**/*.{ts,tsx}"
-    ],
-    "ignore": [
-      "dev/payload-types.ts"
-    ],
-    "project": [
-      "src/**/*.{ts,tsx}",
-      "dev/**/*.{ts,tsx,mjs}"
-    ]
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.81",
-    "@ai-sdk/google": "^3.0.80",
-    "@ai-sdk/mistral": "^3.0.37",
-    "@ai-sdk/openai": "^3.0.67",
-    "ai": "^6.0.193",
-    "zod": "^4.4.3"
-  }
 }
