@@ -17,7 +17,7 @@ import { containsSensitiveData } from "../ai/sensitiveData.js";
 import {
   buildPromptWithMentionContext,
   collectBlocks,
-  describeField,
+  describeCollectionLikeConfig,
   getAllowedCollectionSlugs,
   getMentionContext,
   type AIChatMention,
@@ -214,6 +214,7 @@ export const createAIChatEndpointHandler =
       const mentionContext = await getMentionContext({
         blockContexts,
         collectionSlugs,
+        collections: options.collections,
         globalSlugs,
         mentions: body?.mentions,
         req,
@@ -261,15 +262,13 @@ export const createAIChatEndpointHandler =
             "List all Payload CMS collections available in this app.",
           inputSchema: z.object({}),
           execute: async () => {
-            return allowedCollections.map((collection) => ({
-              fields: (collection.fields as FieldConfig[]).map(describeField),
-              label: collection.labels?.plural || collection.slug,
-              permissions: getCollectionPermissions({
+            return allowedCollections.map((collection) =>
+              describeCollectionLikeConfig({
+                config: collection as never,
                 permissions: options.collections,
-                slug: collection.slug,
+                type: "collection",
               }),
-              slug: collection.slug,
-            }));
+            );
           },
         },
         getGlobal: {
@@ -296,11 +295,12 @@ export const createAIChatEndpointHandler =
           inputSchema: z.object({}),
           execute: async () => {
             return (
-              req.payload.config.globals?.map((global) => ({
-                fields: (global.fields as FieldConfig[]).map(describeField),
-                label: global.label || global.slug,
-                slug: global.slug,
-              })) || []
+              req.payload.config.globals?.map((global) =>
+                describeCollectionLikeConfig({
+                  config: global as never,
+                  type: "global",
+                }),
+              ) || []
             );
           },
         },

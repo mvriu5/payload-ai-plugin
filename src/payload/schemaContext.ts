@@ -1,9 +1,15 @@
 import type { PayloadHandler } from "payload";
 
 import {
+  getCollectionPermissions,
   getCollectionSlugsForAction,
   type ResolvedAICollectionPermissionMap,
 } from "./collectionPermissions.js";
+import {
+  getCollectionFields,
+  isAuthCollection,
+  type CollectionConfig as NormalizeCollectionConfig,
+} from "./normalizeData.js";
 import { getSerializableLabel, isInternalCollection } from "./shared.js";
 
 export type AIChatMention = {
@@ -16,11 +22,16 @@ export type AIChatMention = {
 };
 
 export type FieldConfig = {
+  admin?: {
+    condition?: unknown;
+  };
   blocks?: BlockConfig[];
   fields?: FieldConfig[];
   hasMany?: boolean;
   label?: unknown;
+  localized?: boolean;
   name?: string;
+  options?: (string | { label?: unknown; value?: string })[];
   relationTo?: unknown;
   required?: boolean;
   type?: string;
@@ -35,12 +46,28 @@ type BlockConfig = {
   slug: string;
 };
 
+type VersionConfig = boolean | { drafts?: boolean | Record<string, unknown> };
+
+type CollectionLikeConfig = {
+  access?: Record<string, unknown>;
+  auth?: unknown;
+  fields?: FieldConfig[];
+  label?: unknown;
+  labels?: {
+    plural?: unknown;
+    singular?: unknown;
+  };
+  slug: string;
+  versions?: VersionConfig;
+};
+
 type MentionContext = {
   blockContexts: (Record<string, unknown> & {
     parent: string;
     slug: string;
   })[];
   collectionSlugs: string[];
+  collections?: ResolvedAICollectionPermissionMap;
   globalSlugs: string[];
   mentions?: AIChatMention[];
   req: Parameters<PayloadHandler>[0];
@@ -61,9 +88,120 @@ const getSerializableRelationTo = (relationTo: unknown) => {
   return undefined;
 };
 
+const getSerializableOptions = (options: unknown) => {
+  if (!Array.isArray(options)) return undefined;
+
+  const serializedOptions = options
+    .map((option) => {
+      if (typeof option === "string") {
+        return {
+          label: option,
+          value: option,
+        };
+      }
+
+      if (!option || typeof option !== "object") return null;
+
+      const label =
+        "label" in option ? getSerializableLabel(option.label) : undefined;
+      const value =
+        "value" in option && typeof option.value === "string"
+          ? option.value
+          : undefined;
+
+      if (!label && !value) return null;
+
+      return {
+        ...(label ? { label } : {}),
+        ...(value ? { value } : {}),
+      };
+    })
+    .filter(Boolean);
+
+  return serializedOptions.length > 0 ? serializedOptions : undefined;
+};
+
+const hasDrafts = (config?: CollectionLikeConfig | null) => {
+  const versions = config?.versions;
+
+  if (!versions || versions === true) return false;
+  if (typeof versions !== "object") return false;
+
+  return Boolean(versions.drafts);
+};
+
+const toNormalizeCollectionConfig = (
+  config?: CollectionLikeConfig | null,
+): NormalizeCollectionConfig | undefined => {
+  if (!config) return undefined;
+
+  return {
+    auth: config.auth,
+    fields: config.fields || [],
+    slug: config.slug,
+  };
+};
+
+const getSchemaFields = (config?: CollectionLikeConfig | null) => {
+  const normalizedConfig = toNormalizeCollectionConfig(config);
+  const fields = isAuthCollection(normalizedConfig)
+    ? getCollectionFields(normalizedConfig)
+    : [...(config?.fields || [])];
+
+  if (hasDrafts(config)) {
+    fields.push({
+      label: "Status",
+      name: "_status",
+      options: ["draft", "published"],
+      required: true,
+      type: "select",
+    });
+  }
+
+  return fields;
+};
+
+export const describeCollectionLikeConfig = ({
+  config,
+  permissions,
+  type,
+}: {
+  config: CollectionLikeConfig;
+  permissions?: ResolvedAICollectionPermissionMap;
+  type: "collection" | "global";
+}) => {
+  const slug = config.slug;
+
+  return {
+    access: {
+      aiPermissions:
+        type === "collection"
+          ? getCollectionPermissions({
+              permissions,
+              slug,
+            })
+          : {
+              read: true,
+              update: true,
+            },
+      hasPayloadAccessControl: Boolean(config.access),
+    },
+    fields: getSchemaFields(config).map(describeField),
+    hasAuth: isAuthCollection(toNormalizeCollectionConfig(config)) || undefined,
+    hasDrafts: hasDrafts(config) || undefined,
+    label:
+      type === "collection"
+        ? config.labels?.plural || config.labels?.singular || slug
+        : getSerializableLabel(config.label) || slug,
+    slug,
+    type,
+  };
+};
+
 export const describeField = (field: FieldConfig): Record<string, unknown> => {
   const label = getSerializableLabel(field.label);
   const relationTo = getSerializableRelationTo(field.relationTo);
+  const options = getSerializableOptions(field.options);
 
   return {
     ...(label ? { label } : {}),
@@ -71,7 +209,10 @@ export const describeField = (field: FieldConfig): Record<string, unknown> => {
     ...(field.type ? { type: field.type } : {}),
     ...(field.required ? { required: field.required } : {}),
     ...(field.hasMany ? { hasMany: field.hasMany } : {}),
+    ...(field.localized ? { localized: field.localized } : {}),
     ...(relationTo ? { relationTo } : {}),
+    ...(options ? { options } : {}),
+    ...(field.admin?.condition ? { hasCondition: true } : {}),
     ...(field.fields ? { fields: field.fields.map(describeField) } : {}),
     ...(field.blocks ? { blocks: field.blocks.map(describeBlock) } : {}),
   };
@@ -142,6 +283,7 @@ export const getAllowedCollectionSlugs = (
 export const getMentionContext = async ({
   blockContexts,
   collectionSlugs,
+  collections,
   globalSlugs,
   mentions,
   req,
@@ -169,15 +311,13 @@ export const getMentionContext = async ({
       if (!collectionConfig) continue;
 
       seen.add(key);
-      context.push({
-        fields: (collectionConfig.fields as FieldConfig[]).map(describeField),
-        label:
-          collectionConfig.labels?.plural ||
-          collectionConfig.labels?.singular ||
-          slug,
-        slug,
-        type: "collection",
-      });
+      context.push(
+        describeCollectionLikeConfig({
+          config: collectionConfig as CollectionLikeConfig,
+          permissions: collections,
+          type: "collection",
+        }),
+      );
     }
 
     if (mention.type === "global" && mention.slug) {
@@ -202,11 +342,11 @@ export const getMentionContext = async ({
 
       seen.add(key);
       context.push({
+        ...describeCollectionLikeConfig({
+          config: globalConfig as CollectionLikeConfig,
+          type: "global",
+        }),
         doc: globalDoc,
-        fields: (globalConfig.fields as FieldConfig[]).map(describeField),
-        label: globalConfig.label || slug,
-        slug,
-        type: "global",
       });
     }
 
