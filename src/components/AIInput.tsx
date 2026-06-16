@@ -176,16 +176,6 @@ export const AIInput = () => {
         return clonedRange.toString().length
     }
 
-    const moveCaretToEnd = (element: HTMLElement) => {
-        const selection = window.getSelection()
-        const range = document.createRange()
-
-        range.selectNodeContents(element)
-        range.collapse(false)
-        selection?.removeAllRanges()
-        selection?.addRange(range)
-    }
-
     const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
         let currentOffset = 0
