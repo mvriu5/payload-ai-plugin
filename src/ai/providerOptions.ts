@@ -15,12 +15,6 @@ const aiProviderModels = {
     { label: "Gemini 2.5 Flash Lite", value: "gemini-2.5-flash-lite" },
     { label: "Gemini 2.5 Pro", value: "gemini-2.5-pro" },
   ],
-  groq: [
-    { label: "Llama 3.3 70B Versatile", value: "llama-3.3-70b-versatile" },
-    { label: "Llama 3.1 8B Instant", value: "llama-3.1-8b-instant" },
-    { label: "GPT OSS 120B", value: "openai/gpt-oss-120b" },
-    { label: "GPT OSS 20B", value: "openai/gpt-oss-20b" },
-  ],
   mistral: [
     { label: "Mistral Small", value: "mistral-small-latest" },
     { label: "Mistral Medium", value: "mistral-medium-latest" },
@@ -42,7 +36,6 @@ type AIProviderModels = Record<AIProvider, AIProviderModelOption[]>;
 export const aiProviders: { label: string; value: AIProvider }[] = [
   { label: "Claude", value: "claude" },
   { label: "Google Gemini", value: "google" },
-  { label: "Groq", value: "groq" },
   { label: "Mistral", value: "mistral" },
   { label: "OpenAI", value: "openai" },
 ];
@@ -50,7 +43,6 @@ export const aiProviders: { label: string; value: AIProvider }[] = [
 export const defaultAIModels: Record<AIProvider, string> = {
   claude: aiProviderModels.claude[0].value,
   google: aiProviderModels.google[0].value,
-  groq: aiProviderModels.groq[0].value,
   mistral: aiProviderModels.mistral[0].value,
   openai: aiProviderModels.openai[0].value,
 };

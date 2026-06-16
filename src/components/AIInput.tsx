@@ -1,559 +1,500 @@
-"use client";
+"use client"
 
-import { useConfig } from "@payloadcms/ui";
-import { formatAdminURL } from "payload/shared";
-import { useMemo, useRef, useState } from "react";
+import { useConfig } from "@payloadcms/ui"
+import { formatAdminURL } from "payload/shared"
+import { useMemo, useRef, useState } from "react"
 
-import {
-  getResolvedAIModelConfig,
-  type AIModelConfig,
-} from "../ai/providerOptions.js";
-import {
-  getSerializableLabel,
-  isInternalCollection,
-} from "../payload/shared.js";
-import {
-  AIActionProposalList,
-  type AIActionProposal,
-} from "./AIActionProposalList.js";
-import styles from "./AIInput.module.css";
-import {
-  CollectionMentionPopover,
-  type CollectionMentionOption,
-} from "./CollectionMentionPopover.js";
-import { useAISettings } from "./hooks/useAISettings.js";
-import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js";
+import { getResolvedAIModelConfig, type AIProvider, type AIModelConfig } from "../ai/providerOptions.js"
+import { getSerializableLabel, isInternalCollection } from "../payload/shared.js"
+import { AIActionProposalList, type AIActionProposal } from "./AIActionProposalList.js"
+import styles from "./AIInput.module.css"
+import { CollectionMentionPopover, type CollectionMentionOption } from "./CollectionMentionPopover.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon } from "./Icons.js"
+import { useAISettings } from "./hooks/useAISettings.js"
+import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js"
 
 type AIMention = {
-  collection?: string;
-  id?: string;
-  label: string;
-  parent?: string;
-  slug: string;
-  type: "block" | "collection" | "doc" | "global";
-};
+    collection?: string
+    id?: string
+    label: string
+    parent?: string
+    slug: string
+    type: "block" | "collection" | "doc" | "global"
+}
 
 type FieldWithBlocks = {
-  blocks?: {
-    fields?: FieldWithBlocks[];
-    labels?: {
-      plural?: unknown;
-      singular?: unknown;
-    };
-    slug: string;
-  }[];
-  fields?: FieldWithBlocks[];
-  name?: string;
-  type?: string;
-};
+    blocks?: {
+        fields?: FieldWithBlocks[]
+        labels?: {
+            plural?: unknown
+            singular?: unknown
+        }
+        slug: string
+    }[]
+    fields?: FieldWithBlocks[]
+    name?: string
+    type?: string
+}
 
 type PayloadAiAdminCustom = {
-  payloadAiPlugin?: {
-    models?: AIModelConfig;
-  };
-};
+    payloadAiPlugin?: {
+        models?: AIModelConfig
+    }
+}
 
-const collectBlockOptions = ({
-  fields,
-  parent,
-}: {
-  fields: FieldWithBlocks[];
-  parent: string;
-}): CollectionMentionOption[] => {
-  const options: CollectionMentionOption[] = [];
+const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; parent: string }): CollectionMentionOption[] => {
+    const options: CollectionMentionOption[] = []
 
-  for (const field of fields) {
-    if (field.type === "blocks" && field.blocks) {
-      for (const block of field.blocks) {
-        options.push({
-          label: getSerializableLabel(block.labels?.singular, block.slug),
-          parent,
-          slug: block.slug,
-          type: "block",
-        });
+    for (const field of fields) {
+        if (field.type === "blocks" && field.blocks) {
+            for (const block of field.blocks) {
+                options.push({
+                    label: getSerializableLabel(block.labels?.singular, block.slug),
+                    parent,
+                    slug: block.slug,
+                    type: "block",
+                })
 
-        options.push(
-          ...collectBlockOptions({
-            fields: block.fields || [],
-            parent: `${parent}/${block.slug}`,
-          }),
-        );
-      }
+                options.push(
+                    ...collectBlockOptions({
+                        fields: block.fields || [],
+                        parent: `${parent}/${block.slug}`,
+                    })
+                )
+            }
+        }
+
+        if (field.fields) {
+            options.push(
+                ...collectBlockOptions({
+                    fields: field.fields,
+                    parent,
+                })
+            )
+        }
     }
 
-    if (field.fields) {
-      options.push(
-        ...collectBlockOptions({
-          fields: field.fields,
-          parent,
-        }),
-      );
-    }
-  }
+    return options
+}
 
-  return options;
-};
+const getProviderIcon = (provider: AIProvider | null) => {
+    const iconProps = {
+        "aria-hidden": true,
+        className: styles.selectProviderIcon,
+    }
+
+    switch (provider) {
+        case "claude":
+            return <ClaudeIcon {...iconProps} />
+        case "google":
+            return <GoogleGeminiIcon {...iconProps} />
+        case "mistral":
+            return <MistralAiIcon {...iconProps} />
+        case "openai":
+            return <OpenaiIcon {...iconProps} />
+        default:
+            return null
+    }
+}
 
 export const AIInput = () => {
-  const { config } = useConfig();
-  const editorRef = useRef<HTMLDivElement>(null);
-  const mentionPopoverRef = useRef<HTMLDivElement>(null);
-  const [prompt, setPrompt] = useState("");
-  const configuredModels = (
-    config.admin?.custom as PayloadAiAdminCustom | undefined
-  )?.payloadAiPlugin?.models;
-  const aiModelConfig = useMemo(
-    () => getResolvedAIModelConfig(configuredModels),
-    [configuredModels],
-  );
-  const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
-    adminUserSlug: config.admin?.user,
-    apiRoute: config.routes.api,
-    defaultModels: aiModelConfig.defaults,
-  });
-  const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionRange, setMentionRange] = useState<null | {
-    end: number;
-    start: number;
-  }>(null);
-  const [mentions, setMentions] = useState<AIMention[]>([]);
-  const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<
-    number[]
-  >([]);
-  const [response, setResponse] = useState("");
-  const [error, setError] = useState("");
-  const [proposals, setProposals] = useState<AIActionProposal[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
+    const { config } = useConfig()
+    const editorRef = useRef<HTMLDivElement>(null)
+    const mentionPopoverRef = useRef<HTMLDivElement>(null)
+    const [prompt, setPrompt] = useState("")
+    const configuredModels = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.models
+    const aiModelConfig = useMemo(() => getResolvedAIModelConfig(configuredModels), [configuredModels])
+    const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
+        adminUserSlug: config.admin?.user,
+        apiRoute: config.routes.api,
+        defaultModels: aiModelConfig.defaults,
+    })
+    const [mentionQuery, setMentionQuery] = useState("")
+    const [mentionRange, setMentionRange] = useState<null | {
+        end: number
+        start: number
+    }>(null)
+    const [mentions, setMentions] = useState<AIMention[]>([])
+    const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<number[]>([])
+    const [response, setResponse] = useState("")
+    const [error, setError] = useState("")
+    const [proposals, setProposals] = useState<AIActionProposal[]>([])
+    const [isLoading, setIsLoading] = useState(false)
+    const [isApplying, setIsApplying] = useState(false)
 
-  const collections: CollectionMentionOption[] = config.collections
-    .filter((collection) => !isInternalCollection(collection.slug))
-    .map((collection) => ({
-      label: getSerializableLabel(collection.labels?.singular, collection.slug),
-      slug: collection.slug,
-      type: "collection",
-    }));
-  const globals: CollectionMentionOption[] =
-    config.globals?.map((global) => ({
-      label: getSerializableLabel(global.label, global.slug),
-      slug: global.slug,
-      type: "global",
-    })) || [];
-  const blocks: CollectionMentionOption[] = [
-    ...config.collections.flatMap((collection) =>
-      collectBlockOptions({
-        fields: collection.fields as FieldWithBlocks[],
-        parent: collection.slug,
-      }),
-    ),
-    ...(config.globals?.flatMap((global) =>
-      collectBlockOptions({
-        fields: global.fields as FieldWithBlocks[],
-        parent: global.slug,
-      }),
-    ) || []),
-  ];
-  const mentionOptions = [...collections, ...globals, ...blocks];
+    const collections: CollectionMentionOption[] = config.collections
+        .filter((collection) => !isInternalCollection(collection.slug))
+        .map((collection) => ({
+            label: getSerializableLabel(collection.labels?.singular, collection.slug),
+            slug: collection.slug,
+            type: "collection",
+        }))
+    const globals: CollectionMentionOption[] =
+        config.globals?.map((global) => ({
+            label: getSerializableLabel(global.label, global.slug),
+            slug: global.slug,
+            type: "global",
+        })) || []
+    const blocks: CollectionMentionOption[] = [
+        ...config.collections.flatMap((collection) =>
+            collectBlockOptions({
+                fields: collection.fields as FieldWithBlocks[],
+                parent: collection.slug,
+            })
+        ),
+        ...(config.globals?.flatMap((global) =>
+            collectBlockOptions({
+                fields: global.fields as FieldWithBlocks[],
+                parent: global.slug,
+            })
+        ) || []),
+    ]
+    const mentionOptions = [...collections, ...globals, ...blocks]
 
-  const normalizedMentionQuery = mentionQuery.toLowerCase();
-  const filteredCollections = collections.filter(
-    (collection) =>
-      collection.slug.toLowerCase().includes(normalizedMentionQuery) ||
-      collection.label.toLowerCase().includes(normalizedMentionQuery),
-  );
-  const filteredMentionOptions = mentionOptions.filter((option) =>
-    option.slug.toLowerCase().includes(normalizedMentionQuery),
-  );
-  const documentSuggestionCollection =
-    filteredCollections.length === 1 ? filteredCollections[0]?.slug : null;
-  const { documentSuggestions, resetDocumentSuggestions } =
-    useDocumentMentionSuggestions({
-      apiRoute: config.routes.api,
-      documentSuggestionCollection,
-      mentionQuery,
-      mentionRange,
-    });
-  const mentionSuggestions = [
-    ...filteredMentionOptions,
-    ...documentSuggestions,
-  ];
+    const normalizedMentionQuery = mentionQuery.toLowerCase()
+    const filteredCollections = collections.filter((collection) => collection.slug.toLowerCase().includes(normalizedMentionQuery) || collection.label.toLowerCase().includes(normalizedMentionQuery))
+    const filteredMentionOptions = mentionOptions.filter((option) => option.slug.toLowerCase().includes(normalizedMentionQuery))
+    const documentSuggestionCollection = filteredCollections.length === 1 ? filteredCollections[0]?.slug : null
+    const { documentSuggestions, resetDocumentSuggestions } = useDocumentMentionSuggestions({
+        apiRoute: config.routes.api,
+        documentSuggestionCollection,
+        mentionQuery,
+        mentionRange,
+    })
+    const mentionSuggestions = [...filteredMentionOptions, ...documentSuggestions]
 
-  const getCaretOffset = (element: HTMLElement) => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return 0;
+    const getCaretOffset = (element: HTMLElement) => {
+        const selection = window.getSelection()
+        if (!selection || selection.rangeCount === 0) return 0
 
-    const range = selection.getRangeAt(0);
-    const clonedRange = range.cloneRange();
+        const range = selection.getRangeAt(0)
+        const clonedRange = range.cloneRange()
 
-    clonedRange.selectNodeContents(element);
-    clonedRange.setEnd(range.endContainer, range.endOffset);
+        clonedRange.selectNodeContents(element)
+        clonedRange.setEnd(range.endContainer, range.endOffset)
 
-    return clonedRange.toString().length;
-  };
-
-  const moveCaretToEnd = (element: HTMLElement) => {
-    const selection = window.getSelection();
-    const range = document.createRange();
-
-    range.selectNodeContents(element);
-    range.collapse(false);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  };
-
-  const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    let currentOffset = 0;
-    let node = walker.nextNode();
-
-    while (node) {
-      const nextOffset = currentOffset + (node.textContent?.length || 0);
-
-      if (offset <= nextOffset) {
-        return {
-          node,
-          offset: offset - currentOffset,
-        };
-      }
-
-      currentOffset = nextOffset;
-      node = walker.nextNode();
+        return clonedRange.toString().length
     }
 
-    const textNode = document.createTextNode("");
-    element.append(textNode);
+    const moveCaretToEnd = (element: HTMLElement) => {
+        const selection = window.getSelection()
+        const range = document.createRange()
 
-    return {
-      node: textNode,
-      offset: 0,
-    };
-  };
-
-  const replaceTextRangeWithBadge = ({
-    badge,
-    editor,
-    end,
-    start,
-  }: {
-    badge: HTMLSpanElement;
-    editor: HTMLElement;
-    end: number;
-    start: number;
-  }) => {
-    const startPosition = getTextNodeAtOffset(editor, start);
-    const endPosition = getTextNodeAtOffset(editor, end);
-    const range = document.createRange();
-    const trailingSpace = document.createTextNode(" ");
-
-    range.setStart(startPosition.node, startPosition.offset);
-    range.setEnd(endPosition.node, endPosition.offset);
-    range.deleteContents();
-    range.insertNode(trailingSpace);
-    range.insertNode(badge);
-
-    const selection = window.getSelection();
-    const caretRange = document.createRange();
-
-    caretRange.setStartAfter(trailingSpace);
-    caretRange.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(caretRange);
-  };
-
-  const updateMentionState = (value: string, caretPosition: number) => {
-    const valueBeforeCaret = value.slice(0, caretPosition);
-    const match = /(?:^|\s)@([\w-]*)$/.exec(valueBeforeCaret);
-
-    if (!match || typeof match.index !== "number") {
-      setMentionQuery("");
-      setMentionRange(null);
-      return;
+        range.selectNodeContents(element)
+        range.collapse(false)
+        selection?.removeAllRanges()
+        selection?.addRange(range)
     }
 
-    const atIndex = valueBeforeCaret.lastIndexOf("@");
+    const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+        let currentOffset = 0
+        let node = walker.nextNode()
 
-    setMentionQuery(match[1] || "");
-    setMentionRange({ end: caretPosition, start: atIndex });
-  };
+        while (node) {
+            const nextOffset = currentOffset + (node.textContent?.length || 0)
 
-  const clearInput = () => {
-    setPrompt("");
-    setMentions([]);
-    if (editorRef.current) editorRef.current.textContent = "";
-  };
-
-  const getProposalViewURL = (proposal: AIActionProposal) => {
-    const adminRoute = config.routes.admin || "/admin";
-
-    if (proposal.action === "updateGlobal" && proposal.slug) {
-      return `${adminRoute}/globals/${proposal.slug}`;
-    }
-
-    if (proposal.collection && proposal.id) {
-      return `${adminRoute}/collections/${proposal.collection}/${proposal.id}`;
-    }
-
-    return null;
-  };
-
-  const insertMention = (suggestion: CollectionMentionOption) => {
-    const editor = editorRef.current;
-    if (!mentionRange || !editor) return;
-
-    const beforeMention = prompt.slice(0, mentionRange.start);
-    const afterMention = prompt.slice(mentionRange.end);
-    const badgeType = suggestion.type === "doc" ? "document" : suggestion.type;
-    const badgePrefix = `${badgeType}:`;
-    const badgeText = `${badgePrefix} ${suggestion.label}`;
-    const promptText =
-      suggestion.type === "doc"
-        ? `${badgeText} (${suggestion.collection}/${suggestion.id})`
-        : badgeText;
-    const badge = document.createElement("span");
-
-    badge.className = [
-      styles.badge,
-      styles[suggestion.type],
-      styles.inlineBadge,
-    ].join(" ");
-    badge.contentEditable = "false";
-    badge.append(
-      Object.assign(document.createElement("span"), {
-        className: styles.prefix,
-        textContent: `${badgePrefix} `,
-      }),
-      Object.assign(document.createElement("span"), {
-        className: styles.name,
-        textContent: suggestion.label,
-      }),
-    );
-
-    replaceTextRangeWithBadge({
-      badge,
-      editor,
-      end: mentionRange.end,
-      start: mentionRange.start,
-    });
-    editor.focus();
-
-    setPrompt(`${beforeMention}${promptText} ${afterMention}`);
-    setMentions((currentMentions) => {
-      const mentionExists = currentMentions.some(
-        (mention) =>
-          mention.type === suggestion.type &&
-          mention.slug === suggestion.slug &&
-          mention.parent === suggestion.parent &&
-          mention.collection === suggestion.collection &&
-          mention.id === suggestion.id,
-      );
-
-      if (mentionExists) return currentMentions;
-
-      return [...currentMentions, suggestion];
-    });
-    setMentionQuery("");
-    setMentionRange(null);
-    resetDocumentSuggestions();
-  };
-
-  const handleSubmit = async () => {
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt) return;
-
-    setIsLoading(true);
-    setAppliedProposalIndexes([]);
-
-    try {
-      const res = await fetch(
-        formatAdminURL({
-          apiRoute: config.routes.api,
-          path: "/ai-chat",
-        }),
-        {
-          body: JSON.stringify({
-            mentions,
-            model: selectedModel,
-            prompt: trimmedPrompt,
-          }),
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        },
-      );
-
-      const result = (await res.json()) as {
-        error?: string;
-        proposals?: AIActionProposal[];
-        text?: string;
-      };
-
-      if (!res.ok) {
-        setProposals([]);
-        setResponse("");
-        throw new Error(result.error || "AI request failed");
-      }
-
-      setError("");
-      setResponse(result.text || "");
-      setProposals(result.proposals || []);
-    } catch (err) {
-      setProposals([]);
-      setResponse("");
-      setError(err instanceof Error ? err.message : "AI request failed");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleApplyProposal = async (proposal: AIActionProposal) => {
-    setIsApplying(true);
-    setError("");
-
-    try {
-      const res = await fetch(
-        formatAdminURL({
-          apiRoute: config.routes.api,
-          path: "/ai-apply-action",
-        }),
-        {
-          body: JSON.stringify({ proposal }),
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        },
-      );
-
-      const result = (await res.json()) as {
-        error?: string;
-      };
-      if (!res.ok) {
-        setProposals([]);
-        setResponse("");
-        throw new Error(result.error || "Could not apply proposal");
-      }
-
-      setAppliedProposalIndexes([]);
-      setError("");
-      setProposals([]);
-      setResponse("");
-      clearInput();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not apply proposal");
-    } finally {
-      setIsApplying(false);
-    }
-  };
-
-  return (
-    <div className={styles.chat}>
-      <div className={styles.chatHeader}>
-        <div>
-          <h2 className={styles.chatTitle}>AI Assistant</h2>
-          <p className={styles.chatDescription}>
-            Ask AI to draft, improve, or analyze content.
-          </p>
-        </div>
-      </div>
-      <div className={styles.chatInputRow}>
-        <div className={styles.chatInputSurface}>
-          <div
-            className={styles.chatInput}
-            contentEditable
-            data-placeholder="Ask AI..."
-            onInput={(event) => {
-              const value = event.currentTarget.innerText;
-
-              setPrompt(value);
-              if (!value.trim()) {
-                setMentions([]);
-              }
-              updateMentionState(value, getCaretOffset(event.currentTarget));
-            }}
-            onKeyDown={(event) => {
-              if (
-                event.key === "ArrowDown" &&
-                mentionRange &&
-                mentionSuggestions.length > 0
-              ) {
-                const firstOption =
-                  mentionPopoverRef.current?.querySelector<HTMLButtonElement>(
-                    "button",
-                  );
-                if (firstOption) {
-                  event.preventDefault();
-                  firstOption.focus();
-                  return;
+            if (offset <= nextOffset) {
+                return {
+                    node,
+                    offset: offset - currentOffset,
                 }
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void handleSubmit();
-              }
-            }}
-            ref={editorRef}
-            role="textbox"
-            suppressContentEditableWarning
-          />
+            }
+
+            currentOffset = nextOffset
+            node = walker.nextNode()
+        }
+
+        const textNode = document.createTextNode("")
+        element.append(textNode)
+
+        return {
+            node: textNode,
+            offset: 0,
+        }
+    }
+
+    const replaceTextRangeWithBadge = ({ badge, editor, end, start }: { badge: HTMLSpanElement; editor: HTMLElement; end: number; start: number }) => {
+        const startPosition = getTextNodeAtOffset(editor, start)
+        const endPosition = getTextNodeAtOffset(editor, end)
+        const range = document.createRange()
+        const trailingSpace = document.createTextNode(" ")
+
+        range.setStart(startPosition.node, startPosition.offset)
+        range.setEnd(endPosition.node, endPosition.offset)
+        range.deleteContents()
+        range.insertNode(trailingSpace)
+        range.insertNode(badge)
+
+        const selection = window.getSelection()
+        const caretRange = document.createRange()
+
+        caretRange.setStartAfter(trailingSpace)
+        caretRange.collapse(true)
+        selection?.removeAllRanges()
+        selection?.addRange(caretRange)
+    }
+
+    const updateMentionState = (value: string, caretPosition: number) => {
+        const valueBeforeCaret = value.slice(0, caretPosition)
+        const match = /(?:^|\s)@([\w-]*)$/.exec(valueBeforeCaret)
+
+        if (!match || typeof match.index !== "number") {
+            setMentionQuery("")
+            setMentionRange(null)
+            return
+        }
+
+        const atIndex = valueBeforeCaret.lastIndexOf("@")
+
+        setMentionQuery(match[1] || "")
+        setMentionRange({ end: caretPosition, start: atIndex })
+    }
+
+    const clearInput = () => {
+        setPrompt("")
+        setMentions([])
+        if (editorRef.current) editorRef.current.textContent = ""
+    }
+
+    const getProposalViewURL = (proposal: AIActionProposal) => {
+        const adminRoute = config.routes.admin || "/admin"
+
+        if (proposal.action === "updateGlobal" && proposal.slug) {
+            return `${adminRoute}/globals/${proposal.slug}`
+        }
+
+        if (proposal.collection && proposal.id) {
+            return `${adminRoute}/collections/${proposal.collection}/${proposal.id}`
+        }
+
+        return null
+    }
+
+    const insertMention = (suggestion: CollectionMentionOption) => {
+        const editor = editorRef.current
+        if (!mentionRange || !editor) return
+
+        const beforeMention = prompt.slice(0, mentionRange.start)
+        const afterMention = prompt.slice(mentionRange.end)
+        const badgeType = suggestion.type === "doc" ? "document" : suggestion.type
+        const badgePrefix = `${badgeType}:`
+        const badgeText = `${badgePrefix} ${suggestion.label}`
+        const promptText = suggestion.type === "doc" ? `${badgeText} (${suggestion.collection}/${suggestion.id})` : badgeText
+        const badge = document.createElement("span")
+
+        badge.className = [styles.badge, styles[suggestion.type], styles.inlineBadge].join(" ")
+        badge.contentEditable = "false"
+        badge.append(
+            Object.assign(document.createElement("span"), {
+                className: styles.prefix,
+                textContent: `${badgePrefix} `,
+            }),
+            Object.assign(document.createElement("span"), {
+                className: styles.name,
+                textContent: suggestion.label,
+            })
+        )
+
+        replaceTextRangeWithBadge({
+            badge,
+            editor,
+            end: mentionRange.end,
+            start: mentionRange.start,
+        })
+        editor.focus()
+
+        setPrompt(`${beforeMention}${promptText} ${afterMention}`)
+        setMentions((currentMentions) => {
+            const mentionExists = currentMentions.some(
+                (mention) =>
+                    mention.type === suggestion.type &&
+                    mention.slug === suggestion.slug &&
+                    mention.parent === suggestion.parent &&
+                    mention.collection === suggestion.collection &&
+                    mention.id === suggestion.id
+            )
+
+            if (mentionExists) return currentMentions
+
+            return [...currentMentions, suggestion]
+        })
+        setMentionQuery("")
+        setMentionRange(null)
+        resetDocumentSuggestions()
+    }
+
+    const handleSubmit = async () => {
+        const trimmedPrompt = prompt.trim()
+        if (!trimmedPrompt) return
+
+        setIsLoading(true)
+        setAppliedProposalIndexes([])
+
+        try {
+            const res = await fetch(
+                formatAdminURL({
+                    apiRoute: config.routes.api,
+                    path: "/ai-chat",
+                }),
+                {
+                    body: JSON.stringify({
+                        mentions,
+                        model: selectedModel,
+                        prompt: trimmedPrompt,
+                    }),
+                    headers: { "Content-Type": "application/json" },
+                    method: "POST",
+                }
+            )
+
+            const result = (await res.json()) as {
+                error?: string
+                proposals?: AIActionProposal[]
+                text?: string
+            }
+
+            if (!res.ok) {
+                setProposals([])
+                setResponse("")
+                throw new Error(result.error || "AI request failed")
+            }
+
+            setError("")
+            setResponse(result.text || "")
+            setProposals(result.proposals || [])
+        } catch (err) {
+            setProposals([])
+            setResponse("")
+            setError(err instanceof Error ? err.message : "AI request failed")
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const handleApplyProposal = async (proposal: AIActionProposal) => {
+        setIsApplying(true)
+        setError("")
+
+        try {
+            const res = await fetch(
+                formatAdminURL({
+                    apiRoute: config.routes.api,
+                    path: "/ai-apply-action",
+                }),
+                {
+                    body: JSON.stringify({ proposal }),
+                    headers: { "Content-Type": "application/json" },
+                    method: "POST",
+                }
+            )
+
+            const result = (await res.json()) as {
+                error?: string
+            }
+            if (!res.ok) {
+                setProposals([])
+                setResponse("")
+                throw new Error(result.error || "Could not apply proposal")
+            }
+
+            setAppliedProposalIndexes([])
+            setError("")
+            setProposals([])
+            setResponse("")
+            clearInput()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not apply proposal")
+        } finally {
+            setIsApplying(false)
+        }
+    }
+
+    return (
+        <div className={styles.chat}>
+            <div className={styles.chatHeader}>
+                <div>
+                    <h2 className={styles.chatTitle}>AI Assistant</h2>
+                    <p className={styles.chatDescription}>Ask AI to draft, improve, or analyze content.</p>
+                </div>
+            </div>
+            <div className={styles.chatInputRow}>
+                <div className={styles.chatInputSurface}>
+                    <div
+                        className={styles.chatInput}
+                        contentEditable
+                        data-placeholder="Ask AI..."
+                        onInput={(event) => {
+                            const value = event.currentTarget.innerText
+
+                            setPrompt(value)
+                            if (!value.trim()) {
+                                setMentions([])
+                            }
+                            updateMentionState(value, getCaretOffset(event.currentTarget))
+                        }}
+                        onKeyDown={(event) => {
+                            if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
+                                const firstOption = mentionPopoverRef.current?.querySelector<HTMLButtonElement>("button")
+                                if (firstOption) {
+                                    event.preventDefault()
+                                    firstOption.focus()
+                                    return
+                                }
+                            }
+                            if (event.key === "Enter" && !event.shiftKey) {
+                                event.preventDefault()
+                                void handleSubmit()
+                            }
+                        }}
+                        ref={editorRef}
+                        role="textbox"
+                        suppressContentEditableWarning
+                    />
+                </div>
+                {mentionRange ? <CollectionMentionPopover containerRef={mentionPopoverRef} onSelect={insertMention} suggestions={mentionSuggestions} /> : null}
+            </div>
+            <div className={styles.chatActionsRow}>
+                <div className={styles.settings}>
+                    <label className={styles.setting}>
+                        <span className={styles.settingLabel}>Model</span>
+                        <div className={styles.selectWrapper}>
+                            {getProviderIcon(settingsProvider)}
+                            <select className={styles.select} disabled={!settingsProvider} onChange={(event) => setSelectedModel(event.target.value)} value={selectedModel}>
+                                {!settingsProvider && <option value="">Select provider in account settings</option>}
+                                {settingsProvider &&
+                                    aiModelConfig.providers[settingsProvider].map((model) => (
+                                        <option key={model.value} value={model.value}>
+                                            {model.label}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+                    </label>
+                </div>
+                <button className={styles.chatButton} disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading} onClick={() => void handleSubmit()} type="button">
+                    {isLoading ? "Sending..." : "Send"}
+                </button>
+            </div>
+            <AIActionProposalList
+                appliedProposalIndexes={appliedProposalIndexes}
+                description={response}
+                error={error}
+                getViewURL={getProposalViewURL}
+                isApplying={isApplying}
+                onDismiss={() => {
+                    setAppliedProposalIndexes([])
+                    setError("")
+                    setProposals([])
+                    setResponse("")
+                    clearInput()
+                }}
+                onDismissError={() => {
+                    setError("")
+                }}
+                onApply={(proposal, _index) => void handleApplyProposal(proposal)}
+                proposals={proposals}
+            />
         </div>
-        {mentionRange ? (
-          <CollectionMentionPopover
-            containerRef={mentionPopoverRef}
-            onSelect={insertMention}
-            suggestions={mentionSuggestions}
-          />
-        ) : null}
-      </div>
-      <div className={styles.chatActionsRow}>
-        <div className={styles.settings}>
-          <label className={styles.setting}>
-            <span className={styles.settingLabel}>Model</span>
-            <select
-              className={styles.select}
-              disabled={!settingsProvider}
-              onChange={(event) => setSelectedModel(event.target.value)}
-              value={selectedModel}
-            >
-              {!settingsProvider ? (
-                <option value="">Select provider in account settings</option>
-              ) : null}
-              {settingsProvider
-                ? aiModelConfig.providers[settingsProvider].map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label}
-                    </option>
-                  ))
-                : null}
-            </select>
-          </label>
-        </div>
-        <button
-          className={styles.chatButton}
-          disabled={
-            !prompt.trim() || !settingsProvider || !selectedModel || isLoading
-          }
-          onClick={() => void handleSubmit()}
-          type="button"
-        >
-          {isLoading ? "Sending..." : "Send"}
-        </button>
-      </div>
-      <AIActionProposalList
-        appliedProposalIndexes={appliedProposalIndexes}
-        description={response}
-        error={error}
-        getViewURL={getProposalViewURL}
-        isApplying={isApplying}
-        onDismiss={() => {
-          setAppliedProposalIndexes([]);
-          setError("");
-          setProposals([]);
-          setResponse("");
-          clearInput();
-        }}
-        onDismissError={() => {
-          setError("");
-        }}
-        onApply={(proposal, _index) => void handleApplyProposal(proposal)}
-        proposals={proposals}
-      />
-    </div>
-  );
-};
+    )
+}

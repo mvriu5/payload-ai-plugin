@@ -1,6 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
@@ -41,13 +40,6 @@ export const getProviderConfig = ({
     };
   }
 
-  if (provider === "groq") {
-    return {
-      apiKey: apiKey || process.env.GROQ_API_KEY,
-      modelID: model || process.env.GROQ_MODEL || defaultAIModels.groq,
-    };
-  }
-
   if (provider === "mistral") {
     return {
       apiKey: apiKey || process.env.MISTRAL_API_KEY,
@@ -64,7 +56,6 @@ export const getProviderConfig = ({
 export const getModel = ({ apiKey, model, provider }: ModelConfig): LanguageModel => {
   if (provider === "claude") return createAnthropic({ apiKey })(model);
   if (provider === "google") return createGoogleGenerativeAI({ apiKey })(model);
-  if (provider === "groq") return createGroq({ apiKey })(model);
   if (provider === "mistral") return createMistral({ apiKey })(model);
   return createOpenAI({ apiKey })(model);
 };

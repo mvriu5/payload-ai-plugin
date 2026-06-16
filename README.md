@@ -74,7 +74,6 @@ Account-level API keys take priority. If a user has no key configured, the serve
 - `OPENAI_API_KEY`, `OPENAI_MODEL`
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 - `GOOGLE_GENERATIVE_AI_API_KEY`, `GOOGLE_GENERATIVE_AI_MODEL`
-- `GROQ_API_KEY`, `GROQ_MODEL`
 - `MISTRAL_API_KEY`, `MISTRAL_MODEL`
 
 `PAYLOAD_SECRET` is required for signing AI action proposals.

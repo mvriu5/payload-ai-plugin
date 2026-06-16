@@ -133,7 +133,7 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
-  aiProvider?: ('claude' | 'google' | 'groq' | 'mistral' | 'openai') | null;
+  aiProvider?: ('claude' | 'google' | 'mistral' | 'openai') | null;
   aiApiKey?: string | null;
   updatedAt: string;
   createdAt: string;
