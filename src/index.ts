@@ -87,7 +87,10 @@ export const payloadAiPlugin =
     );
 
     config.endpoints.push({
-      handler: createAIChatEndpointHandler({ collections: enabledCollections }),
+      handler: createAIChatEndpointHandler({
+        collections: enabledCollections,
+        models: modelConfig,
+      }),
       method: "post",
       path: "/ai-chat",
     });

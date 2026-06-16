@@ -5,7 +5,7 @@ AI assistant plugin for Payload CMS. It adds an admin dashboard assistant that c
 ## Install
 
 ```bash
-pnpm add payload-ai-plugin
+npm add @mvriu5/payload-ai
 ```
 
 ## Usage

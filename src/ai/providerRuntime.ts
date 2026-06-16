@@ -4,10 +4,15 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
-import { defaultAIModels, type AIProvider } from "./providerOptions.js";
+import {
+  defaultAIModels,
+  type AIProvider,
+  type AIModelConfig,
+} from "./providerOptions.js";
 
 type ProviderConfig = {
   apiKey?: string | null;
+  defaultModels?: AIModelConfig["defaults"];
   model?: string | null;
   provider: AIProvider;
 };
@@ -20,13 +25,16 @@ type ModelConfig = {
 
 export const getProviderConfig = ({
   apiKey,
+  defaultModels,
   model,
   provider,
 }: ProviderConfig) => {
+  const defaultModel = defaultModels?.[provider] || defaultAIModels[provider];
+
   if (provider === "claude") {
     return {
       apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
-      modelID: model || process.env.ANTHROPIC_MODEL || defaultAIModels.claude,
+      modelID: model || process.env.ANTHROPIC_MODEL || defaultModel,
     };
   }
 
@@ -36,20 +44,20 @@ export const getProviderConfig = ({
       modelID:
         model ||
         process.env.GOOGLE_GENERATIVE_AI_MODEL ||
-        defaultAIModels.google,
+        defaultModel,
     };
   }
 
   if (provider === "mistral") {
     return {
       apiKey: apiKey || process.env.MISTRAL_API_KEY,
-      modelID: model || process.env.MISTRAL_MODEL || defaultAIModels.mistral,
+      modelID: model || process.env.MISTRAL_MODEL || defaultModel,
     };
   }
 
   return {
     apiKey: apiKey || process.env.OPENAI_API_KEY,
-    modelID: model || process.env.OPENAI_MODEL || defaultAIModels.openai,
+    modelID: model || process.env.OPENAI_MODEL || defaultModel,
   };
 };
 

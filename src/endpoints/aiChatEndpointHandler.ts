@@ -8,7 +8,11 @@ import {
   type AIActionSignature,
 } from "../ai/proposals.js";
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js";
-import { isAIProvider, type AIProvider } from "../ai/providerOptions.js";
+import {
+  isAIProvider,
+  type AIProvider,
+  type AIModelConfig,
+} from "../ai/providerOptions.js";
 import { containsSensitiveData } from "../ai/sensitiveData.js";
 import {
   buildPromptWithMentionContext,
@@ -90,6 +94,7 @@ export type AIActionProposal = (
 
 type AIChatEndpointOptions = {
   collections?: string[];
+  models?: AIModelConfig;
 };
 
 export const createAIChatEndpointHandler =
@@ -118,6 +123,7 @@ export const createAIChatEndpointHandler =
     const provider = requestedProvider;
     const providerConfig = getProviderConfig({
       apiKey: user.aiApiKey,
+      defaultModels: options.models?.defaults,
       model: body?.model,
       provider,
     });
