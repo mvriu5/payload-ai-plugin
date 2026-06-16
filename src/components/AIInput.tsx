@@ -43,6 +43,30 @@ type PayloadAiAdminCustom = {
     }
 }
 
+type AIChatStreamEvent =
+    | {
+          data: {
+              delta?: string
+          }
+          event: "text"
+      }
+    | {
+          data: {
+              proposals?: AIActionProposal[]
+          }
+          event: "proposals"
+      }
+    | {
+          data: {
+              error?: string
+          }
+          event: "error"
+      }
+    | {
+          data: Record<string, never>
+          event: "done"
+      }
+
 const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; parent: string }): CollectionMentionOption[] => {
     const options: CollectionMentionOption[] = []
 
@@ -95,6 +119,40 @@ const getProviderIcon = (provider: AIProvider | null) => {
             return <OpenaiIcon {...iconProps} />
         default:
             return null
+    }
+}
+
+const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
+    const lines = chunk.split("\n")
+    let eventName = ""
+    const dataLines: string[] = []
+
+    for (const line of lines) {
+        if (line.startsWith("event:")) {
+            eventName = line.slice(6).trim()
+            continue
+        }
+
+        if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trim())
+        }
+    }
+
+    if (!eventName) return null
+
+    try {
+        const data = JSON.parse(dataLines.join("\n")) as AIChatStreamEvent["data"]
+
+        if (eventName !== "text" && eventName !== "proposals" && eventName !== "error" && eventName !== "done") {
+            return null
+        }
+
+        return {
+            data,
+            event: eventName,
+        } as AIChatStreamEvent
+    } catch {
+        return null
     }
 }
 
@@ -327,6 +385,9 @@ export const AIInput = () => {
 
         setIsLoading(true)
         setAppliedProposalIndexes([])
+        setError("")
+        setProposals([])
+        setResponse("")
 
         try {
             const res = await fetch(
@@ -345,21 +406,62 @@ export const AIInput = () => {
                 }
             )
 
-            const result = (await res.json()) as {
-                error?: string
-                proposals?: AIActionProposal[]
-                text?: string
-            }
-
             if (!res.ok) {
-                setProposals([])
-                setResponse("")
-                throw new Error(result.error || "AI request failed")
+                const result = (await res.json().catch(() => null)) as
+                    | {
+                          error?: string
+                      }
+                    | null
+
+                throw new Error(result?.error || "AI request failed")
             }
 
-            setError("")
-            setResponse(result.text || "")
-            setProposals(result.proposals || [])
+            if (!res.body) {
+                throw new Error("AI response stream is unavailable")
+            }
+
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ""
+
+            while (true) {
+                const { done, value } = await reader.read()
+
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+                const chunks = buffer.split("\n\n")
+                buffer = chunks.pop() || ""
+
+                for (const chunk of chunks) {
+                    const event = parseSSEEvent(chunk)
+                    if (!event) continue
+
+                    if (event.event === "text") {
+                        if (event.data.delta) {
+                            setResponse((current) => current + event.data.delta)
+                        }
+                        continue
+                    }
+
+                    if (event.event === "proposals") {
+                        setProposals(event.data.proposals || [])
+                        continue
+                    }
+
+                    if (event.event === "error") {
+                        throw new Error(event.data.error || "AI request failed")
+                    }
+                }
+            }
+
+            const finalEvent = buffer.trim() ? parseSSEEvent(buffer.trim()) : null
+            if (finalEvent?.event === "proposals") {
+                setProposals(finalEvent.data.proposals || [])
+            }
+            if (finalEvent?.event === "error") {
+                throw new Error(finalEvent.data.error || "AI request failed")
+            }
         } catch (err) {
             setProposals([])
             setResponse("")

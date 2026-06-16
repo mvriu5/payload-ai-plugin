@@ -1,6 +1,6 @@
 import type { PayloadHandler } from "payload";
 
-import { generateText, stepCountIs } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { z } from "zod";
 
 import {
@@ -470,7 +470,20 @@ export const createAIChatEndpointHandler =
           },
         },
       };
-      const result = await generateText({
+      const encoder = new TextEncoder();
+      const sendEvent = (
+        controller: ReadableStreamDefaultController<Uint8Array>,
+        event: string,
+        data: unknown,
+      ) => {
+        controller.enqueue(
+          encoder.encode(
+            `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+          ),
+        );
+      };
+
+      const result = streamText({
         maxOutputTokens: 700,
         model: getModel({
           apiKey: providerConfig.apiKey,
@@ -493,7 +506,61 @@ export const createAIChatEndpointHandler =
         tools,
       });
 
-      return Response.json({ proposals, text: result.text });
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          let didSendTerminalEvent = false;
+
+          try {
+            for await (const part of result.fullStream) {
+              if (part.type === "text-delta") {
+                sendEvent(controller, "text", { delta: part.text });
+                continue;
+              }
+
+              if (part.type === "error") {
+                didSendTerminalEvent = true;
+                sendEvent(controller, "error", {
+                  error: "AI request failed.",
+                });
+                break;
+              }
+
+              if (part.type === "finish") {
+                sendEvent(controller, "proposals", { proposals });
+                sendEvent(controller, "done", {});
+                didSendTerminalEvent = true;
+              }
+            }
+
+            if (!didSendTerminalEvent) {
+              sendEvent(controller, "proposals", { proposals });
+              sendEvent(controller, "done", {});
+            }
+          } catch (err) {
+            req.payload.logger.error({
+              debug,
+              err,
+              msg: "AI chat stream failed",
+            });
+
+            if (!didSendTerminalEvent) {
+              sendEvent(controller, "error", {
+                error: "AI request failed.",
+              });
+            }
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "Content-Type": "text/event-stream; charset=utf-8",
+        },
+      });
     } catch (err) {
       req.payload.logger.error({
         debug,
