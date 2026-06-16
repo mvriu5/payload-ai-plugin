@@ -12,8 +12,10 @@ import {
   resolveCollectionPermissions,
   type AICollectionPermissionConfig,
 } from "./payload/collectionPermissions.js";
+import { isInternalCollection } from "./payload/shared.js";
 
 export type PayloadAiPluginOptions = {
+  allowUserApiKeys?: boolean;
   collections?: Partial<Record<CollectionSlug, AICollectionPermissionConfig>>;
   disabled?: boolean;
   models?: AIModelConfig;
@@ -21,7 +23,13 @@ export type PayloadAiPluginOptions = {
 
 export type PayloadAiPluginConfig = PayloadAiPluginOptions;
 
-const addAccountFields = (config: Config) => {
+const addAccountFields = ({
+  allowUserApiKeys,
+  config,
+}: {
+  allowUserApiKeys: boolean;
+  config: Config;
+}) => {
   const adminUserSlug = config.admin?.user;
   if (!adminUserSlug || !config.collections) return;
 
@@ -30,23 +38,26 @@ const addAccountFields = (config: Config) => {
   );
   if (!userCollection) return;
 
-  userCollection.fields.push(
-    {
-      name: "aiProvider",
-      type: "select",
-      defaultValue: "openai",
-      options: aiProviders,
-    },
-    {
+  userCollection.fields.push({
+    name: "aiProvider",
+    type: "select",
+    defaultValue: "openai",
+    options: aiProviders,
+  });
+
+  if (allowUserApiKeys) {
+    userCollection.fields.push({
       name: "aiApiKey",
       type: "text",
       admin: {
         components: {
           Field: "payload-ai-plugin/client#AIApiKeyField",
         },
+        description:
+          "Optional. If empty, the plugin uses the provider API key from environment variables.",
       },
-    },
-  );
+    });
+  }
 };
 
 export const payloadAiPlugin =
@@ -56,13 +67,23 @@ export const payloadAiPlugin =
     const collectionPermissions = resolveCollectionPermissions(
       pluginOptions.collections,
     );
+    const allowUserApiKeys = pluginOptions.allowUserApiKeys !== false;
     const modelConfig = getResolvedAIModelConfig(pluginOptions.models);
 
     if (!config.collections) config.collections = [];
 
-    addAccountFields(config);
+    addAccountFields({ allowUserApiKeys, config });
 
     if (pluginOptions.disabled) return config;
+    const mentionCollectionSlugs = config.collections
+      .filter((collection) => !isInternalCollection(collection.slug))
+      .filter((collection) =>
+        collectionPermissions
+          ? Boolean(collectionPermissions[collection.slug]?.read)
+          : true,
+      )
+      .map((collection) => collection.slug);
+
     if (!config.endpoints) config.endpoints = [];
     if (!config.admin) config.admin = {};
     config.admin.custom = {
@@ -71,6 +92,8 @@ export const payloadAiPlugin =
         ...((config.admin.custom?.payloadAiPlugin as
           | Record<string, unknown>
           | undefined) || {}),
+        collectionSlugs: mentionCollectionSlugs,
+        allowUserApiKeys,
         models: modelConfig,
       },
     };
@@ -84,6 +107,7 @@ export const payloadAiPlugin =
 
     config.endpoints.push({
       handler: createAIChatEndpointHandler({
+        allowUserApiKeys,
         collections: collectionPermissions,
         models: modelConfig,
       }),

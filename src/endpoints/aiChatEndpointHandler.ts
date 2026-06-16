@@ -99,6 +99,7 @@ export type AIActionProposal = (
 };
 
 type AIChatEndpointOptions = {
+  allowUserApiKeys?: boolean;
   collections?: ResolvedAICollectionPermissionMap;
   models?: AIModelConfig;
 };
@@ -127,8 +128,10 @@ export const createAIChatEndpointHandler =
       );
 
     const provider = requestedProvider;
+    const userApiKey =
+      options.allowUserApiKeys === false ? null : user.aiApiKey;
     const providerConfig = getProviderConfig({
-      apiKey: user.aiApiKey,
+      apiKey: userApiKey,
       defaultModels: options.models?.defaults,
       model: body?.model,
       provider,
@@ -152,7 +155,10 @@ export const createAIChatEndpointHandler =
     if (!providerConfig.apiKey) {
       return Response.json(
         {
-          error: `Add a ${provider} API key to your account settings first.`,
+          error:
+            options.allowUserApiKeys === false
+              ? `Configure a ${provider} API key in the server environment first.`
+              : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
         },
         { status: 400 },
       );

@@ -30,7 +30,7 @@ The plugin adds two fields to the configured Payload admin user collection:
 - `aiProvider`
 - `aiApiKey`
 
-Users can select their provider and store their own API key in account settings. The key is used server-side when the chat endpoint calls the selected model.
+Users can select their provider and optionally store their own API key in account settings. If no account-level key is set, the chat endpoint uses provider environment variables.
 
 ## Options
 
@@ -38,6 +38,7 @@ Users can select their provider and store their own API key in account settings.
 import type { PayloadAiPluginOptions } from "payload-ai-plugin";
 
 const options: PayloadAiPluginOptions = {
+  allowUserApiKeys: false,
   collections: {
     posts: {
       read: true,
@@ -95,13 +96,28 @@ payloadAiPlugin({
 
 Overrides the model list shown in the admin UI and the default model per provider.
 
+### `allowUserApiKeys`
+
+Controls whether the plugin adds an `aiApiKey` field to the admin user collection.
+
+```ts
+payloadAiPlugin({
+  allowUserApiKeys: false,
+})
+```
+
+When disabled, users can still select an AI provider, but API keys must come from environment variables.
+
 ### `disabled`
 
 Disables endpoint and UI registration while keeping the plugin call in your config.
 
 ## Provider Environment Variables
 
-Account-level API keys take priority. If a user has no key configured, the server falls back to provider environment variables:
+API key priority is:
+
+1. account-level API key, unless `allowUserApiKeys: false`
+2. provider environment variables
 
 - `OPENAI_API_KEY`, `OPENAI_MODEL`
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`

@@ -38,6 +38,7 @@ type FieldWithBlocks = {
 
 type PayloadAiAdminCustom = {
     payloadAiPlugin?: {
+        collectionSlugs?: string[]
         models?: AIModelConfig
     }
 }
@@ -121,9 +122,13 @@ export const AIInput = () => {
     const [proposals, setProposals] = useState<AIActionProposal[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isApplying, setIsApplying] = useState(false)
+    const enabledCollectionSlugs = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.collectionSlugs
+    const enabledCollectionSlugSet = useMemo(() => (enabledCollectionSlugs ? new Set(enabledCollectionSlugs) : null), [enabledCollectionSlugs])
+    const isCollectionMentionEnabled = (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug)
 
     const collections: CollectionMentionOption[] = config.collections
         .filter((collection) => !isInternalCollection(collection.slug))
+        .filter((collection) => isCollectionMentionEnabled(collection.slug))
         .map((collection) => ({
             label: getSerializableLabel(collection.labels?.singular, collection.slug),
             slug: collection.slug,
@@ -136,12 +141,14 @@ export const AIInput = () => {
             type: "global",
         })) || []
     const blocks: CollectionMentionOption[] = [
-        ...config.collections.flatMap((collection) =>
-            collectBlockOptions({
-                fields: collection.fields as FieldWithBlocks[],
-                parent: collection.slug,
-            })
-        ),
+        ...config.collections
+            .filter((collection) => isCollectionMentionEnabled(collection.slug))
+            .flatMap((collection) =>
+                collectBlockOptions({
+                    fields: collection.fields as FieldWithBlocks[],
+                    parent: collection.slug,
+                })
+            ),
         ...(config.globals?.flatMap((global) =>
             collectBlockOptions({
                 fields: global.fields as FieldWithBlocks[],
