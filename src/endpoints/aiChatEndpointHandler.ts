@@ -23,6 +23,12 @@ import {
   type AIChatMention,
   type FieldConfig,
 } from "../payload/schemaContext.js";
+import {
+  getCollectionPermissions,
+  isCollectionActionAllowed,
+  type AICollectionAction,
+  type ResolvedAICollectionPermissionMap,
+} from "../payload/collectionPermissions.js";
 
 type AIChatBody = {
   mentions?: AIChatMention[];
@@ -93,7 +99,7 @@ export type AIActionProposal = (
 };
 
 type AIChatEndpointOptions = {
-  collections?: string[];
+  collections?: ResolvedAICollectionPermissionMap;
   models?: AIModelConfig;
 };
 
@@ -209,6 +215,24 @@ export const createAIChatEndpointHandler =
       const collectionSlugSchema = z.enum(
         collectionSlugs as [string, ...string[]],
       );
+      const getDisallowedCollectionActionError = (
+        collection: string,
+        action: AICollectionAction,
+      ) => {
+        if (
+          isCollectionActionAllowed({
+            action,
+            permissions: options.collections,
+            req,
+            slug: collection,
+          })
+        )
+          return null;
+
+        return {
+          error: `${action} is not enabled for collection: ${collection}`,
+        };
+      };
       const tools = {
         getDoc: {
           description: "Read one document by collection slug and document id.",
@@ -234,6 +258,10 @@ export const createAIChatEndpointHandler =
             return allowedCollections.map((collection) => ({
               fields: (collection.fields as FieldConfig[]).map(describeField),
               label: collection.labels?.plural || collection.slug,
+              permissions: getCollectionPermissions({
+                permissions: options.collections,
+                slug: collection.slug,
+              }),
               slug: collection.slug,
             }));
           },
@@ -283,6 +311,12 @@ export const createAIChatEndpointHandler =
             data,
             label,
           }: CollectionInput & DataInput & LabelInput) => {
+            const permissionError = getDisallowedCollectionActionError(
+              collection,
+              "create",
+            );
+            if (permissionError) return permissionError;
+
             const proposal: AIActionProposal = {
               action: "create",
               collection,
@@ -306,6 +340,12 @@ export const createAIChatEndpointHandler =
             id,
             label,
           }: CollectionInput & DocIDInput & LabelInput) => {
+            const permissionError = getDisallowedCollectionActionError(
+              collection,
+              "delete",
+            );
+            if (permissionError) return permissionError;
+
             const proposal: AIActionProposal = {
               action: "delete",
               collection,
@@ -331,6 +371,12 @@ export const createAIChatEndpointHandler =
             id,
             label,
           }: CollectionInput & DataInput & DocIDInput & LabelInput) => {
+            const permissionError = getDisallowedCollectionActionError(
+              collection,
+              "update",
+            );
+            if (permissionError) return permissionError;
+
             const proposal: AIActionProposal = {
               action: "update",
               collection,

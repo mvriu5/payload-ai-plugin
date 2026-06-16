@@ -1,6 +1,9 @@
 import type { PayloadHandler } from "payload";
 
-import { isInternalCollection } from "../payload/shared.js";
+import {
+  isCollectionActionAllowed,
+  type ResolvedAICollectionPermissionMap,
+} from "../payload/collectionPermissions.js";
 
 type MentionSuggestionsBody = {
   collectionSlug?: string | null;
@@ -8,14 +11,7 @@ type MentionSuggestionsBody = {
 };
 
 type AIMentionSuggestionsEndpointOptions = {
-  collections?: string[];
-};
-
-const isAllowedCollectionSlug = (slug: string, collections?: string[]) => {
-  if (isInternalCollection(slug)) return false;
-  if (!collections) return true;
-
-  return collections.includes(slug);
+  collections?: ResolvedAICollectionPermissionMap;
 };
 
 const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
@@ -48,7 +44,14 @@ export const createAIMentionSuggestionsEndpointHandler =
 
     const suggestions = [];
     const collections = req.payload.config.collections.filter((collection) => {
-      if (!isAllowedCollectionSlug(collection.slug, options.collections))
+      if (
+        !isCollectionActionAllowed({
+          action: "read",
+          permissions: options.collections,
+          req,
+          slug: collection.slug,
+        })
+      )
         return false;
       if (collectionSlug) return collection.slug === collectionSlug;
       return true;

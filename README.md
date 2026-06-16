@@ -39,7 +39,12 @@ import type { PayloadAiPluginOptions } from "payload-ai-plugin";
 
 const options: PayloadAiPluginOptions = {
   collections: {
-    posts: true,
+    posts: {
+      read: true,
+      create: true,
+      update: true,
+      delete: false,
+    },
   },
   models: {
     defaults: {
@@ -58,6 +63,33 @@ const options: PayloadAiPluginOptions = {
 ### `collections`
 
 Restricts AI read and write proposals to enabled collection slugs. If omitted, all non-internal Payload collections are available.
+
+Use `true` to enable all AI actions for a collection:
+
+```ts
+payloadAiPlugin({
+  collections: {
+    posts: true,
+  },
+})
+```
+
+Use granular permissions to control each action:
+
+```ts
+payloadAiPlugin({
+  collections: {
+    posts: {
+      read: true,
+      create: true,
+      update: true,
+      delete: false,
+    },
+  },
+})
+```
+
+`read` controls schema/context access, document search, and mentions. `create`, `update`, and `delete` control AI action proposals and server-side apply permissions.
 
 ### `models`
 

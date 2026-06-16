@@ -8,24 +8,18 @@ import {
 import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEndpointHandler.js";
 import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
 import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
+import {
+  resolveCollectionPermissions,
+  type AICollectionPermissionConfig,
+} from "./payload/collectionPermissions.js";
 
 export type PayloadAiPluginOptions = {
-  collections?: Partial<Record<CollectionSlug, true>>;
+  collections?: Partial<Record<CollectionSlug, AICollectionPermissionConfig>>;
   disabled?: boolean;
   models?: AIModelConfig;
 };
 
 export type PayloadAiPluginConfig = PayloadAiPluginOptions;
-
-const getEnabledCollections = (
-  collections?: PayloadAiPluginOptions["collections"],
-) => {
-  if (!collections) return undefined;
-
-  return Object.entries(collections)
-    .filter(([, enabled]) => enabled)
-    .map(([slug]) => slug);
-};
 
 const addAccountFields = (config: Config) => {
   const adminUserSlug = config.admin?.user;
@@ -59,7 +53,9 @@ export const payloadAiPlugin =
   (pluginOptions: PayloadAiPluginOptions) =>
   (config: Config): Config => {
     const incomingOnInit = config.onInit;
-    const enabledCollections = getEnabledCollections(pluginOptions.collections);
+    const collectionPermissions = resolveCollectionPermissions(
+      pluginOptions.collections,
+    );
     const modelConfig = getResolvedAIModelConfig(pluginOptions.models);
 
     if (!config.collections) config.collections = [];
@@ -88,7 +84,7 @@ export const payloadAiPlugin =
 
     config.endpoints.push({
       handler: createAIChatEndpointHandler({
-        collections: enabledCollections,
+        collections: collectionPermissions,
         models: modelConfig,
       }),
       method: "post",
@@ -96,14 +92,14 @@ export const payloadAiPlugin =
     });
     config.endpoints.push({
       handler: createAIApplyActionEndpointHandler({
-        collections: enabledCollections,
+        collections: collectionPermissions,
       }),
       method: "post",
       path: "/ai-apply-action",
     });
     config.endpoints.push({
       handler: createAIMentionSuggestionsEndpointHandler({
-        collections: enabledCollections,
+        collections: collectionPermissions,
       }),
       method: "post",
       path: "/ai-mention-suggestions",

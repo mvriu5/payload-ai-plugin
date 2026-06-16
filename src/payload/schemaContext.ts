@@ -1,5 +1,9 @@
 import type { PayloadHandler } from "payload";
 
+import {
+  getCollectionSlugsForAction,
+  type ResolvedAICollectionPermissionMap,
+} from "./collectionPermissions.js";
 import { getSerializableLabel, isInternalCollection } from "./shared.js";
 
 export type AIChatMention = {
@@ -126,15 +130,13 @@ export const collectBlocks = ({
 
 export const getAllowedCollectionSlugs = (
   req: Parameters<PayloadHandler>[0],
-  collections?: string[],
+  collections?: ResolvedAICollectionPermissionMap,
 ) => {
-  const configuredSlugs = req.payload.config.collections
-    .map((collection) => collection.slug)
-    .filter((slug) => !isInternalCollection(slug));
-
-  if (!collections) return configuredSlugs;
-
-  return configuredSlugs.filter((slug) => collections.includes(slug));
+  return getCollectionSlugsForAction({
+    action: "read",
+    permissions: collections,
+    req,
+  });
 };
 
 export const getMentionContext = async ({

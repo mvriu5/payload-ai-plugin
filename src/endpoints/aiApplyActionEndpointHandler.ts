@@ -12,13 +12,18 @@ import {
   type NormalizedData,
 } from "../payload/normalizeData.js";
 import type { AIActionProposal } from "./aiChatEndpointHandler.js";
+import {
+  isCollectionActionAllowed,
+  type AICollectionAction,
+  type ResolvedAICollectionPermissionMap,
+} from "../payload/collectionPermissions.js";
 
 type AIApplyActionBody = {
   proposal?: AIActionProposal;
 };
 
 type AIApplyActionEndpointOptions = {
-  collections?: string[];
+  collections?: ResolvedAICollectionPermissionMap;
 };
 
 type AppliedDoc = {
@@ -61,11 +66,15 @@ const isKnownCollection = (
 const isAllowedCollection = (
   req: Parameters<PayloadHandler>[0],
   collection: string,
-  collections?: string[],
+  collections?: ResolvedAICollectionPermissionMap,
+  action: AICollectionAction = "read",
 ) => {
-  if (!collections) return isKnownCollection(req, collection);
-
-  return collections.includes(collection) && isKnownCollection(req, collection);
+  return isCollectionActionAllowed({
+    action,
+    permissions: collections,
+    req,
+    slug: collection,
+  });
 };
 
 const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
@@ -159,7 +168,14 @@ export const createAIApplyActionEndpointHandler =
         });
       }
 
-      if (!isAllowedCollection(req, proposal.collection, options.collections))
+      if (
+        !isAllowedCollection(
+          req,
+          proposal.collection,
+          options.collections,
+          proposal.action,
+        )
+      )
         return Response.json({ error: "Unknown collection" }, { status: 400 });
 
       if (proposal.action === "delete") {
