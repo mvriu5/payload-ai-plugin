@@ -1,4 +1,4 @@
-import type { CollectionConfig, CollectionSlug, Config } from "payload";
+import type { CollectionConfig, Config } from "payload";
 
 import {
   aiProviders,
@@ -12,13 +12,13 @@ import { createAIProposalDiffEndpointHandler } from "./endpoints/aiProposalDiffE
 import { createAIRecentChangesEndpointHandler } from "./endpoints/aiRecentChangesEndpointHandler.js";
 import {
   resolveCollectionPermissions,
-  type AICollectionPermissionConfig,
+  type AICollectionPermissionMap,
 } from "./payload/collectionPermissions.js";
 import { isInternalCollection } from "./payload/shared.js";
 
 export type PayloadAiPluginOptions = {
   allowUserApiKeys?: boolean;
-  collections?: Partial<Record<CollectionSlug, AICollectionPermissionConfig>>;
+  collections?: AICollectionPermissionMap;
   disabled?: boolean;
   models?: AIModelConfig;
 };

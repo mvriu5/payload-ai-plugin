@@ -12,9 +12,7 @@ export type AICollectionPermissionConfig =
   | true
   | AICollectionPermissions;
 
-export type AICollectionPermissionMap = Partial<
-  Record<string, AICollectionPermissionConfig>
->;
+export type AICollectionPermissionMap = Partial<Record<string, AICollectionPermissionConfig>>;
 
 export type ResolvedAICollectionPermissionMap = Partial<
   Record<string, Record<AICollectionAction, boolean>>
@@ -33,8 +31,7 @@ export const resolveCollectionPermissions = (
 ): ResolvedAICollectionPermissionMap | undefined => {
   if (!collections) return undefined;
 
-  return Object.fromEntries(
-    Object.entries(collections).map(([slug, config]) => {
+  const entries = Object.entries(collections).map(([slug, config]) => {
       if (config === true) {
         return [
           slug,
@@ -68,8 +65,9 @@ export const resolveCollectionPermissions = (
           update: Boolean(config.update),
         },
       ];
-    }),
-  );
+    });
+
+  return Object.fromEntries(entries);
 };
 
 export const getCollectionSlugsForAction = ({

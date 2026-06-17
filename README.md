@@ -46,6 +46,7 @@ const options: PayloadAiPluginOptions = {
       update: true,
       delete: false,
     },
+    users: true,
   },
   models: {
     defaults: {
@@ -85,6 +86,21 @@ payloadAiPlugin({
       create: true,
       update: true,
       delete: false,
+    },
+  },
+})
+```
+
+You can mix both forms in the same object:
+
+```ts
+payloadAiPlugin({
+  collections: {
+    posts: true,
+    pages: true,
+    users: {
+      read: true,
+      update: true,
     },
   },
 })
