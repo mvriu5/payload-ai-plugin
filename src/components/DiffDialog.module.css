@@ -44,18 +44,28 @@
     margin-top: 2px;
 }
 
-.secondaryButton {
+.closeButton {
+    align-items: center;
     background: transparent;
     border: 1px solid var(--theme-elevation-150);
     border-radius: 4px;
     color: var(--theme-text);
     cursor: pointer;
+    display: inline-flex;
     flex: 0 0 auto;
     font: inherit;
+    height: 24px;
+    justify-content: center;
     line-height: 24px;
     min-height: 24px;
-    padding: 0 14px;
+    padding: 0;
     text-decoration: none;
+    width: 24px;
+}
+
+.closeButton svg {
+    height: 12px;
+    width: 12px;
 }
 
 .diffShell {
@@ -84,6 +94,8 @@
     font-size: 12px;
     font-weight: 600;
     line-height: 1.4;
+    min-width: 0;
+    overflow: hidden;
     padding: 8px 10px;
 }
 
@@ -98,7 +110,8 @@
     font-size: 12px;
     line-height: 1.5;
     min-height: 260px;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .diffRows {
@@ -117,9 +130,17 @@
 .diffLine {
     display: block;
     min-height: 18px;
-    min-width: max-content;
+    min-width: 0;
+    overflow: hidden;
     padding: 0;
+    text-overflow: clip;
     white-space: pre;
+}
+
+.diffLineContent {
+    display: inline-block;
+    min-width: var(--diff-line-width);
+    transform: translateX(var(--diff-line-offset));
 }
 
 .diffLine + .diffLine {
@@ -140,6 +161,19 @@
     background: var(--theme-elevation-50);
 }
 
+.horizontalScroll {
+    flex: 0 0 auto;
+    height: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.horizontalScrollSpacer {
+    height: 1px;
+    min-width: 100%;
+    width: calc(50% + var(--diff-line-width));
+}
+
 @media (max-width: 768px) {
     .dialogOverlay {
         padding: 12px;
@@ -155,11 +189,12 @@
         flex-direction: column;
     }
 
-    .secondaryButton {
-        width: 100%;
+    .closeButton {
+        align-self: flex-end;
     }
 
     .diffScroll {
         min-height: 180px;
     }
+
 }

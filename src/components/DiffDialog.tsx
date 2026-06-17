@@ -1,3 +1,7 @@
+import { XIcon } from "@payloadcms/ui/icons/X"
+import type { CSSProperties } from "react"
+import { useState } from "react"
+
 import styles from "./DiffDialog.module.css"
 import type { AIActionProposal } from "./AIActionProposalList.js"
 
@@ -117,7 +121,19 @@ const getDiffRows = (before: string, after: string) => {
 }
 
 export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
-    const diffRows = getDiffRows(formatDiffValue(diff.before), formatDiffValue(diff.after))
+    const [scrollLeft, setScrollLeft] = useState(0)
+    const beforeValue = formatDiffValue(diff.before)
+    const afterValue = formatDiffValue(diff.after)
+    const diffRows = getDiffRows(beforeValue, afterValue)
+    const longestLineLength = Math.max(
+        ...beforeValue.split("\n").map((line) => line.length),
+        ...afterValue.split("\n").map((line) => line.length),
+        80
+    )
+    const diffShellStyle = {
+        "--diff-line-offset": `-${scrollLeft}px`,
+        "--diff-line-width": `${longestLineLength + 8}ch`,
+    } as CSSProperties
 
     return (
         <div aria-modal="true" className={styles.dialogOverlay} role="dialog">
@@ -130,11 +146,11 @@ export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
                             {proposal.id ? ` #${proposal.id}` : ""}
                         </div>
                     </div>
-                    <button className={styles.secondaryButton} onClick={onClose} type="button">
-                        Close
+                    <button aria-label="Close" className={styles.closeButton} onClick={onClose} type="button">
+                        <XIcon />
                     </button>
                 </div>
-                <div className={styles.diffShell}>
+                <div className={styles.diffShell} style={diffShellStyle}>
                     <div className={styles.diffScroll}>
                         <div className={styles.diffHeaderGrid}>
                             <div className={styles.diffPaneHeader}>Current</div>
@@ -148,16 +164,19 @@ export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
                                             .filter(Boolean)
                                             .join(" ")}
                                     >
-                                        {row.before.text || " "}
+                                        <span className={styles.diffLineContent}>{row.before.text || " "}</span>
                                     </span>
                                     <span
                                         className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""].filter(Boolean).join(" ")}
                                     >
-                                        {row.after.text || " "}
+                                        <span className={styles.diffLineContent}>{row.after.text || " "}</span>
                                     </span>
                                 </div>
                             ))}
                         </div>
+                    </div>
+                    <div className={styles.horizontalScroll} onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}>
+                        <div className={styles.horizontalScrollSpacer} />
                     </div>
                 </div>
             </div>

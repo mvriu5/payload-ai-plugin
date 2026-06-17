@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
-import { ExternalLink, FileDiff } from "./Icons.js"
+import { FileDiff } from "./Icons.js"
 import styles from "./RecentChangesList.module.css"
 import type { AIActionProposal } from "./AIActionProposalList.js"
 import { ExternalLinkIcon } from "@payloadcms/ui"
