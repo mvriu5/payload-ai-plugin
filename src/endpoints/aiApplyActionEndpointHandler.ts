@@ -19,12 +19,19 @@ import {
 } from "../payload/collectionPermissions.js";
 
 type AIApplyActionBody = {
+  aiResponse?: string;
+  prompt?: string;
   proposal?: AIActionProposal;
 };
 
 type AIApplyActionEndpointOptions = {
   changeLogCollection?: string;
   collections?: ResolvedAICollectionPermissionMap;
+};
+
+type AIApplyActionLogContext = {
+  aiResponse?: string;
+  prompt?: string;
 };
 
 type AppliedDoc = {
@@ -203,13 +210,34 @@ const getUserID = (req: Parameters<PayloadHandler>[0]) => {
   return user?.id === undefined ? undefined : String(user.id);
 };
 
+const getUserLabel = (req: Parameters<PayloadHandler>[0]) => {
+  const user = req.user as
+    | {
+        email?: unknown;
+        id?: unknown;
+        name?: unknown;
+        username?: unknown;
+      }
+    | null
+    | undefined;
+
+  if (typeof user?.email === "string" && user.email) return user.email;
+  if (typeof user?.name === "string" && user.name) return user.name;
+  if (typeof user?.username === "string" && user.username) return user.username;
+  if (user?.id !== undefined) return String(user.id);
+
+  return null;
+};
+
 const logAIChange = async ({
   changeLogCollection,
+  context,
   target,
   proposal,
   req,
 }: {
   changeLogCollection?: string;
+  context?: AIApplyActionLogContext;
   proposal: AIActionProposal;
   req: Parameters<PayloadHandler>[0];
   target: ChangeLogTarget;
@@ -230,10 +258,12 @@ const logAIChange = async ({
         action: proposal.action,
         additions,
         after,
+        aiResponse: context?.aiResponse,
         before,
         collection: "collection" in proposal ? proposal.collection : undefined,
         documentID:
           target.documentID === undefined ? undefined : String(target.documentID),
+        prompt: context?.prompt,
         proposal: redactSensitiveData(proposalForLog),
         removals,
         slug: "slug" in proposal ? proposal.slug : undefined,
@@ -245,6 +275,7 @@ const logAIChange = async ({
         }),
         title: proposal.label,
         userID: getUserID(req),
+        userLabel: getUserLabel(req),
       },
       overrideAccess: true,
       req,
@@ -254,13 +285,19 @@ const logAIChange = async ({
       action: proposal.action,
       additions,
       after,
+      aiResponse: context?.aiResponse || null,
       before,
       collection: "collection" in proposal ? proposal.collection : null,
+      createdAt: new Date().toISOString(),
       documentID:
         target.documentID === undefined ? null : String(target.documentID),
+      prompt: context?.prompt || null,
       removals,
       slug: "slug" in proposal ? proposal.slug : null,
+      targetType: proposal.action === "updateGlobal" ? "global" : "collection",
       title: proposal.label,
+      userID: getUserID(req) || null,
+      userLabel: getUserLabel(req),
       url: getTargetURL({
         documentID: target.documentID,
         proposal,
@@ -333,6 +370,16 @@ export const createAIApplyActionEndpointHandler =
       );
 
     let normalized: NormalizedData | undefined;
+    const logContext: AIApplyActionLogContext = {
+      aiResponse:
+        typeof body?.aiResponse === "string" && body.aiResponse.trim()
+          ? body.aiResponse.trim()
+          : undefined,
+      prompt:
+        typeof body?.prompt === "string" && body.prompt.trim()
+          ? body.prompt.trim()
+          : undefined,
+    };
 
     try {
       if (proposal.action === "updateGlobal") {
@@ -359,6 +406,7 @@ export const createAIApplyActionEndpointHandler =
         });
         const change = await logAIChange({
           changeLogCollection: options.changeLogCollection,
+          context: logContext,
           proposal,
           req,
           target: {
@@ -393,6 +441,7 @@ export const createAIApplyActionEndpointHandler =
         });
         const change = await logAIChange({
           changeLogCollection: options.changeLogCollection,
+          context: logContext,
           proposal,
           req,
           target: {
@@ -455,6 +504,7 @@ export const createAIApplyActionEndpointHandler =
         });
         const change = await logAIChange({
           changeLogCollection: options.changeLogCollection,
+          context: logContext,
           proposal,
           req,
           target: {
@@ -486,6 +536,7 @@ export const createAIApplyActionEndpointHandler =
       });
       const change = await logAIChange({
         changeLogCollection: options.changeLogCollection,
+        context: logContext,
         proposal,
         req,
         target: {

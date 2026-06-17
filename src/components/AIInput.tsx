@@ -517,7 +517,11 @@ export const AIInput = () => {
                     path: "/ai-apply-action",
                 }),
                 {
-                    body: JSON.stringify({ proposal }),
+                    body: JSON.stringify({
+                        aiResponse: response,
+                        prompt,
+                        proposal,
+                    }),
                     headers: { "Content-Type": "application/json" },
                     method: "POST",
                 }

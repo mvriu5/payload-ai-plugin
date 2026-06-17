@@ -97,7 +97,19 @@ const createAIChangesCollection = (): CollectionConfig => ({
       type: "json",
     },
     {
+      name: "prompt",
+      type: "textarea",
+    },
+    {
+      name: "aiResponse",
+      type: "textarea",
+    },
+    {
       name: "userID",
+      type: "text",
+    },
+    {
+      name: "userLabel",
       type: "text",
     },
   ],

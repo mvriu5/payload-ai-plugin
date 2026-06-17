@@ -10,12 +10,18 @@ export type AppliedChange = {
     action?: AIActionProposal["action"] | null
     additions: number
     after?: unknown
+    aiResponse?: string | null
     before?: unknown
     collection?: string | null
+    createdAt?: string | null
     documentID?: string | null
+    prompt?: string | null
     removals: number
     slug?: string | null
+    targetType?: string | null
     title: string
+    userID?: string | null
+    userLabel?: string | null
     url?: string | null
 }
 
@@ -33,6 +39,7 @@ const getChangeProposal = (change: AppliedChange): AIActionProposal => ({
 
 export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
     const [activeDiff, setActiveDiff] = useState<{
+        change: AppliedChange
         diff: ProposalDiff
         proposal: AIActionProposal
     } | null>(null)
@@ -68,6 +75,7 @@ export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
                                     }
 
                                     setActiveDiff({
+                                        change,
                                         diff: {
                                             after: change.after,
                                             before: change.before,
@@ -84,7 +92,7 @@ export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
                     ))
                 )}
             </div>
-            {activeDiff ? <DiffDialog diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} /> : null}
+            {activeDiff ? <DiffDialog change={activeDiff.change} diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} /> : null}
         </aside>
     )
 }

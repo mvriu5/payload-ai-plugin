@@ -1,9 +1,10 @@
 import { XIcon } from "@payloadcms/ui/icons/X"
 import type { CSSProperties } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import styles from "./DiffDialog.module.css"
 import type { AIActionProposal } from "./AIActionProposalList.js"
+import type { AppliedChange } from "./RecentChangesList.js"
 
 export type ProposalDiff = {
     after: unknown
@@ -11,6 +12,7 @@ export type ProposalDiff = {
 }
 
 type DiffDialogProps = {
+    change?: AppliedChange
     diff: ProposalDiff
     onClose: () => void
     proposal: AIActionProposal
@@ -44,6 +46,18 @@ type DisplayDiffRow =
 
 const formatDiffValue = (value: unknown) => {
     return JSON.stringify(value, null, 2)
+}
+
+const formatDateTime = (value?: string | null) => {
+    if (!value) return null
+
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(date)
 }
 
 const createLine = ({ changed, path, placeholder = false, text = "" }: { changed: boolean; path?: string; placeholder?: boolean; text?: string }): DiffLine => ({
@@ -222,22 +236,32 @@ const getDiffRows = (before: string, after: string) => {
     return rows
 }
 
-export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
+export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps) => {
     const [scrollLeft, setScrollLeft] = useState(0)
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
     const beforeValue = formatDiffValue(diff.before)
     const afterValue = formatDiffValue(diff.after)
     const diffRows = getDiffRows(beforeValue, afterValue)
     const displayRows = buildDisplayRows(diffRows, expandedGroups)
-    const longestLineLength = Math.max(
-        ...beforeValue.split("\n").map((line) => line.length),
-        ...afterValue.split("\n").map((line) => line.length),
-        80
-    )
+    const longestLineLength = Math.max(...beforeValue.split("\n").map((line) => line.length), ...afterValue.split("\n").map((line) => line.length), 80)
     const diffShellStyle = {
         "--diff-line-offset": `-${scrollLeft}px`,
         "--diff-line-width": `${longestLineLength + 8}ch`,
     } as CSSProperties
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose()
+            }
+        }
+
+        window.addEventListener("keydown", handleKeyDown)
+
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown)
+        }
+    }, [onClose])
 
     return (
         <div aria-modal="true" className={styles.dialogOverlay} role="dialog">
@@ -254,6 +278,29 @@ export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
                         <XIcon />
                     </button>
                 </div>
+                {change ? (
+                    <div className={styles.detailSection}>
+                        <div className={styles.detailGrid}>
+                            <span className={styles.detailLabel}>User</span>
+                            <span className={styles.detailValue}>{change.userLabel || change.userID || "Unknown"}</span>
+
+                            <span className={styles.detailLabel}>Date</span>
+                            <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
+                        </div>
+                        {change.prompt ? (
+                            <div className={styles.detailTextBlock}>
+                                <span className={styles.detailLabel}>Prompt</span>
+                                <pre className={styles.detailText}>{change.prompt}</pre>
+                            </div>
+                        ) : null}
+                        {change.aiResponse ? (
+                            <div className={styles.detailTextBlock}>
+                                <span className={styles.detailLabel}>AI response</span>
+                                <pre className={styles.detailText}>{change.aiResponse}</pre>
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
                 <div className={styles.diffShell} style={diffShellStyle}>
                     <div className={styles.diffScroll}>
                         <div className={styles.diffHeaderGrid}>
@@ -301,7 +348,9 @@ export const DiffDialog = ({ diff, onClose, proposal }: DiffDialogProps) => {
                                             <span className={styles.diffLineContent}>{row.before.text || " "}</span>
                                         </span>
                                         <span
-                                            className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""].filter(Boolean).join(" ")}
+                                            className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
+                                                .filter(Boolean)
+                                                .join(" ")}
                                         >
                                             {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
                                             <span className={styles.diffLineContent}>{row.after.text || " "}</span>
