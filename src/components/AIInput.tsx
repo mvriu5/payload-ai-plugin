@@ -2,7 +2,7 @@
 
 import { useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { getResolvedAIModelConfig, type AIProvider, type AIModelConfig } from "../ai/providerOptions.js"
 import { getSerializableLabel, isInternalCollection } from "../payload/shared.js"
@@ -10,6 +10,7 @@ import { AIActionProposalList, type AIActionProposal } from "./AIActionProposalL
 import styles from "./AIInput.module.css"
 import { CollectionMentionPopover, type CollectionMentionOption } from "./CollectionMentionPopover.js"
 import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon } from "./Icons.js"
+import { RecentChangesList, type AppliedChange } from "./RecentChangesList.js"
 import { useAISettings } from "./hooks/useAISettings.js"
 import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js"
 
@@ -180,11 +181,36 @@ export const AIInput = () => {
     const [response, setResponse] = useState("")
     const [error, setError] = useState("")
     const [proposals, setProposals] = useState<AIActionProposal[]>([])
+    const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isApplying, setIsApplying] = useState(false)
     const enabledCollectionSlugs = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.collectionSlugs
     const enabledCollectionSlugSet = useMemo(() => (enabledCollectionSlugs ? new Set(enabledCollectionSlugs) : null), [enabledCollectionSlugs])
     const isCollectionMentionEnabled = (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug)
+    const recentChangesEndpoint = useMemo(
+        () =>
+            formatAdminURL({
+                apiRoute: config.routes.api,
+                path: "/ai-recent-changes",
+            }),
+        [config.routes.api]
+    )
+    const loadRecentChanges = useCallback(async () => {
+        const res = await fetch(recentChangesEndpoint)
+        const result = (await res.json().catch(() => null)) as
+            | {
+                  changes?: AppliedChange[]
+              }
+            | null
+
+        if (res.ok && result?.changes) {
+            setAppliedChanges(result.changes)
+        }
+    }, [recentChangesEndpoint])
+
+    useEffect(() => {
+        void loadRecentChanges().catch(() => undefined)
+    }, [loadRecentChanges])
 
     useEffect(() => {
         if (isLoading || error || proposals.length > 0 || !response) return
@@ -502,6 +528,10 @@ export const AIInput = () => {
             )
 
             const result = (await res.json()) as {
+                change?: AppliedChange | null
+                doc?: {
+                    id?: unknown
+                }
                 error?: string
             }
             if (!res.ok) {
@@ -514,6 +544,10 @@ export const AIInput = () => {
             setError("")
             setProposals([])
             setResponse("")
+            if (result.change) {
+                setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 12))
+            }
+            void loadRecentChanges().catch(() => undefined)
             clearInput()
         } catch (err) {
             setError(err instanceof Error ? err.message : "Could not apply proposal")
@@ -523,91 +557,94 @@ export const AIInput = () => {
     }
 
     return (
-        <div className={styles.chat}>
-            <div className={styles.chatHeader}>
-                <div>
-                    <h2 className={styles.chatTitle}>AI Assistant</h2>
-                    <p className={styles.chatDescription}>Ask AI to draft, improve, or analyze content.</p>
+        <div className={styles.chatLayout}>
+            <div className={styles.chat}>
+                <div className={styles.chatHeader}>
+                    <div>
+                        <h2 className={styles.chatTitle}>AI Assistant</h2>
+                        <p className={styles.chatDescription}>Ask AI to draft, improve, or analyze content.</p>
+                    </div>
                 </div>
-            </div>
-            <div className={styles.chatInputRow}>
-                <div className={styles.chatInputSurface}>
-                    <div
-                        className={styles.chatInput}
-                        contentEditable
-                        data-placeholder="Ask AI..."
-                        onInput={(event) => {
-                            const value = event.currentTarget.innerText
+                <div className={styles.chatInputRow}>
+                    <div className={styles.chatInputSurface}>
+                        <div
+                            className={styles.chatInput}
+                            contentEditable
+                            data-placeholder="Ask AI..."
+                            onInput={(event) => {
+                                const value = event.currentTarget.innerText
 
-                            setPrompt(value)
-                            if (!value.trim()) {
-                                setMentions([])
-                            }
-                            updateMentionState(value, getCaretOffset(event.currentTarget))
-                        }}
-                        onKeyDown={(event) => {
-                            if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
-                                const firstOption = mentionPopoverRef.current?.querySelector<HTMLButtonElement>("button")
-                                if (firstOption) {
-                                    event.preventDefault()
-                                    firstOption.focus()
-                                    return
+                                setPrompt(value)
+                                if (!value.trim()) {
+                                    setMentions([])
                                 }
-                            }
-                            if (event.key === "Enter" && !event.shiftKey) {
-                                event.preventDefault()
-                                void handleSubmit()
-                            }
-                        }}
-                        ref={editorRef}
-                        role="textbox"
-                        suppressContentEditableWarning
-                    />
+                                updateMentionState(value, getCaretOffset(event.currentTarget))
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
+                                    const firstOption = mentionPopoverRef.current?.querySelector<HTMLButtonElement>("button")
+                                    if (firstOption) {
+                                        event.preventDefault()
+                                        firstOption.focus()
+                                        return
+                                    }
+                                }
+                                if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault()
+                                    void handleSubmit()
+                                }
+                            }}
+                            ref={editorRef}
+                            role="textbox"
+                            suppressContentEditableWarning
+                        />
+                    </div>
+                    {mentionRange ? <CollectionMentionPopover containerRef={mentionPopoverRef} onSelect={insertMention} suggestions={mentionSuggestions} /> : null}
                 </div>
-                {mentionRange ? <CollectionMentionPopover containerRef={mentionPopoverRef} onSelect={insertMention} suggestions={mentionSuggestions} /> : null}
-            </div>
-            <div className={styles.chatActionsRow}>
-                <div className={styles.settings}>
-                    <label className={styles.setting}>
-                        <span className={styles.settingLabel}>Model</span>
-                        <div className={styles.selectWrapper}>
-                            {getProviderIcon(settingsProvider)}
-                            <select className={styles.select} disabled={!settingsProvider} onChange={(event) => setSelectedModel(event.target.value)} value={selectedModel}>
-                                {!settingsProvider && <option value="">Select provider in account settings</option>}
-                                {settingsProvider &&
-                                    aiModelConfig.providers[settingsProvider].map((model) => (
-                                        <option key={model.value} value={model.value}>
-                                            {model.label}
-                                        </option>
-                                    ))}
-                            </select>
-                        </div>
-                    </label>
+                <div className={styles.chatActionsRow}>
+                    <div className={styles.settings}>
+                        <label className={styles.setting}>
+                            <span className={styles.settingLabel}>Model</span>
+                            <div className={styles.selectWrapper}>
+                                {getProviderIcon(settingsProvider)}
+                                <select className={styles.select} disabled={!settingsProvider} onChange={(event) => setSelectedModel(event.target.value)} value={selectedModel}>
+                                    {!settingsProvider && <option value="">Select provider in account settings</option>}
+                                    {settingsProvider &&
+                                        aiModelConfig.providers[settingsProvider].map((model) => (
+                                            <option key={model.value} value={model.value}>
+                                                {model.label}
+                                            </option>
+                                        ))}
+                                </select>
+                            </div>
+                        </label>
+                    </div>
+                    <button className={styles.chatButton} disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading} onClick={() => void handleSubmit()} type="button">
+                        {isLoading ? "Sending..." : "Send"}
+                    </button>
                 </div>
-                <button className={styles.chatButton} disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading} onClick={() => void handleSubmit()} type="button">
-                    {isLoading ? "Sending..." : "Send"}
-                </button>
+                <AIActionProposalList
+                    apiRoute={config.routes.api}
+                    appliedProposalIndexes={appliedProposalIndexes}
+                    description={response}
+                    error={error}
+                    getViewURL={getProposalViewURL}
+                    isApplying={isApplying}
+                    onDismiss={() => {
+                        setAppliedProposalIndexes([])
+                        setError("")
+                        setProposals([])
+                        setResponse("")
+                        clearInput()
+                    }}
+                    onDismissError={() => {
+                        setError("")
+                    }}
+                    onApply={(proposal, _index) => void handleApplyProposal(proposal)}
+                    proposals={proposals}
+                />
             </div>
-            <AIActionProposalList
-                apiRoute={config.routes.api}
-                appliedProposalIndexes={appliedProposalIndexes}
-                description={response}
-                error={error}
-                getViewURL={getProposalViewURL}
-                isApplying={isApplying}
-                onDismiss={() => {
-                    setAppliedProposalIndexes([])
-                    setError("")
-                    setProposals([])
-                    setResponse("")
-                    clearInput()
-                }}
-                onDismissError={() => {
-                    setError("")
-                }}
-                onApply={(proposal, _index) => void handleApplyProposal(proposal)}
-                proposals={proposals}
-            />
+            <RecentChangesList changes={appliedChanges} />
         </div>
     )
 }

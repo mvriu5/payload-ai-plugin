@@ -1,4 +1,4 @@
-import type { CollectionSlug, Config } from "payload";
+import type { CollectionConfig, CollectionSlug, Config } from "payload";
 
 import {
   aiProviders,
@@ -9,6 +9,7 @@ import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEnd
 import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
 import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
 import { createAIProposalDiffEndpointHandler } from "./endpoints/aiProposalDiffEndpointHandler.js";
+import { createAIRecentChangesEndpointHandler } from "./endpoints/aiRecentChangesEndpointHandler.js";
 import {
   resolveCollectionPermissions,
   type AICollectionPermissionConfig,
@@ -23,6 +24,85 @@ export type PayloadAiPluginOptions = {
 };
 
 export type PayloadAiPluginConfig = PayloadAiPluginOptions;
+
+const aiChangesCollectionSlug = "payload-ai-changes";
+
+const createAIChangesCollection = (): CollectionConfig => ({
+  slug: aiChangesCollectionSlug,
+  access: {
+    create: () => false,
+    delete: () => false,
+    read: ({ req }) => Boolean(req.user),
+    update: () => false,
+  },
+  admin: {
+    defaultColumns: ["title", "action", "additions", "removals", "createdAt"],
+    group: "AI",
+    useAsTitle: "title",
+  },
+  fields: [
+    {
+      name: "title",
+      type: "text",
+      required: true,
+    },
+    {
+      name: "action",
+      type: "select",
+      options: ["create", "update", "delete", "updateGlobal"],
+      required: true,
+    },
+    {
+      name: "targetType",
+      type: "select",
+      options: ["collection", "global"],
+      required: true,
+    },
+    {
+      name: "collection",
+      type: "text",
+    },
+    {
+      name: "slug",
+      type: "text",
+    },
+    {
+      name: "documentID",
+      type: "text",
+    },
+    {
+      name: "targetURL",
+      type: "text",
+    },
+    {
+      name: "additions",
+      type: "number",
+      defaultValue: 0,
+    },
+    {
+      name: "removals",
+      type: "number",
+      defaultValue: 0,
+    },
+    {
+      name: "before",
+      type: "json",
+    },
+    {
+      name: "after",
+      type: "json",
+    },
+    {
+      name: "proposal",
+      type: "json",
+    },
+    {
+      name: "userID",
+      type: "text",
+    },
+  ],
+  timestamps: true,
+});
 
 const addAccountFields = ({
   allowUserApiKeys,
@@ -72,6 +152,13 @@ export const payloadAiPlugin =
     const modelConfig = getResolvedAIModelConfig(pluginOptions.models);
 
     if (!config.collections) config.collections = [];
+    if (
+      !config.collections.some(
+        (collection) => collection.slug === aiChangesCollectionSlug,
+      )
+    ) {
+      config.collections.push(createAIChangesCollection());
+    }
 
     addAccountFields({ allowUserApiKeys, config });
 
@@ -117,10 +204,18 @@ export const payloadAiPlugin =
     });
     config.endpoints.push({
       handler: createAIApplyActionEndpointHandler({
+        changeLogCollection: aiChangesCollectionSlug,
         collections: collectionPermissions,
       }),
       method: "post",
       path: "/ai-apply-action",
+    });
+    config.endpoints.push({
+      handler: createAIRecentChangesEndpointHandler({
+        changeLogCollection: aiChangesCollectionSlug,
+      }),
+      method: "get",
+      path: "/ai-recent-changes",
     });
     config.endpoints.push({
       handler: createAIProposalDiffEndpointHandler({
