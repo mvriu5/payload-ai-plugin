@@ -94,6 +94,7 @@
 .viewAction {
     align-items: center;
     display: flex;
+    gap: 8px;
     min-width: 0;
 }
 
@@ -106,29 +107,65 @@
 }
 
 .button {
+    align-items: center;
     background: var(--theme-text);
     border: 0;
     border-radius: 4px;
     color: var(--theme-bg);
     cursor: pointer;
+    display: inline-flex;
     flex: 0 0 auto;
     font: inherit;
-    min-height: 34px;
+    gap: 6px;
+    justify-content: center;
+    line-height: 24px;
+    min-height: 24px;
     padding: 0 14px;
 }
 
 .secondaryButton {
+    align-items: center;
     background: transparent;
     border: 1px solid var(--theme-elevation-150);
     border-radius: 4px;
     color: var(--theme-text);
     cursor: pointer;
+    display: inline-flex;
     flex: 0 0 auto;
     font: inherit;
-    line-height: 34px;
-    min-height: 34px;
+    gap: 6px;
+    justify-content: center;
+    line-height: 24px;
+    min-height: 24px;
     padding: 0 14px;
     text-decoration: none;
+}
+
+.secondaryButton svg {
+    color: var(--theme-elevation-500);
+    flex: 0 0 auto;
+}
+
+.button svg {
+    flex: 0 0 auto;
+}
+
+.ghostButton {
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    color: var(--theme-elevation-600);
+    cursor: pointer;
+    flex: 0 0 auto;
+    font: inherit;
+    line-height: 24px;
+    min-height: 24px;
+    padding: 0 10px;
+    text-decoration: none;
+}
+
+.ghostButton:hover {
+    text-decoration: underline;
 }
 
 .button:disabled {
@@ -136,7 +173,8 @@
     opacity: 0.45;
 }
 
-.secondaryButton:disabled {
+.secondaryButton:disabled,
+.ghostButton:disabled {
     cursor: not-allowed;
     opacity: 0.45;
 }
@@ -163,13 +201,19 @@
         flex-direction: column;
     }
 
+    .viewAction {
+        align-self: stretch;
+        flex-direction: column;
+    }
+
     .footer {
         align-items: stretch;
         flex-direction: column;
     }
 
     .button,
-    .secondaryButton {
+    .secondaryButton,
+    .ghostButton {
         width: 100%;
     }
 }

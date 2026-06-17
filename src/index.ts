@@ -8,6 +8,7 @@ import {
 import { createAIApplyActionEndpointHandler } from "./endpoints/aiApplyActionEndpointHandler.js";
 import { createAIChatEndpointHandler } from "./endpoints/aiChatEndpointHandler.js";
 import { createAIMentionSuggestionsEndpointHandler } from "./endpoints/aiMentionSuggestionsEndpointHandler.js";
+import { createAIProposalDiffEndpointHandler } from "./endpoints/aiProposalDiffEndpointHandler.js";
 import {
   resolveCollectionPermissions,
   type AICollectionPermissionConfig,
@@ -120,6 +121,13 @@ export const payloadAiPlugin =
       }),
       method: "post",
       path: "/ai-apply-action",
+    });
+    config.endpoints.push({
+      handler: createAIProposalDiffEndpointHandler({
+        collections: collectionPermissions,
+      }),
+      method: "post",
+      path: "/ai-proposal-diff",
     });
     config.endpoints.push({
       handler: createAIMentionSuggestionsEndpointHandler({

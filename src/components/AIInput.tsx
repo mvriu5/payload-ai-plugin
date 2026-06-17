@@ -2,7 +2,7 @@
 
 import { useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { getResolvedAIModelConfig, type AIProvider, type AIModelConfig } from "../ai/providerOptions.js"
 import { getSerializableLabel, isInternalCollection } from "../payload/shared.js"
@@ -156,6 +156,8 @@ const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
     }
 }
 
+const sanitizeResponseText = (value: string) => value.replace(/\*\*/g, "")
+
 export const AIInput = () => {
     const { config } = useConfig()
     const editorRef = useRef<HTMLDivElement>(null)
@@ -183,6 +185,17 @@ export const AIInput = () => {
     const enabledCollectionSlugs = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.collectionSlugs
     const enabledCollectionSlugSet = useMemo(() => (enabledCollectionSlugs ? new Set(enabledCollectionSlugs) : null), [enabledCollectionSlugs])
     const isCollectionMentionEnabled = (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug)
+
+    useEffect(() => {
+        if (isLoading || error || proposals.length > 0 || !response) return
+
+        const timeout = window.setTimeout(() => {
+            setResponse("")
+            clearInput()
+        }, 5000)
+
+        return () => window.clearTimeout(timeout)
+    }, [error, isLoading, proposals.length, response])
 
     const collections: CollectionMentionOption[] = config.collections
         .filter((collection) => !isInternalCollection(collection.slug))
@@ -439,7 +452,7 @@ export const AIInput = () => {
 
                     if (event.event === "text") {
                         if (event.data.delta) {
-                            setResponse((current) => current + event.data.delta)
+                            setResponse((current) => current + sanitizeResponseText(event.data.delta || ""))
                         }
                         continue
                     }
@@ -576,6 +589,7 @@ export const AIInput = () => {
                 </button>
             </div>
             <AIActionProposalList
+                apiRoute={config.routes.api}
                 appliedProposalIndexes={appliedProposalIndexes}
                 description={response}
                 error={error}

@@ -104,6 +104,21 @@ type AIChatEndpointOptions = {
   models?: AIModelConfig;
 };
 
+const maxProposalLabelLength = 90;
+
+const getSafeProposalLabel = (label: string) => {
+  const firstLine = label
+    .replace(/[*_`>#-]/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (!firstLine) return "Review proposed CMS change";
+  if (firstLine.length <= maxProposalLabelLength) return firstLine;
+
+  return `${firstLine.slice(0, maxProposalLabelLength - 3).trim()}...`;
+};
+
 export const createAIChatEndpointHandler =
   (options: AIChatEndpointOptions = {}): PayloadHandler =>
   async (req) => {
@@ -327,7 +342,7 @@ export const createAIChatEndpointHandler =
               action: "create",
               collection,
               data,
-              label,
+              label: getSafeProposalLabel(label),
             };
 
             return addSignedProposal(proposal);
@@ -356,7 +371,7 @@ export const createAIChatEndpointHandler =
               action: "delete",
               collection,
               id,
-              label,
+              label: getSafeProposalLabel(label),
             };
 
             return addSignedProposal(proposal);
@@ -388,7 +403,7 @@ export const createAIChatEndpointHandler =
               collection,
               data,
               id,
-              label,
+              label: getSafeProposalLabel(label),
             };
 
             return addSignedProposal(proposal);
@@ -415,7 +430,7 @@ export const createAIChatEndpointHandler =
             const proposal: AIActionProposal = {
               action: "updateGlobal",
               data,
-              label,
+              label: getSafeProposalLabel(label),
               slug,
             };
 
@@ -501,7 +516,10 @@ export const createAIChatEndpointHandler =
           "When mention context is provided, use it as the selected CMS scope and prefer it over guessing collection names.",
           "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
           "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
-          "Keep the visible response under 80 words. Put concrete changes in proposal tool calls instead of long prose.",
+          "Keep the visible response under 40 words and describe only what kind of change was proposed.",
+          "Write visible responses as plain text only. Do not use Markdown formatting, bold markers (**), headings, bullets, tables, or code fences.",
+          "Do not include proposed field values, full replacement text, quoted content, markdown sections, code blocks, or headings like 'New content'/'Neuer Inhalt' in the visible response.",
+          "Put all concrete field values and replacement content only in proposal tool data. Proposal labels must be short action summaries and must not contain proposed content.",
         ].join("\n"),
         tools,
       });

@@ -1,0 +1,165 @@
+.dialogOverlay {
+    align-items: center;
+    background: rgba(0, 0, 0, 0.42);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 24px;
+    position: fixed;
+    z-index: 1100;
+}
+
+.dialog {
+    background: var(--theme-bg);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 6px;
+    box-shadow: 0 20px 64px rgba(0, 0, 0, 0.26);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: min(760px, calc(100vh - 48px));
+    max-width: min(1120px, calc(100vw - 48px));
+    padding: 16px;
+    width: 100%;
+}
+
+.dialogHeader {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.dialogTitle {
+    color: var(--theme-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.meta {
+    color: var(--theme-elevation-600);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 2px;
+}
+
+.secondaryButton {
+    background: transparent;
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 4px;
+    color: var(--theme-text);
+    cursor: pointer;
+    flex: 0 0 auto;
+    font: inherit;
+    line-height: 24px;
+    min-height: 24px;
+    padding: 0 14px;
+    text-decoration: none;
+}
+
+.diffShell {
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.diffHeaderGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-width: 100%;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.diffPaneHeader {
+    background: var(--theme-elevation-50);
+    border-bottom: 1px solid var(--theme-elevation-150);
+    color: var(--theme-elevation-700);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 8px 10px;
+}
+
+.diffPaneHeader + .diffPaneHeader {
+    border-left: 1px solid var(--theme-elevation-150);
+}
+
+.diffScroll {
+    background: var(--theme-elevation-50);
+    color: var(--theme-text);
+    flex: 1 1 auto;
+    font-size: 12px;
+    line-height: 1.5;
+    min-height: 260px;
+    overflow: auto;
+}
+
+.diffRows {
+    display: grid;
+    font-family: monospace;
+    min-width: 100%;
+    padding: 0;
+}
+
+.diffRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-width: 100%;
+}
+
+.diffLine {
+    display: block;
+    min-height: 18px;
+    min-width: max-content;
+    padding: 0;
+    white-space: pre;
+}
+
+.diffLine + .diffLine {
+    box-shadow: inset 1px 0 0 var(--theme-elevation-150);
+}
+
+.diffLineAdded {
+    background: rgba(39, 132, 90, 0.28);
+    border-left: 3px solid rgba(39, 132, 90, 0.92);
+}
+
+.diffLineRemoved {
+    background: rgba(160, 26, 26, 0.28);
+    border-left: 3px solid rgba(136, 18, 18, 0.96);
+}
+
+.diffLinePlaceholder {
+    background: var(--theme-elevation-50);
+}
+
+@media (max-width: 768px) {
+    .dialogOverlay {
+        padding: 12px;
+    }
+
+    .dialog {
+        max-height: calc(100vh - 24px);
+        max-width: calc(100vw - 24px);
+    }
+
+    .dialogHeader {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .secondaryButton {
+        width: 100%;
+    }
+
+    .diffScroll {
+        min-height: 180px;
+    }
+}
