@@ -246,12 +246,20 @@ const logAIChange = async ({
         title: proposal.label,
         userID: getUserID(req),
       },
+      overrideAccess: true,
       req,
     });
 
     return {
+      action: proposal.action,
       additions,
+      after,
+      before,
+      collection: "collection" in proposal ? proposal.collection : null,
+      documentID:
+        target.documentID === undefined ? null : String(target.documentID),
       removals,
+      slug: "slug" in proposal ? proposal.slug : null,
       title: proposal.label,
       url: getTargetURL({
         documentID: target.documentID,

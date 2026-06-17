@@ -29,8 +29,14 @@ export const createAIRecentChangesEndpointHandler =
 
     return Response.json({
       changes: result.docs.map((doc) => ({
+        action: getString(doc.action),
         additions: getNumber(doc.additions),
+        after: doc.after,
+        before: doc.before,
+        collection: getString(doc.collection),
+        documentID: getString(doc.documentID),
         removals: getNumber(doc.removals),
+        slug: getString(doc.slug),
         title: getString(doc.title) || "AI change",
         url: getString(doc.targetURL),
       })),

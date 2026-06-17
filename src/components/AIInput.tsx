@@ -9,7 +9,7 @@ import { getSerializableLabel, isInternalCollection } from "../payload/shared.js
 import { AIActionProposalList, type AIActionProposal } from "./AIActionProposalList.js"
 import styles from "./AIInput.module.css"
 import { CollectionMentionPopover, type CollectionMentionOption } from "./CollectionMentionPopover.js"
-import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon } from "./Icons.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, Send } from "./Icons.js"
 import { RecentChangesList, type AppliedChange } from "./RecentChangesList.js"
 import { useAISettings } from "./hooks/useAISettings.js"
 import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js"
@@ -197,11 +197,9 @@ export const AIInput = () => {
     )
     const loadRecentChanges = useCallback(async () => {
         const res = await fetch(recentChangesEndpoint)
-        const result = (await res.json().catch(() => null)) as
-            | {
-                  changes?: AppliedChange[]
-              }
-            | null
+        const result = (await res.json().catch(() => null)) as {
+            changes?: AppliedChange[]
+        } | null
 
         if (res.ok && result?.changes) {
             setAppliedChanges(result.changes)
@@ -446,11 +444,9 @@ export const AIInput = () => {
             )
 
             if (!res.ok) {
-                const result = (await res.json().catch(() => null)) as
-                    | {
-                          error?: string
-                      }
-                    | null
+                const result = (await res.json().catch(() => null)) as {
+                    error?: string
+                } | null
 
                 throw new Error(result?.error || "AI request failed")
             }
@@ -620,6 +616,7 @@ export const AIInput = () => {
                         </label>
                     </div>
                     <button className={styles.chatButton} disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading} onClick={() => void handleSubmit()} type="button">
+                        <Send width={14} height={14} />
                         {isLoading ? "Sending..." : "Send"}
                     </button>
                 </div>

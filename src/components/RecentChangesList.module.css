@@ -36,16 +36,25 @@
 }
 
 .item {
+    align-items: center;
     border: 1px solid var(--theme-elevation-100);
     border-radius: 4px;
     display: grid;
     gap: 8px;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     padding: 10px;
+}
+
+.titleRow {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    min-width: 0;
 }
 
 .itemTitle {
     color: var(--theme-text);
+    flex: 0 1 auto;
     font-size: 12px;
     font-weight: 600;
     line-height: 1.4;
@@ -58,6 +67,7 @@
 .stats {
     display: flex;
     gap: 6px;
+    justify-content: flex-end;
 }
 
 .additions,
@@ -79,16 +89,43 @@
 }
 
 .button {
+    align-items: center;
+    background: var(--theme-elevation-0);
     border: 1px solid var(--theme-elevation-150);
     border-radius: 4px;
     color: var(--theme-text);
+    cursor: pointer;
+    display: inline-flex;
     font-size: 12px;
-    grid-column: 1 / -1;
+    gap: 6px;
+    justify-content: center;
     line-height: 24px;
     min-height: 24px;
     padding: 0 10px;
     text-align: center;
     text-decoration: none;
+}
+
+.button:disabled {
+    color: var(--theme-elevation-400);
+    cursor: not-allowed;
+}
+
+.button svg {
+    color: var(--theme-elevation-500);
+    flex: 0 0 auto;
+}
+
+.ghostButton {
+    color: var(--theme-elevation-500);
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 18px;
+    text-decoration: none;
+}
+
+.ghostButton:hover {
+    text-decoration: underline;
 }
 
 @media (max-width: 768px) {
