@@ -40,6 +40,10 @@ const createAIChangesCollection = (): CollectionConfig => ({
     group: "AI",
     useAsTitle: "title",
   },
+  labels: {
+    plural: "AI Changes",
+    singular: "AI Change",
+  },
   fields: [
     {
       name: "title",
@@ -135,6 +139,7 @@ const addAccountFields = ({
     name: "aiProvider",
     type: "select",
     defaultValue: "openai",
+    label: "AI Provider",
     options: aiProviders,
   });
 
@@ -149,6 +154,7 @@ const addAccountFields = ({
         description:
           "Optional. If empty, the plugin uses the provider API key from environment variables.",
       },
+      label: "AI API Key",
     });
   }
 };
