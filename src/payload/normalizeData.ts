@@ -2,8 +2,10 @@ export type FieldConfig = {
   blocks?: BlockConfig[];
   defaultValue?: unknown;
   fields?: FieldConfig[];
+  localized?: boolean;
   name?: string;
   options?: (string | { value?: string })[];
+  required?: boolean;
   type?: string;
 };
 
@@ -295,4 +297,47 @@ export const normalizeDataForFields = (
     data: normalizedData,
     droppedFields,
   };
+};
+
+export const getLocalizedRequiredFallbackData = ({
+  fields,
+  source,
+  target,
+}: {
+  fields: FieldConfig[];
+  source: Record<string, unknown>;
+  target: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const fallbackData: Record<string, unknown> = {};
+
+  for (const field of getNamedFields(fields)) {
+    const targetValue = target[field.name];
+    const sourceValue = source[field.name];
+
+    if (field.localized && field.required) {
+      if (targetValue === undefined && sourceValue !== undefined) {
+        fallbackData[field.name] = sourceValue;
+      }
+
+      continue;
+    }
+
+    if (
+      field.type === "group" &&
+      field.fields?.length &&
+      isRecord(sourceValue)
+    ) {
+      const nestedFallback = getLocalizedRequiredFallbackData({
+        fields: field.fields,
+        source: sourceValue,
+        target: isRecord(targetValue) ? targetValue : {},
+      });
+
+      if (Object.keys(nestedFallback).length > 0) {
+        fallbackData[field.name] = nestedFallback;
+      }
+    }
+  }
+
+  return fallbackData;
 };

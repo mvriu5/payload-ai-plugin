@@ -20,6 +20,7 @@ export type PayloadAiPluginOptions = {
   allowUserApiKeys?: boolean;
   collections?: AICollectionPermissionMap;
   disabled?: boolean;
+  maxOutputTokens?: number;
   models?: AIModelConfig;
 };
 
@@ -168,6 +169,12 @@ export const payloadAiPlugin =
     );
     const allowUserApiKeys = pluginOptions.allowUserApiKeys !== false;
     const modelConfig = getResolvedAIModelConfig(pluginOptions.models);
+    const maxOutputTokens =
+      typeof pluginOptions.maxOutputTokens === "number" &&
+      Number.isFinite(pluginOptions.maxOutputTokens) &&
+      pluginOptions.maxOutputTokens > 0
+        ? Math.floor(pluginOptions.maxOutputTokens)
+        : undefined;
 
     if (!config.collections) config.collections = [];
     if (
@@ -215,6 +222,7 @@ export const payloadAiPlugin =
       handler: createAIChatEndpointHandler({
         allowUserApiKeys,
         collections: collectionPermissions,
+        maxOutputTokens,
         models: modelConfig,
       }),
       method: "post",

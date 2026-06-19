@@ -111,6 +111,7 @@ export type AIActionProposal = (
 type AIChatEndpointOptions = {
   allowUserApiKeys?: boolean;
   collections?: ResolvedAICollectionPermissionMap;
+  maxOutputTokens?: number;
   models?: AIModelConfig;
 };
 
@@ -583,7 +584,7 @@ export const createAIChatEndpointHandler =
       });
 
       const result = streamText({
-        maxOutputTokens: 700,
+        maxOutputTokens: options.maxOutputTokens || 700,
         model,
         prompt: buildPromptWithMentionContext({
           mentionContext,

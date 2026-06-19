@@ -67,6 +67,7 @@ const options: PayloadAiPluginOptions = {
       ],
     },
   },
+  maxOutputTokens: 1200,
 };
 ```
 
@@ -119,6 +120,16 @@ payloadAiPlugin({
 ### `models`
 
 Overrides the model list shown in the admin UI and the default model per provider.
+
+### `maxOutputTokens`
+
+Controls the maximum number of output tokens the chat endpoint may generate per request. If omitted, the plugin uses `700`.
+
+```ts
+payloadAiPlugin({
+  maxOutputTokens: 1200,
+})
+```
 
 ### `allowUserApiKeys`
 

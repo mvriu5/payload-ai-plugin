@@ -4,6 +4,7 @@ import { verifyAIActionProposal } from "../ai/proposals.js";
 import { containsSensitiveData, redactSensitiveData } from "../ai/sensitiveData.js";
 import {
   getCollectionFields,
+  getLocalizedRequiredFallbackData,
   isAuthCollection,
   normalizeAuthData,
   normalizeDataForFields,
@@ -117,6 +118,33 @@ const mergeData = (
 
       return [key, value];
     }),
+  );
+};
+
+const getDefaultLocale = (req: Parameters<PayloadHandler>[0]) => {
+  const localization = req.payload.config.localization;
+
+  if (!localization) return null;
+
+  return localization.defaultLocale || null;
+};
+
+const applyLocalizedRequiredFallback = ({
+  data,
+  fallbackSource,
+  fields,
+}: {
+  data: Record<string, unknown>;
+  fallbackSource: Record<string, unknown>;
+  fields: FieldConfig[];
+}) => {
+  return mergeData(
+    getLocalizedRequiredFallbackData({
+      fields,
+      source: fallbackSource,
+      target: data,
+    }),
+    data,
   );
 };
 
@@ -406,6 +434,8 @@ export const createAIApplyActionEndpointHandler =
     };
 
     try {
+      const defaultLocale = getDefaultLocale(req);
+
       if (proposal.action === "updateGlobal") {
         if (!isKnownGlobal(req, proposal.slug))
           return Response.json({ error: "Unknown global" }, { status: 400 });
@@ -416,23 +446,40 @@ export const createAIApplyActionEndpointHandler =
         if (hasLocalizedData(proposal)) {
           const beforeByLocale: Record<string, unknown> = {};
           const afterByLocale: Record<string, unknown> = {};
+          const globalFields = (globalConfig?.fields || []) as FieldConfig[];
+          const defaultLocaleDoc =
+            defaultLocale
+              ? ((await req.payload.findGlobal({
+                  depth: 2,
+                  fallbackLocale: false,
+                  locale: defaultLocale,
+                  req,
+                  slug: proposal.slug as never,
+                })) as Record<string, unknown>)
+              : null;
 
           for (const [locale, localeData] of Object.entries(
             proposal.localizedData,
           )) {
-            const localeNormalized = normalizeDataForFields(
-              (globalConfig?.fields || []) as FieldConfig[],
-              localeData,
-            );
+            const localeNormalized = normalizeDataForFields(globalFields, localeData);
             const before = (await req.payload.findGlobal({
               depth: 2,
+              fallbackLocale: false,
               locale,
               req,
               slug: proposal.slug as never,
             })) as Record<string, unknown>;
+            const completedData = applyLocalizedRequiredFallback({
+              data: localeNormalized.data,
+              fallbackSource:
+                locale === defaultLocale
+                  ? before
+                  : defaultLocaleDoc || before,
+              fields: globalFields,
+            });
 
             await req.payload.updateGlobal({
-              data: localeNormalized.data,
+              data: completedData,
               locale,
               overrideAccess: false,
               req,
@@ -440,7 +487,7 @@ export const createAIApplyActionEndpointHandler =
             });
 
             beforeByLocale[locale] = before;
-            afterByLocale[locale] = mergeData(before, localeNormalized.data);
+            afterByLocale[locale] = mergeData(before, completedData);
           }
 
           const change = await logAIChange({
@@ -535,10 +582,11 @@ export const createAIApplyActionEndpointHandler =
       const collectionConfig = req.payload.config.collections.find(
         (collection) => collection.slug === proposal.collection,
       ) as CollectionConfig | undefined;
+      const collectionFields = getCollectionFields(collectionConfig);
       const normalizeCollectionData = (data: Record<string, unknown>) =>
         normalizeAuthData(
           collectionConfig,
-          normalizeDataForFields(getCollectionFields(collectionConfig), data),
+          normalizeDataForFields(collectionFields, data),
         );
 
       if (hasLocalizedData(proposal)) {
@@ -591,12 +639,18 @@ export const createAIApplyActionEndpointHandler =
           const afterByLocale: Record<string, unknown> = {
             [firstLocale]: doc,
           };
+          let fallbackSource = doc as Record<string, unknown>;
 
           for (const [locale, localeData] of localeEntries.slice(1)) {
             const localeNormalized = normalizeCollectionData(localeData);
+            const completedData = applyLocalizedRequiredFallback({
+              data: localeNormalized.data,
+              fallbackSource,
+              fields: collectionFields,
+            });
             await req.payload.update({
               collection: proposal.collection as never,
-              data: localeNormalized.data,
+              data: completedData,
               id: String(doc.id),
               locale,
               overrideAccess: false,
@@ -604,7 +658,7 @@ export const createAIApplyActionEndpointHandler =
             });
 
             beforeByLocale[locale] = {};
-            afterByLocale[locale] = localeNormalized.data;
+            afterByLocale[locale] = completedData;
           }
 
           const change = await logAIChange({
@@ -628,6 +682,17 @@ export const createAIApplyActionEndpointHandler =
 
         const beforeByLocale: Record<string, unknown> = {};
         const afterByLocale: Record<string, unknown> = {};
+        const defaultLocaleDoc =
+          defaultLocale
+            ? ((await req.payload.findByID({
+                collection: proposal.collection as never,
+                depth: 2,
+                fallbackLocale: false,
+                id: proposal.id,
+                locale: defaultLocale,
+                req,
+              })) as Record<string, unknown>)
+            : null;
 
         for (const [locale, localeData] of Object.entries(
           proposal.localizedData,
@@ -636,14 +701,21 @@ export const createAIApplyActionEndpointHandler =
           const before = (await req.payload.findByID({
             collection: proposal.collection as never,
             depth: 2,
+            fallbackLocale: false,
             id: proposal.id,
             locale,
             req,
           })) as Record<string, unknown>;
+          const completedData = applyLocalizedRequiredFallback({
+            data: localeNormalized.data,
+            fallbackSource:
+              locale === defaultLocale ? before : defaultLocaleDoc || before,
+            fields: collectionFields,
+          });
 
           await req.payload.update({
             collection: proposal.collection as never,
-            data: localeNormalized.data,
+            data: completedData,
             id: proposal.id,
             locale,
             overrideAccess: false,
@@ -651,7 +723,7 @@ export const createAIApplyActionEndpointHandler =
           });
 
           beforeByLocale[locale] = before;
-          afterByLocale[locale] = mergeData(before, localeNormalized.data);
+          afterByLocale[locale] = mergeData(before, completedData);
         }
 
         const change = await logAIChange({
