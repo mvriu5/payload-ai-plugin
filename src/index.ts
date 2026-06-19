@@ -1,6 +1,7 @@
 import type { CollectionConfig, Config } from "payload"
 
-import { aiProviders, getResolvedAIModelConfig, type AIModelConfig } from "./ai/providerOptions.js"
+import { aiProviders, getResolvedAIModelConfig, type AIModelConfig, type CustomAIModel } from "./ai/providerOptions.js"
+import type { CustomProviderURLConfig } from "./ai/providerRuntime.js"
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
@@ -12,6 +13,8 @@ import { isInternalCollection } from "./payload/shared.js"
 export type PayloadAIPluginOptions = {
     allowUserApiKeys?: boolean
     collections?: CollectionPermissionMap
+    customAIModel?: CustomAIModel[]
+    customProviderURL?: CustomProviderURLConfig
     disabled?: boolean
     maxOutputTokens?: number
     models?: AIModelConfig
@@ -160,7 +163,7 @@ export const payloadAiPlugin =
         const incomingOnInit = config.onInit
         const collectionPermissions = resolveCollectionPermissions(pluginOptions.collections)
         const allowUserApiKeys = pluginOptions.allowUserApiKeys !== false
-        const modelConfig = getResolvedAIModelConfig(pluginOptions.models)
+        const modelConfig = getResolvedAIModelConfig(pluginOptions.models, pluginOptions.customAIModel)
         const maxOutputTokens =
             typeof pluginOptions.maxOutputTokens === "number" && Number.isFinite(pluginOptions.maxOutputTokens) && pluginOptions.maxOutputTokens > 0
                 ? Math.floor(pluginOptions.maxOutputTokens)
@@ -199,6 +202,7 @@ export const payloadAiPlugin =
             handler: createChatHandler({
                 allowUserApiKeys,
                 collections: collectionPermissions,
+                customProviderURL: pluginOptions.customProviderURL,
                 maxOutputTokens,
                 models: modelConfig,
             }),
