@@ -15,10 +15,13 @@ export type AppliedChange = {
     collection?: string | null
     createdAt?: string | null
     documentID?: string | null
+    inputTokens?: number | null
+    outputTokens?: number | null
     prompt?: string | null
     removals: number
     slug?: string | null
     targetType?: string | null
+    totalTokens?: number | null
     title: string
     userID?: string | null
     userLabel?: string | null

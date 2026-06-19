@@ -106,6 +106,18 @@ const createAIChangesCollection = (): CollectionConfig => ({
       type: "textarea",
     },
     {
+      name: "inputTokens",
+      type: "number",
+    },
+    {
+      name: "outputTokens",
+      type: "number",
+    },
+    {
+      name: "totalTokens",
+      type: "number",
+    },
+    {
       name: "aiResponse",
       type: "textarea",
     },

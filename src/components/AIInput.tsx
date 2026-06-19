@@ -66,6 +66,11 @@ type AIChatStreamEvent =
     | {
           data: {
               proposals?: AIActionProposal[]
+              usage?: {
+                  inputTokens?: number
+                  outputTokens?: number
+                  totalTokens?: number
+              } | null
           }
           event: "proposals"
       }
@@ -227,6 +232,11 @@ export const AIInput = () => {
     const [mentions, setMentions] = useState<AIMention[]>([])
     const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<number[]>([])
     const [response, setResponse] = useState("")
+    const [tokenUsage, setTokenUsage] = useState<null | {
+        inputTokens?: number
+        outputTokens?: number
+        totalTokens?: number
+    }>(null)
     const [error, setError] = useState("")
     const [proposals, setProposals] = useState<AIActionProposal[]>([])
     const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
@@ -552,6 +562,7 @@ export const AIInput = () => {
         setError("")
         setProposals([])
         setResponse("")
+        setTokenUsage(null)
 
         try {
             const res = await fetch(
@@ -608,6 +619,7 @@ export const AIInput = () => {
 
                     if (event.event === "proposals") {
                         setProposals(event.data.proposals || [])
+                        setTokenUsage(event.data.usage || null)
                         continue
                     }
 
@@ -620,6 +632,7 @@ export const AIInput = () => {
             const finalEvent = buffer.trim() ? parseSSEEvent(buffer.trim()) : null
             if (finalEvent?.event === "proposals") {
                 setProposals(finalEvent.data.proposals || [])
+                setTokenUsage(finalEvent.data.usage || null)
             }
             if (finalEvent?.event === "error") {
                 throw new Error(finalEvent.data.error || "AI request failed")
@@ -627,6 +640,7 @@ export const AIInput = () => {
         } catch (err) {
             setProposals([])
             setResponse("")
+            setTokenUsage(null)
             setError(err instanceof Error ? err.message : "AI request failed")
         } finally {
             setIsLoading(false)
@@ -648,6 +662,7 @@ export const AIInput = () => {
                         aiResponse: response,
                         prompt,
                         proposal,
+                        tokenUsage,
                     }),
                     headers: { "Content-Type": "application/json" },
                     method: "POST",
@@ -671,6 +686,7 @@ export const AIInput = () => {
             setError("")
             setProposals([])
             setResponse("")
+            setTokenUsage(null)
             if (result.change) {
                 setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 12))
             }
@@ -777,6 +793,7 @@ export const AIInput = () => {
                         setError("")
                         setProposals([])
                         setResponse("")
+                        setTokenUsage(null)
                         clearInput()
                     }}
                     onDismissError={() => {
@@ -784,6 +801,7 @@ export const AIInput = () => {
                     }}
                     onApply={(proposal, _index) => void handleApplyProposal(proposal)}
                     proposals={proposals}
+                    tokenUsage={tokenUsage}
                 />
             </div>
             <RecentChangesList changes={appliedChanges} />

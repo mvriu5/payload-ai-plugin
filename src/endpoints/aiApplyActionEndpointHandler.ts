@@ -21,6 +21,11 @@ import {
 
 type AIApplyActionBody = {
   aiResponse?: string;
+  tokenUsage?: {
+    inputTokens?: unknown;
+    outputTokens?: unknown;
+    totalTokens?: unknown;
+  };
   prompt?: string;
   proposal?: AIActionProposal;
 };
@@ -33,6 +38,11 @@ type AIApplyActionEndpointOptions = {
 type AIApplyActionLogContext = {
   aiResponse?: string;
   prompt?: string;
+  tokenUsage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
 };
 
 type AppliedDoc = {
@@ -265,6 +275,10 @@ const getUserLabel = (req: Parameters<PayloadHandler>[0]) => {
   return null;
 };
 
+const getOptionalNumber = (value: unknown) => {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+};
+
 const logAIChange = async ({
   changeLogCollection,
   context,
@@ -299,10 +313,13 @@ const logAIChange = async ({
         collection: "collection" in proposal ? proposal.collection : undefined,
         documentID:
           target.documentID === undefined ? undefined : String(target.documentID),
+        inputTokens: context?.tokenUsage?.inputTokens,
+        outputTokens: context?.tokenUsage?.outputTokens,
         prompt: context?.prompt,
         proposal: redactSensitiveData(proposalForLog),
         removals,
         slug: "slug" in proposal ? proposal.slug : undefined,
+        totalTokens: context?.tokenUsage?.totalTokens,
         targetType: proposal.action === "updateGlobal" ? "global" : "collection",
         targetURL: getTargetURL({
           documentID: target.documentID,
@@ -327,9 +344,12 @@ const logAIChange = async ({
       createdAt: new Date().toISOString(),
       documentID:
         target.documentID === undefined ? null : String(target.documentID),
+      inputTokens: context?.tokenUsage?.inputTokens ?? null,
+      outputTokens: context?.tokenUsage?.outputTokens ?? null,
       prompt: context?.prompt || null,
       removals,
       slug: "slug" in proposal ? proposal.slug : null,
+      totalTokens: context?.tokenUsage?.totalTokens ?? null,
       targetType: proposal.action === "updateGlobal" ? "global" : "collection",
       title: proposal.label,
       userID: getUserID(req) || null,
@@ -431,6 +451,13 @@ export const createAIApplyActionEndpointHandler =
         typeof body?.prompt === "string" && body.prompt.trim()
           ? body.prompt.trim()
           : undefined,
+      tokenUsage: body?.tokenUsage
+        ? {
+            inputTokens: getOptionalNumber(body.tokenUsage.inputTokens),
+            outputTokens: getOptionalNumber(body.tokenUsage.outputTokens),
+            totalTokens: getOptionalNumber(body.tokenUsage.totalTokens),
+          }
+        : undefined,
     };
 
     try {

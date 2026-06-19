@@ -31,6 +31,11 @@ type AIActionProposalListProps = {
     onDismissError?: () => void
     onApply: (proposal: AIActionProposal, index: number) => void
     proposals: AIActionProposal[]
+    tokenUsage?: {
+        inputTokens?: number
+        outputTokens?: number
+        totalTokens?: number
+    } | null
 }
 
 const maxDescriptionLength = 220
@@ -53,7 +58,7 @@ const getSafeProposalDetails = (proposal: AIActionProposal) => {
     return redactedProposal
 }
 
-export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, description, error, getViewURL, isApplying, onDismiss, onDismissError, onApply, proposals }: AIActionProposalListProps) => {
+export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, description, error, getViewURL, isApplying, onDismiss, onDismissError, onApply, proposals, tokenUsage }: AIActionProposalListProps) => {
     const [activeDiff, setActiveDiff] = useState<{
         diff: ProposalDiff
         proposal: AIActionProposal
@@ -191,7 +196,7 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
                     </button>
                 </div>
             ) : null}
-            {activeDiff ? <DiffDialog diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} /> : null}
+            {activeDiff ? <DiffDialog diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} tokenUsage={tokenUsage || undefined} /> : null}
         </div>
     )
 }

@@ -70,6 +70,12 @@ type SlugInput = {
 
 type LocalizedDataInput = Record<string, Record<string, unknown>>;
 
+type AITokenUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
 type RequiredFieldInfo = {
   defaultValue?: unknown;
   localized: boolean;
@@ -870,6 +876,7 @@ export const createAIChatEndpointHandler =
       const stream = new ReadableStream<Uint8Array>({
         start: async (controller) => {
           let didSendTerminalEvent = false;
+          let usage: AITokenUsage | null = null;
 
           try {
             for await (const part of result.fullStream) {
@@ -887,14 +894,20 @@ export const createAIChatEndpointHandler =
               }
 
               if (part.type === "finish") {
-                sendEvent(controller, "proposals", { proposals });
+                const finishPart = part as {
+                  totalUsage?: AITokenUsage;
+                  usage?: AITokenUsage;
+                };
+
+                usage = finishPart.totalUsage || finishPart.usage || null;
+                sendEvent(controller, "proposals", { proposals, usage });
                 sendEvent(controller, "done", {});
                 didSendTerminalEvent = true;
               }
             }
 
             if (!didSendTerminalEvent) {
-              sendEvent(controller, "proposals", { proposals });
+              sendEvent(controller, "proposals", { proposals, usage });
               sendEvent(controller, "done", {});
             }
           } catch (err) {

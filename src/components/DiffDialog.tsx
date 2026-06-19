@@ -16,6 +16,11 @@ type DiffDialogProps = {
     diff: ProposalDiff
     onClose: () => void
     proposal: AIActionProposal
+    tokenUsage?: {
+        inputTokens?: number
+        outputTokens?: number
+        totalTokens?: number
+    }
 }
 
 type DiffLine = {
@@ -273,10 +278,17 @@ const getDiffSections = (diff: ProposalDiff): DiffSection[] => {
     ]
 }
 
-export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps) => {
+const formatTokenUsage = (value?: number | null) => {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value.toLocaleString() : null
+}
+
+export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: DiffDialogProps) => {
     const [scrollLeft, setScrollLeft] = useState(0)
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
     const diffSections = getDiffSections(diff)
+    const totalTokens = formatTokenUsage(change?.totalTokens) || formatTokenUsage(tokenUsage?.totalTokens)
+    const inputTokens = formatTokenUsage(change?.inputTokens) || formatTokenUsage(tokenUsage?.inputTokens)
+    const outputTokens = formatTokenUsage(change?.outputTokens) || formatTokenUsage(tokenUsage?.outputTokens)
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -316,29 +328,35 @@ export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps)
 
                                 <span className={styles.detailLabel}>Date</span>
                                 <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
+
+                                {totalTokens && (
+                                    <>
+                                        <span className={styles.detailLabel}>Tokens</span>
+                                        <span className={styles.detailValue}>
+                                            {totalTokens}
+                                            {inputTokens && outputTokens ? ` (${inputTokens} in / ${outputTokens} out)` : ""}
+                                        </span>
+                                    </>
+                                )}
                             </div>
-                            {change.prompt ? (
-                                <div className={styles.detailTextBlock}>
-                                    <span className={styles.detailLabel}>Prompt</span>
-                                    <pre className={styles.detailText}>{change.prompt}</pre>
-                                </div>
-                            ) : null}
-                            {change.aiResponse ? (
-                                <div className={styles.detailTextBlock}>
-                                    <span className={styles.detailLabel}>AI response</span>
-                                    <pre className={styles.detailText}>{change.aiResponse}</pre>
-                                </div>
-                            ) : null}
                         </div>
-                    ) : null}
+                    ) : (
+                        totalTokens && (
+                            <div className={styles.detailSection}>
+                                <div className={styles.detailGrid}>
+                                    <span className={styles.detailLabel}>Tokens</span>
+                                    <span className={styles.detailValue}>
+                                        {totalTokens}
+                                        {inputTokens && outputTokens ? ` (${inputTokens} in / ${outputTokens} out)` : ""}
+                                    </span>
+                                </div>
+                            </div>
+                        )
+                    )}
                     {diffSections.map((section) => {
                         const diffRows = getDiffRows(section.beforeValue, section.afterValue)
                         const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)
-                        const longestLineLength = Math.max(
-                            ...section.beforeValue.split("\n").map((line) => line.length),
-                            ...section.afterValue.split("\n").map((line) => line.length),
-                            80
-                        )
+                        const longestLineLength = Math.max(...section.beforeValue.split("\n").map((line) => line.length), ...section.afterValue.split("\n").map((line) => line.length), 80)
                         const diffShellStyle = {
                             "--diff-line-offset": `-${scrollLeft}px`,
                             "--diff-line-width": `${longestLineLength + 8}ch`,
