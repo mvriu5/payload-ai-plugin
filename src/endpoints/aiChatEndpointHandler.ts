@@ -70,6 +70,14 @@ type SlugInput = {
 
 type LocalizedDataInput = Record<string, Record<string, unknown>>;
 
+type RequiredFieldInfo = {
+  defaultValue?: unknown;
+  localized: boolean;
+  options?: (string | { label?: unknown; value?: string })[];
+  path: string;
+  type?: string;
+};
+
 type ProposalWritePayload =
   | {
       data: Record<string, unknown>;
@@ -121,6 +129,225 @@ const hasLocalizedData = (
   value: unknown,
 ): value is LocalizedDataInput => {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
+
+const getRequiredFieldInfos = (
+  fields: FieldConfig[],
+  path = "",
+): RequiredFieldInfo[] => {
+  return fields.flatMap((field) => {
+    const fieldPath = field.name
+      ? path
+        ? `${path}.${field.name}`
+        : field.name
+      : path;
+    const requiredField =
+      field.required && fieldPath
+        ? [
+            {
+              defaultValue: field.defaultValue,
+              localized: Boolean(field.localized),
+              options: field.options,
+              path: fieldPath,
+              type: field.type,
+            },
+          ]
+        : [];
+    const nestedFields = field.fields?.length
+      ? getRequiredFieldInfos(field.fields, fieldPath)
+      : [];
+    const nestedBlocks = field.blocks?.length
+      ? field.blocks.flatMap((block) =>
+          getRequiredFieldInfos(block.fields || [], `${fieldPath}.${block.slug}`),
+        )
+      : [];
+
+    return [...requiredField, ...nestedFields, ...nestedBlocks];
+  });
+};
+
+const setValueAtPath = (
+  data: Record<string, unknown>,
+  path: string,
+  value: unknown,
+) => {
+  const segments = path.split(".");
+  let current = data;
+
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment];
+
+    if (!isRecord(next)) {
+      current[segment] = {};
+    }
+
+    current = current[segment] as Record<string, unknown>;
+  }
+
+  current[segments[segments.length - 1]] = value;
+};
+
+const getOptionValue = (
+  option?: string | { label?: unknown; value?: string },
+) => {
+  if (!option) return undefined;
+  if (typeof option === "string") return option;
+  return typeof option.value === "string" ? option.value : undefined;
+};
+
+const getCreateFallbackValue = ({
+  field,
+  label,
+}: {
+  field: RequiredFieldInfo;
+  label: string;
+}) => {
+  if (field.defaultValue !== undefined) return field.defaultValue;
+  if (field.path === "_status") return "draft";
+  if (field.type === "checkbox") return false;
+  if (field.type === "select" || field.type === "radio") {
+    return getOptionValue(field.options?.[0]);
+  }
+
+  const terminalSegment = field.path.split(".").at(-1)?.toLowerCase();
+
+  if (
+    ["title", "name", "label", "headline"].includes(terminalSegment || "") &&
+    ["text", "textarea"].includes(field.type || "")
+  ) {
+    return getSafeProposalLabel(label);
+  }
+
+  return undefined;
+};
+
+const fillMissingCreateFields = ({
+  data,
+  label,
+  localizedData,
+  requiredFields,
+}: {
+  data?: Record<string, unknown>;
+  label: string;
+  localizedData?: LocalizedDataInput;
+  requiredFields: RequiredFieldInfo[];
+}) => {
+  if (localizedData) {
+    const completedLocalizedData = Object.fromEntries(
+      Object.entries(localizedData).map(([locale, localeData]) => [
+        locale,
+        { ...localeData },
+      ]),
+    );
+    const localeEntries = Object.entries(completedLocalizedData);
+    const [firstLocale, firstLocaleData] = localeEntries[0] || [];
+
+    for (const [locale, localeData] of localeEntries) {
+      for (const field of requiredFields.filter((item) => item.localized)) {
+        if (hasValueAtPath(localeData, field.path)) continue;
+
+        const fallbackValue = getCreateFallbackValue({ field, label });
+
+        if (fallbackValue !== undefined) {
+          setValueAtPath(localeData, field.path, fallbackValue);
+        }
+      }
+    }
+
+    if (firstLocale && firstLocaleData) {
+      for (const field of requiredFields.filter((item) => !item.localized)) {
+        if (hasValueAtPath(firstLocaleData, field.path)) continue;
+
+        const fallbackValue = getCreateFallbackValue({ field, label });
+
+        if (fallbackValue !== undefined) {
+          setValueAtPath(firstLocaleData, field.path, fallbackValue);
+        }
+      }
+    }
+
+    return {
+      localizedData: completedLocalizedData,
+    };
+  }
+
+  const completedData = { ...(data || {}) };
+
+  for (const field of requiredFields) {
+    if (hasValueAtPath(completedData, field.path)) continue;
+
+    const fallbackValue = getCreateFallbackValue({ field, label });
+
+    if (fallbackValue !== undefined) {
+      setValueAtPath(completedData, field.path, fallbackValue);
+    }
+  }
+
+  return {
+    data: completedData,
+  };
+};
+
+const hasValueAtPath = (data: Record<string, unknown>, path: string) => {
+  const segments = path.split(".");
+  let current: unknown = data;
+
+  for (const segment of segments) {
+    if (!isRecord(current) || current[segment] === undefined) {
+      return false;
+    }
+
+    current = current[segment];
+  }
+
+  return true;
+};
+
+const getMissingCreateFields = ({
+  data,
+  localizedData,
+  requiredFields,
+}: {
+  data?: Record<string, unknown>;
+  localizedData?: LocalizedDataInput;
+  requiredFields: RequiredFieldInfo[];
+}) => {
+  if (localizedData) {
+    const locales = Object.entries(localizedData);
+    const firstLocale = locales[0];
+
+    if (!firstLocale) {
+      return ["localizedData must include at least one locale entry"];
+    }
+
+    const missing: string[] = [];
+
+    for (const [locale, localeData] of locales) {
+      for (const field of requiredFields.filter((item) => item.localized)) {
+        if (!hasValueAtPath(localeData, field.path)) {
+          missing.push(`${locale}:${field.path}`);
+        }
+      }
+    }
+
+    for (const field of requiredFields.filter((item) => !item.localized)) {
+      if (!hasValueAtPath(firstLocale[1], field.path)) {
+        missing.push(`${firstLocale[0]}:${field.path}`);
+      }
+    }
+
+    return missing;
+  }
+
+  if (!data) return ["data is required"];
+
+  return requiredFields
+    .filter((field) => !hasValueAtPath(data, field.path))
+    .map((field) => field.path);
 };
 
 const getSafeProposalLabel = (label: string) => {
@@ -269,6 +496,12 @@ export const createAIChatEndpointHandler =
           .map((mention) => mention.slug as string) || []
       ).filter((locale, index, array) => array.indexOf(locale) === index);
       const activeLocale = selectedLocales.at(-1);
+      const createRequiredFieldsByCollection = Object.fromEntries(
+        allowedCollections.map((collection) => [
+          collection.slug,
+          getRequiredFieldInfos(collection.fields as FieldConfig[]),
+        ]),
+      );
       const collectionSlugSchema = z.enum(
         collectionSlugs as [string, ...string[]],
       );
@@ -358,7 +591,7 @@ export const createAIChatEndpointHandler =
         },
         proposeCreateDoc: {
           description:
-            "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+            "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. Include every required field for the target collection. For localizedData, include every localized required field in every locale entry, and include non-localized required fields in the first locale entry. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
           inputSchema: z
             .object({
               collection: collectionSlugSchema,
@@ -384,16 +617,41 @@ export const createAIChatEndpointHandler =
               "create",
             );
             if (permissionError) return permissionError;
+            const completedCreatePayload = fillMissingCreateFields({
+              data,
+              label,
+              localizedData,
+              requiredFields:
+                createRequiredFieldsByCollection[collection] || [],
+            });
+            const missingFields = getMissingCreateFields({
+              data: completedCreatePayload.data,
+              localizedData: completedCreatePayload.localizedData,
+              requiredFields:
+                createRequiredFieldsByCollection[collection] || [],
+            });
 
-            const proposal: AIActionProposal = {
-              action: "create",
-              collection,
-              ...(localizedData
-                ? { localizedData }
-                : { data: data || {} }),
-              label: getSafeProposalLabel(label),
-              ...(activeLocale ? { locale: activeLocale } : {}),
-            };
+            if (missingFields.length > 0) {
+              return {
+                error: `Create proposal is missing required fields for ${collection}: ${missingFields.join(", ")}`,
+              };
+            }
+
+            const proposal: AIActionProposal = completedCreatePayload.localizedData
+              ? {
+                  action: "create",
+                  collection,
+                  label: getSafeProposalLabel(label),
+                  localizedData: completedCreatePayload.localizedData,
+                  ...(activeLocale ? { locale: activeLocale } : {}),
+                }
+              : {
+                  action: "create",
+                  collection,
+                  data: completedCreatePayload.data || {},
+                  label: getSafeProposalLabel(label),
+                  ...(activeLocale ? { locale: activeLocale } : {}),
+                };
 
             return addSignedProposal(proposal);
           },
@@ -597,6 +855,8 @@ export const createAIChatEndpointHandler =
           "When mention context is provided, use it as the selected CMS scope and prefer it over guessing collection names.",
           "When a locale is selected in mention context, treat it as the active locale for reads, translations, and localized update proposals.",
           "When multiple locales are selected, create one proposal that uses localizedData with one top-level key per locale code instead of separate proposals.",
+          `For create proposals, always include all required fields. Required create fields by collection: ${JSON.stringify(createRequiredFieldsByCollection)}.`,
+          "If a create proposal would otherwise miss a simple required field like title, name, label, headline, _status, checkbox, or a select/radio default, include it in the tool call instead of omitting it.",
           "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
           "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
           "Keep the visible response under 40 words and describe only what kind of change was proposed.",

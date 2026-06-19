@@ -52,7 +52,7 @@ type LocalizationConfig = {
         | {
               code?: string
               label?: unknown
-            }
+          }
     >
 }
 
@@ -171,6 +171,38 @@ const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
 
 const sanitizeResponseText = (value: string) => value.replace(/\*\*/g, "")
 
+const isMentionBoundary = (character: string | undefined) => {
+    return character === undefined || /\s/.test(character)
+}
+
+const getActiveMentionRange = (valueBeforeCaret: string) => {
+    const caretPosition = valueBeforeCaret.length
+
+    for (let index = valueBeforeCaret.length - 1; index >= 0; index -= 1) {
+        const character = valueBeforeCaret[index]
+
+        if (character === "@") {
+            const previousCharacter = valueBeforeCaret[index - 1]
+            const query = valueBeforeCaret.slice(index + 1)
+
+            if (!isMentionBoundary(previousCharacter)) return null
+            if (!/^[\w-]*$/.test(query)) return null
+
+            return {
+                query,
+                range: {
+                    end: caretPosition,
+                    start: index,
+                },
+            }
+        }
+
+        if (isMentionBoundary(character)) break
+    }
+
+    return null
+}
+
 export const AIInput = () => {
     const { config } = useConfig()
     const editorRef = useRef<HTMLDivElement>(null)
@@ -187,6 +219,10 @@ export const AIInput = () => {
     const [mentionRange, setMentionRange] = useState<null | {
         end: number
         start: number
+    }>(null)
+    const [mentionPopoverPosition, setMentionPopoverPosition] = useState<null | {
+        left: number
+        top: number
     }>(null)
     const [mentions, setMentions] = useState<AIMention[]>([])
     const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<number[]>([])
@@ -263,12 +299,7 @@ export const AIInput = () => {
 
         if (!locale || typeof locale !== "object") return []
 
-        const slug =
-            typeof locale.code === "string"
-                ? locale.code
-                : typeof locale.label === "string"
-                  ? locale.label
-                  : null
+        const slug = typeof locale.code === "string" ? locale.code : typeof locale.label === "string" ? locale.label : null
 
         if (!slug) return []
 
@@ -301,11 +332,7 @@ export const AIInput = () => {
 
     const normalizedMentionQuery = mentionQuery.toLowerCase()
     const filteredCollections = collections.filter((collection) => collection.slug.toLowerCase().includes(normalizedMentionQuery) || collection.label.toLowerCase().includes(normalizedMentionQuery))
-    const filteredMentionOptions = mentionOptions.filter(
-        (option) =>
-            option.slug.toLowerCase().includes(normalizedMentionQuery) ||
-            option.label.toLowerCase().includes(normalizedMentionQuery)
-    )
+    const filteredMentionOptions = mentionOptions.filter((option) => option.slug.toLowerCase().includes(normalizedMentionQuery) || option.label.toLowerCase().includes(normalizedMentionQuery))
     const documentSuggestionCollection = filteredCollections.length === 1 ? filteredCollections[0]?.slug : null
     const { documentSuggestions, resetDocumentSuggestions } = useDocumentMentionSuggestions({
         apiRoute: config.routes.api,
@@ -315,9 +342,9 @@ export const AIInput = () => {
     })
     const mentionSuggestions = [...filteredMentionOptions, ...documentSuggestions]
 
-    const getCaretOffset = (element: HTMLElement) => {
+    const getTextBeforeCaret = (element: HTMLElement) => {
         const selection = window.getSelection()
-        if (!selection || selection.rangeCount === 0) return 0
+        if (!selection || selection.rangeCount === 0) return ""
 
         const range = selection.getRangeAt(0)
         const clonedRange = range.cloneRange()
@@ -325,7 +352,7 @@ export const AIInput = () => {
         clonedRange.selectNodeContents(element)
         clonedRange.setEnd(range.endContainer, range.endOffset)
 
-        return clonedRange.toString().length
+        return clonedRange.toString()
     }
 
     const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
@@ -356,6 +383,34 @@ export const AIInput = () => {
         }
     }
 
+    const updateMentionPopoverPosition = useCallback((range: { end: number; start: number } | null) => {
+        const editor = editorRef.current
+        const popover = mentionPopoverRef.current
+
+        if (!editor || !popover || !range) {
+            setMentionPopoverPosition(null)
+            return
+        }
+
+        const startPosition = getTextNodeAtOffset(editor, range.start)
+        const anchorRange = document.createRange()
+
+        anchorRange.setStart(startPosition.node, startPosition.offset)
+        anchorRange.setEnd(startPosition.node, startPosition.offset)
+
+        const editorRect = editor.getBoundingClientRect()
+        const anchorRect = anchorRange.getBoundingClientRect()
+        const fallbackLeft = Math.max(0, anchorRect.left - editorRect.left + 12)
+        const fallbackTop = Math.max(0, anchorRect.bottom - editorRect.top + 20)
+        const popoverWidth = popover.offsetWidth || 260
+        const maxLeft = Math.max(0, editor.clientWidth - popoverWidth)
+
+        setMentionPopoverPosition({
+            left: Math.min(fallbackLeft, maxLeft),
+            top: fallbackTop,
+        })
+    }, [])
+
     const replaceTextRangeWithBadge = ({ badge, editor, end, start }: { badge: HTMLSpanElement; editor: HTMLElement; end: number; start: number }) => {
         const startPosition = getTextNodeAtOffset(editor, start)
         const endPosition = getTextNodeAtOffset(editor, end)
@@ -377,21 +432,42 @@ export const AIInput = () => {
         selection?.addRange(caretRange)
     }
 
-    const updateMentionState = (value: string, caretPosition: number) => {
-        const valueBeforeCaret = value.slice(0, caretPosition)
-        const match = /(?:^|\s)@([\w-]*)$/.exec(valueBeforeCaret)
+    const updateMentionState = (valueBeforeCaret: string) => {
+        const activeMention = getActiveMentionRange(valueBeforeCaret)
 
-        if (!match || typeof match.index !== "number") {
+        if (!activeMention) {
             setMentionQuery("")
             setMentionRange(null)
+            setMentionPopoverPosition(null)
             return
         }
 
-        const atIndex = valueBeforeCaret.lastIndexOf("@")
-
-        setMentionQuery(match[1] || "")
-        setMentionRange({ end: caretPosition, start: atIndex })
+        setMentionQuery(activeMention.query)
+        setMentionRange(activeMention.range)
     }
+
+    useEffect(() => {
+        if (!mentionRange) {
+            setMentionPopoverPosition(null)
+            return
+        }
+
+        updateMentionPopoverPosition(mentionRange)
+    }, [mentionRange, mentionSuggestions.length, updateMentionPopoverPosition])
+
+    useEffect(() => {
+        if (!mentionRange) return
+
+        const updatePosition = () => updateMentionPopoverPosition(mentionRange)
+
+        window.addEventListener("resize", updatePosition)
+        window.addEventListener("scroll", updatePosition, true)
+
+        return () => {
+            window.removeEventListener("resize", updatePosition)
+            window.removeEventListener("scroll", updatePosition, true)
+        }
+    }, [mentionRange, updateMentionPopoverPosition])
 
     const clearInput = () => {
         setPrompt("")
@@ -417,17 +493,12 @@ export const AIInput = () => {
         const editor = editorRef.current
         if (!mentionRange || !editor) return
 
-        const beforeMention = prompt.slice(0, mentionRange.start)
-        const afterMention = prompt.slice(mentionRange.end)
+        const currentValue = editor.innerText
+        const beforeMention = currentValue.slice(0, mentionRange.start)
+        const afterMention = currentValue.slice(mentionRange.end)
         const badgeType = suggestion.type === "doc" ? "document" : suggestion.type
         const badgePrefix = `${badgeType}:`
         const badgeText = `${badgePrefix} ${suggestion.label}`
-        const promptText =
-            suggestion.type === "doc"
-                ? `${badgeText} (${suggestion.collection}/${suggestion.id})`
-                : suggestion.type === "locale"
-                  ? `${badgeText} (${suggestion.slug})`
-                  : badgeText
         const badge = document.createElement("span")
 
         badge.className = [styles.badge, styles[suggestion.type], styles.inlineBadge].join(" ")
@@ -451,7 +522,7 @@ export const AIInput = () => {
         })
         editor.focus()
 
-        setPrompt(`${beforeMention}${promptText} ${afterMention}`)
+        setPrompt(`${beforeMention}${badgeText} ${afterMention}`)
         setMentions((currentMentions) => {
             const mentionExists = currentMentions.some(
                 (mention) =>
@@ -468,6 +539,7 @@ export const AIInput = () => {
         })
         setMentionQuery("")
         setMentionRange(null)
+        setMentionPopoverPosition(null)
         resetDocumentSuggestions()
     }
 
@@ -633,7 +705,7 @@ export const AIInput = () => {
                                 if (!value.trim()) {
                                     setMentions([])
                                 }
-                                updateMentionState(value, getCaretOffset(event.currentTarget))
+                                updateMentionState(getTextBeforeCaret(event.currentTarget))
                             }}
                             onKeyDown={(event) => {
                                 if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
@@ -654,7 +726,21 @@ export const AIInput = () => {
                             suppressContentEditableWarning
                         />
                     </div>
-                    {mentionRange ? <CollectionMentionPopover containerRef={mentionPopoverRef} onSelect={insertMention} suggestions={mentionSuggestions} /> : null}
+                    {mentionRange ? (
+                        <CollectionMentionPopover
+                            containerRef={mentionPopoverRef}
+                            onSelect={insertMention}
+                            style={
+                                mentionPopoverPosition
+                                    ? {
+                                          left: `${mentionPopoverPosition.left}px`,
+                                          top: `${mentionPopoverPosition.top}px`,
+                                      }
+                                    : undefined
+                            }
+                            suggestions={mentionSuggestions}
+                        />
+                    ) : null}
                 </div>
                 <div className={styles.chatActionsRow}>
                     <div className={styles.settings}>

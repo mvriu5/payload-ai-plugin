@@ -26,6 +26,7 @@ export type FieldConfig = {
     condition?: unknown;
   };
   blocks?: BlockConfig[];
+  defaultValue?: unknown;
   fields?: FieldConfig[];
   hasMany?: boolean;
   label?: unknown;

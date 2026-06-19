@@ -2,6 +2,7 @@ export type FieldConfig = {
   blocks?: BlockConfig[];
   defaultValue?: unknown;
   fields?: FieldConfig[];
+  label?: unknown;
   localized?: boolean;
   name?: string;
   options?: (string | { value?: string })[];

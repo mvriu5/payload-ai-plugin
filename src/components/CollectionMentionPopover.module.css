@@ -3,14 +3,12 @@
     border: 1px solid var(--theme-elevation-150);
     border-radius: 6px;
     box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
-    left: 0;
     max-height: 220px;
     max-width: calc(100% - 96px);
     min-width: 260px;
     overflow: auto;
     padding: 6px;
     position: absolute;
-    top: calc(100% + 6px);
     z-index: 10;
 }
 

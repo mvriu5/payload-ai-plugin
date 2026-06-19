@@ -1,4 +1,5 @@
 import styles from "./CollectionMentionPopover.module.css";
+import type { CSSProperties } from "react";
 import type { RefObject } from "react";
 
 export type CollectionMentionOption = {
@@ -15,6 +16,7 @@ type CollectionMentionPopoverProps = {
     containerRef?: RefObject<HTMLDivElement | null>;
     suggestions: CollectionMentionOption[];
     onSelect: (suggestion: CollectionMentionOption) => void;
+    style?: CSSProperties;
 };
 
 const suggestionGroups: { label: string, type: CollectionMentionOption["type"] }[] = [
@@ -56,7 +58,7 @@ const getSuggestionLabel = (suggestion: CollectionMentionOption) => {
     return `${suggestion.collection} item`;
 };
 
-export const CollectionMentionPopover = ({ containerRef, onSelect, suggestions }: CollectionMentionPopoverProps) => {
+export const CollectionMentionPopover = ({ containerRef, onSelect, style, suggestions }: CollectionMentionPopoverProps) => {
     if (suggestions.length === 0) return null;
 
     const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, suggestion: CollectionMentionOption) => {
@@ -88,7 +90,7 @@ export const CollectionMentionPopover = ({ containerRef, onSelect, suggestions }
     }
 
     return (
-        <div className={styles.popover} ref={containerRef}>
+        <div className={styles.popover} ref={containerRef} style={style}>
             {suggestionGroups.map((group) => {
                 const groupSuggestions = suggestions.filter((s) => s.type === group.type);
                 if (groupSuggestions.length === 0) return null;
