@@ -4,6 +4,7 @@
     display: flex;
     inset: 0;
     justify-content: center;
+    overflow: auto;
     padding: 24px;
     position: fixed;
     z-index: 1100;
@@ -19,8 +20,19 @@
     gap: 16px;
     max-height: min(760px, calc(100vh - 48px));
     max-width: min(1120px, calc(100vw - 48px));
+    min-height: 0;
+    overflow: hidden;
     padding: 16px;
     width: 100%;
+}
+
+.dialogContent {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    overflow: auto;
 }
 
 .dialogHeader {
@@ -46,6 +58,7 @@
 
 .detailSection {
     display: flex;
+    flex: 0 0 auto;
     flex-direction: column;
     gap: 10px;
 }
@@ -123,6 +136,7 @@
     border: 1px solid var(--theme-elevation-150);
     border-radius: 0;
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
     min-width: 0;
@@ -131,8 +145,10 @@
 
 .diffSection {
     display: flex;
+    flex: 0 0 calc(100% - 1px);
     flex-direction: column;
     gap: 6px;
+    min-height: calc(100% - 1px);
 }
 
 .diffSectionLabel {
@@ -173,7 +189,7 @@
     flex: 1 1 auto;
     font-size: 12px;
     line-height: 1.5;
-    min-height: 260px;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
 }
@@ -311,7 +327,7 @@
     }
 
     .diffScroll {
-        min-height: 180px;
+        min-height: 0;
     }
 
 }

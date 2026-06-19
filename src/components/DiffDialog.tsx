@@ -307,112 +307,114 @@ export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps)
                         <XIcon />
                     </button>
                 </div>
-                {change ? (
-                    <div className={styles.detailSection}>
-                        <div className={styles.detailGrid}>
-                            <span className={styles.detailLabel}>User</span>
-                            <span className={styles.detailValue}>{change.userLabel || change.userID || "Unknown"}</span>
+                <div className={styles.dialogContent}>
+                    {change ? (
+                        <div className={styles.detailSection}>
+                            <div className={styles.detailGrid}>
+                                <span className={styles.detailLabel}>User</span>
+                                <span className={styles.detailValue}>{change.userLabel || change.userID || "Unknown"}</span>
 
-                            <span className={styles.detailLabel}>Date</span>
-                            <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
+                                <span className={styles.detailLabel}>Date</span>
+                                <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
+                            </div>
+                            {change.prompt ? (
+                                <div className={styles.detailTextBlock}>
+                                    <span className={styles.detailLabel}>Prompt</span>
+                                    <pre className={styles.detailText}>{change.prompt}</pre>
+                                </div>
+                            ) : null}
+                            {change.aiResponse ? (
+                                <div className={styles.detailTextBlock}>
+                                    <span className={styles.detailLabel}>AI response</span>
+                                    <pre className={styles.detailText}>{change.aiResponse}</pre>
+                                </div>
+                            ) : null}
                         </div>
-                        {change.prompt ? (
-                            <div className={styles.detailTextBlock}>
-                                <span className={styles.detailLabel}>Prompt</span>
-                                <pre className={styles.detailText}>{change.prompt}</pre>
-                            </div>
-                        ) : null}
-                        {change.aiResponse ? (
-                            <div className={styles.detailTextBlock}>
-                                <span className={styles.detailLabel}>AI response</span>
-                                <pre className={styles.detailText}>{change.aiResponse}</pre>
-                            </div>
-                        ) : null}
-                    </div>
-                ) : null}
-                {diffSections.map((section) => {
-                    const diffRows = getDiffRows(section.beforeValue, section.afterValue)
-                    const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)
-                    const longestLineLength = Math.max(
-                        ...section.beforeValue.split("\n").map((line) => line.length),
-                        ...section.afterValue.split("\n").map((line) => line.length),
-                        80
-                    )
-                    const diffShellStyle = {
-                        "--diff-line-offset": `-${scrollLeft}px`,
-                        "--diff-line-width": `${longestLineLength + 8}ch`,
-                    } as CSSProperties
+                    ) : null}
+                    {diffSections.map((section) => {
+                        const diffRows = getDiffRows(section.beforeValue, section.afterValue)
+                        const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)
+                        const longestLineLength = Math.max(
+                            ...section.beforeValue.split("\n").map((line) => line.length),
+                            ...section.afterValue.split("\n").map((line) => line.length),
+                            80
+                        )
+                        const diffShellStyle = {
+                            "--diff-line-offset": `-${scrollLeft}px`,
+                            "--diff-line-width": `${longestLineLength + 8}ch`,
+                        } as CSSProperties
 
-                    return (
-                        <div className={styles.diffSection} key={section.id}>
-                            {section.label ? <div className={styles.diffSectionLabel}>{section.label}</div> : null}
-                            <div className={styles.diffShell} style={diffShellStyle}>
-                                <div className={styles.diffScroll}>
-                                    <div className={styles.diffHeaderGrid}>
-                                        <div className={styles.diffPaneHeader}>Current</div>
-                                        <div className={styles.diffPaneHeader}>Proposed</div>
-                                    </div>
-                                    <div className={styles.diffRows}>
-                                        {displayRows.map((displayRow) => {
-                                            if (displayRow.type === "collapsed") {
+                        return (
+                            <div className={styles.diffSection} key={section.id}>
+                                {section.label ? <div className={styles.diffSectionLabel}>{section.label}</div> : null}
+                                <div className={styles.diffShell} style={diffShellStyle}>
+                                    <div className={styles.diffScroll}>
+                                        <div className={styles.diffHeaderGrid}>
+                                            <div className={styles.diffPaneHeader}>Current</div>
+                                            <div className={styles.diffPaneHeader}>Proposed</div>
+                                        </div>
+                                        <div className={styles.diffRows}>
+                                            {displayRows.map((displayRow) => {
+                                                if (displayRow.type === "collapsed") {
+                                                    return (
+                                                        <button
+                                                            className={styles.diffCollapsedRow}
+                                                            key={`${section.id}-collapsed-${displayRow.id}`}
+                                                            onClick={() => {
+                                                                setExpandedGroups((current) => {
+                                                                    const next = new Set(current)
+                                                                    const groupID = `${section.id}:${displayRow.id}`
+
+                                                                    if (displayRow.expanded) {
+                                                                        next.delete(groupID)
+                                                                    } else {
+                                                                        next.add(groupID)
+                                                                    }
+
+                                                                    return next
+                                                                })
+                                                            }}
+                                                            type="button"
+                                                        >
+                                                            {displayRow.expanded ? "Hide" : "Show"} {displayRow.count} unchanged lines
+                                                            {displayRow.path ? <span className={styles.diffCollapsedPath}>{displayRow.path}</span> : null}
+                                                        </button>
+                                                    )
+                                                }
+
+                                                const row = displayRow.row
+
                                                 return (
-                                                    <button
-                                                        className={styles.diffCollapsedRow}
-                                                        key={`${section.id}-collapsed-${displayRow.id}`}
-                                                        onClick={() => {
-                                                            setExpandedGroups((current) => {
-                                                                const next = new Set(current)
-                                                                const groupID = `${section.id}:${displayRow.id}`
-
-                                                                if (displayRow.expanded) {
-                                                                    next.delete(groupID)
-                                                                } else {
-                                                                    next.add(groupID)
-                                                                }
-
-                                                                return next
-                                                            })
-                                                        }}
-                                                        type="button"
-                                                    >
-                                                        {displayRow.expanded ? "Hide" : "Show"} {displayRow.count} unchanged lines
-                                                        {displayRow.path ? <span className={styles.diffCollapsedPath}>{displayRow.path}</span> : null}
-                                                    </button>
+                                                    <div className={styles.diffRow} key={`${section.id}-row-${displayRow.index}`}>
+                                                        <span
+                                                            className={[styles.diffLine, row.before.changed ? styles.diffLineRemoved : "", row.before.placeholder ? styles.diffLinePlaceholder : ""]
+                                                                .filter(Boolean)
+                                                                .join(" ")}
+                                                        >
+                                                            {row.before.changed && row.before.path ? <span className={styles.diffPathBadge}>{row.before.path}</span> : null}
+                                                            <span className={styles.diffLineContent}>{row.before.text || " "}</span>
+                                                        </span>
+                                                        <span
+                                                            className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
+                                                                .filter(Boolean)
+                                                                .join(" ")}
+                                                        >
+                                                            {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
+                                                            <span className={styles.diffLineContent}>{row.after.text || " "}</span>
+                                                        </span>
+                                                    </div>
                                                 )
-                                            }
-
-                                            const row = displayRow.row
-
-                                            return (
-                                                <div className={styles.diffRow} key={`${section.id}-row-${displayRow.index}`}>
-                                                    <span
-                                                        className={[styles.diffLine, row.before.changed ? styles.diffLineRemoved : "", row.before.placeholder ? styles.diffLinePlaceholder : ""]
-                                                            .filter(Boolean)
-                                                            .join(" ")}
-                                                    >
-                                                        {row.before.changed && row.before.path ? <span className={styles.diffPathBadge}>{row.before.path}</span> : null}
-                                                        <span className={styles.diffLineContent}>{row.before.text || " "}</span>
-                                                    </span>
-                                                    <span
-                                                        className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
-                                                            .filter(Boolean)
-                                                            .join(" ")}
-                                                    >
-                                                        {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
-                                                        <span className={styles.diffLineContent}>{row.after.text || " "}</span>
-                                                    </span>
-                                                </div>
-                                            )
-                                        })}
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className={styles.horizontalScroll} onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}>
+                                        <div className={styles.horizontalScrollSpacer} />
                                     </div>
                                 </div>
-                                <div className={styles.horizontalScroll} onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}>
-                                    <div className={styles.horizontalScrollSpacer} />
-                                </div>
                             </div>
-                        </div>
-                    )
-                })}
+                        )
+                    })}
+                </div>
             </div>
         </div>
     )
