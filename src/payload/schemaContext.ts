@@ -50,6 +50,9 @@ type BlockConfig = {
 type VersionConfig = boolean | { drafts?: boolean | Record<string, unknown> };
 
 type CollectionLikeConfig = {
+  admin?: {
+    useAsTitle?: string;
+  };
   access?: Record<string, unknown>;
   auth?: unknown;
   fields?: FieldConfig[];
@@ -265,6 +268,9 @@ export const describeCollectionLikeConfig = ({
         : getSerializableLabel(config.label) || slug,
     ...(localizedFieldNames.length > 0
       ? { localizedFieldNames }
+      : {}),
+    ...(type === "collection" && config.admin?.useAsTitle
+      ? { useAsTitle: config.admin.useAsTitle }
       : {}),
     slug,
     type,

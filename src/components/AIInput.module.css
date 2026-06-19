@@ -1,5 +1,5 @@
 .chatLayout {
-    align-items: stretch;
+    align-items: start;
     display: grid;
     gap: 16px;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

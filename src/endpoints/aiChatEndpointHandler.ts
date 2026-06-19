@@ -78,6 +78,7 @@ type AITokenUsage = {
 
 type RequiredFieldInfo = {
   defaultValue?: unknown;
+  isTitleField?: boolean;
   localized: boolean;
   options?: (string | { label?: unknown; value?: string })[];
   path: string;
@@ -143,6 +144,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 const getRequiredFieldInfos = (
   fields: FieldConfig[],
+  titleFieldName?: string,
   path = "",
 ): RequiredFieldInfo[] => {
   return fields.flatMap((field) => {
@@ -156,6 +158,7 @@ const getRequiredFieldInfos = (
         ? [
             {
               defaultValue: field.defaultValue,
+              isTitleField: field.name === titleFieldName,
               localized: Boolean(field.localized),
               options: field.options,
               path: fieldPath,
@@ -164,11 +167,15 @@ const getRequiredFieldInfos = (
           ]
         : [];
     const nestedFields = field.fields?.length
-      ? getRequiredFieldInfos(field.fields, fieldPath)
+      ? getRequiredFieldInfos(field.fields, titleFieldName, fieldPath)
       : [];
     const nestedBlocks = field.blocks?.length
       ? field.blocks.flatMap((block) =>
-          getRequiredFieldInfos(block.fields || [], `${fieldPath}.${block.slug}`),
+          getRequiredFieldInfos(
+            block.fields || [],
+            titleFieldName,
+            `${fieldPath}.${block.slug}`,
+          ),
         )
       : [];
 
@@ -222,7 +229,8 @@ const getCreateFallbackValue = ({
   const terminalSegment = field.path.split(".").at(-1)?.toLowerCase();
 
   if (
-    ["title", "name", "label", "headline"].includes(terminalSegment || "") &&
+    (field.isTitleField ||
+      ["title", "name", "label", "headline"].includes(terminalSegment || "")) &&
     ["text", "textarea"].includes(field.type || "")
   ) {
     return getSafeProposalLabel(label);
@@ -505,8 +513,18 @@ export const createAIChatEndpointHandler =
       const createRequiredFieldsByCollection = Object.fromEntries(
         allowedCollections.map((collection) => [
           collection.slug,
-          getRequiredFieldInfos(collection.fields as FieldConfig[]),
+          getRequiredFieldInfos(
+            collection.fields as FieldConfig[],
+            collection.admin?.useAsTitle,
+          ),
         ]),
+      );
+      const titleFieldByCollection = Object.fromEntries(
+        allowedCollections.flatMap((collection) =>
+          collection.admin?.useAsTitle
+            ? [[collection.slug, collection.admin.useAsTitle]]
+            : [],
+        ),
       );
       const collectionSlugSchema = z.enum(
         collectionSlugs as [string, ...string[]],
@@ -638,8 +656,19 @@ export const createAIChatEndpointHandler =
             });
 
             if (missingFields.length > 0) {
+              const titleFieldName = titleFieldByCollection[collection];
+              const missingTitleField = titleFieldName
+                ? missingFields.some(
+                    (field) =>
+                      field === titleFieldName ||
+                      field.endsWith(`:${titleFieldName}`),
+                  )
+                : false;
+
               return {
-                error: `Create proposal is missing required fields for ${collection}: ${missingFields.join(", ")}`,
+                error: missingTitleField
+                  ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
+                  : `Create proposal is missing required fields for ${collection}: ${missingFields.join(", ")}`,
               };
             }
 
@@ -862,6 +891,7 @@ export const createAIChatEndpointHandler =
           "When a locale is selected in mention context, treat it as the active locale for reads, translations, and localized update proposals.",
           "When multiple locales are selected, create one proposal that uses localizedData with one top-level key per locale code instead of separate proposals.",
           `For create proposals, always include all required fields. Required create fields by collection: ${JSON.stringify(createRequiredFieldsByCollection)}.`,
+          `Title fields by collection: ${JSON.stringify(titleFieldByCollection)}. If the user asks to create content and does not supply a title explicitly, infer a concise title from the request and include it in the create proposal.`,
           "If a create proposal would otherwise miss a simple required field like title, name, label, headline, _status, checkbox, or a select/radio default, include it in the tool call instead of omitting it.",
           "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
           "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
