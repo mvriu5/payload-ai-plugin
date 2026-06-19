@@ -1,7 +1,7 @@
 import type { PayloadHandler } from "payload"
 
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
-import { getDocLabel } from "src/payload/shared.js"
+import { getDocLabel } from "../payload/shared.js"
 
 type MentionSuggestionsBody = {
     collectionSlug?: string | null

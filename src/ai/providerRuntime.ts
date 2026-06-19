@@ -1,11 +1,8 @@
 import type { LanguageModel } from "ai"
-import { defaultAIModels, normalizeAIProvider, type AIPluginProvider, type AIProvider, type AIModelConfig } from "./providerOptions.js"
-
-export type CustomProviderURLConfig = string | Partial<Record<AIPluginProvider, string>>
+import { defaultAIModels, type AIProvider, type AIModelConfig } from "./providerOptions.js"
 
 type ProviderConfig = {
     apiKey?: string | null
-    customProviderURL?: CustomProviderURLConfig
     defaultModels?: AIModelConfig["defaults"]
     model?: string | null
     provider: AIProvider
@@ -15,31 +12,14 @@ type ModelConfig = {
     apiKey: string
     model: string
     provider: AIProvider
-    customProviderURL?: CustomProviderURLConfig
 }
 
-const getCustomProviderURL = (customProviderURL: CustomProviderURLConfig | undefined, provider: AIProvider) => {
-    if (!customProviderURL) return undefined
-    if (typeof customProviderURL === "string") return customProviderURL
-    return customProviderURL[provider]
-}
-
-const getProviderOptions = (apiKey: string, customProviderURL: CustomProviderURLConfig | undefined, provider: AIProvider) => {
-    const baseURL = getCustomProviderURL(customProviderURL, provider)
-
-    return {
-        apiKey,
-        ...(baseURL ? { baseURL } : {}),
-    }
-}
-
-export const getProviderConfig = ({ apiKey, customProviderURL, defaultModels, model, provider }: ProviderConfig) => {
+export const getProviderConfig = ({ apiKey, defaultModels, model, provider }: ProviderConfig) => {
     const defaultModel = defaultModels?.[provider] || defaultAIModels[provider]
 
     if (provider === "claude") {
         return {
             apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
-            customProviderURL,
             modelID: model || process.env.ANTHROPIC_MODEL || defaultModel,
         }
     }
@@ -47,7 +27,6 @@ export const getProviderConfig = ({ apiKey, customProviderURL, defaultModels, mo
     if (provider === "google") {
         return {
             apiKey: apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-            customProviderURL,
             modelID: model || process.env.GOOGLE_GENERATIVE_AI_MODEL || defaultModel,
         }
     }
@@ -55,14 +34,19 @@ export const getProviderConfig = ({ apiKey, customProviderURL, defaultModels, mo
     if (provider === "mistral") {
         return {
             apiKey: apiKey || process.env.MISTRAL_API_KEY,
-            customProviderURL,
             modelID: model || process.env.MISTRAL_MODEL || defaultModel,
+        }
+    }
+
+    if (provider === "openrouter") {
+        return {
+            apiKey: apiKey || process.env.OPENROUTER_API_KEY,
+            modelID: model || process.env.OPENROUTER_MODEL || defaultModel,
         }
     }
 
     return {
         apiKey: apiKey || process.env.OPENAI_API_KEY,
-        customProviderURL,
         modelID: model || process.env.OPENAI_MODEL || defaultModel,
     }
 }
@@ -71,8 +55,8 @@ const getMissingProviderDependencyError = (packageName: string, provider: AIProv
     return new Error(`Missing optional dependency ${packageName}. Install it to use the ${provider} provider.`)
 }
 
-export const getModel = async ({ apiKey, customProviderURL, model, provider }: ModelConfig): Promise<LanguageModel> => {
-    const providerOptions = getProviderOptions(apiKey, customProviderURL, normalizeAIProvider(provider))
+export const getModel = async ({ apiKey, model, provider }: ModelConfig): Promise<LanguageModel> => {
+    const providerOptions = { apiKey }
 
     if (provider === "claude") {
         try {
@@ -98,6 +82,15 @@ export const getModel = async ({ apiKey, customProviderURL, model, provider }: M
             return createMistral(providerOptions)(model)
         } catch (error) {
             throw getMissingProviderDependencyError("@ai-sdk/mistral", provider)
+        }
+    }
+
+    if (provider === "openrouter") {
+        try {
+            const { createOpenRouter } = await import("@openrouter/ai-sdk-provider")
+            return createOpenRouter(providerOptions)(model)
+        } catch (error) {
+            throw getMissingProviderDependencyError("@openrouter/ai-sdk-provider", provider)
         }
     }
 

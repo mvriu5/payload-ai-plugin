@@ -5,7 +5,7 @@ import { z } from "zod"
 
 import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSigning.js"
 import { isAIProvider, type AIModelConfig, type AIProvider } from "../ai/providerOptions.js"
-import { getModel, getProviderConfig, type CustomProviderURLConfig } from "../ai/providerRuntime.js"
+import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import {
@@ -115,7 +115,6 @@ export type ActionProposal = (
 type ChatOptions = {
     allowUserApiKeys?: boolean
     collections?: ResolvedCollectionPermissionMap
-    customProviderURL?: CustomProviderURLConfig
     maxOutputTokens?: number
     models?: AIModelConfig
 }
@@ -284,7 +283,6 @@ export const createChatHandler =
         const userApiKey = options.allowUserApiKeys === false ? null : user.aiApiKey
         const providerConfig = getProviderConfig({
             apiKey: userApiKey,
-            customProviderURL: options.customProviderURL,
             defaultModels: options.models?.defaults,
             model: body?.model,
             provider,
@@ -664,7 +662,6 @@ export const createChatHandler =
 
             const model = await getModel({
                 apiKey: providerConfig.apiKey,
-                customProviderURL: providerConfig.customProviderURL,
                 model: providerConfig.modelID,
                 provider,
             })

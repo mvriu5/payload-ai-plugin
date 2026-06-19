@@ -1,5 +1,5 @@
 import type { PayloadHandler } from "payload"
-import { getNumber, getString } from "src/payload/shared.js"
+import { getNumber, getString } from "../payload/shared.js"
 
 type AuditLogOptions = {
     changeLogCollection: string

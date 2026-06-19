@@ -135,6 +135,8 @@ const getProviderIcon = (provider: AIProvider | null) => {
             return <MistralAiIcon {...iconProps} />
         case "openai":
             return <OpenaiIcon {...iconProps} />
+        case "openrouter":
+            return <OpenaiIcon {...iconProps} />
         default:
             return null
     }

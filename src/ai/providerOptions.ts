@@ -27,22 +27,25 @@ const aiProviderModels = {
         { label: "GPT-4.1", value: "gpt-4.1" },
         { label: "GPT-4o Mini", value: "gpt-4o-mini" },
     ],
+    openrouter: [
+        { label: "OpenRouter Auto", value: "openrouter/auto" },
+        { label: "GPT-OSS-120B", value: "openai/gpt-oss-120b" },
+        { label: "GPT-4o Mini", value: "openai/gpt-4o-mini" },
+        { label: "Claude 3.5 Sonnet", value: "anthropic/claude-3.5-sonnet" },
+        { label: "Gemini 2.0 Flash", value: "google/gemini-2.0-flash-001" },
+    ],
 } as const
 
 export type AIProvider = keyof typeof aiProviderModels
 
 type AIProviderModels = Record<AIProvider, AIProviderModelOption[]>
 
-export type CustomAIModel = {
-    label: string
-    provider: AIPluginProvider
-}
-
 export const aiProviders: { label: string; value: AIProvider }[] = [
     { label: "Claude", value: "claude" },
     { label: "Google Gemini", value: "google" },
     { label: "Mistral", value: "mistral" },
     { label: "OpenAI", value: "openai" },
+    { label: "OpenRouter", value: "openrouter" },
 ]
 
 export const defaultAIModels: Record<AIProvider, string> = {
@@ -50,6 +53,7 @@ export const defaultAIModels: Record<AIProvider, string> = {
     google: aiProviderModels.google[0].value,
     mistral: aiProviderModels.mistral[0].value,
     openai: aiProviderModels.openai[0].value,
+    openrouter: aiProviderModels.openrouter[0].value,
 }
 
 export type AIModelConfig = {
@@ -57,32 +61,12 @@ export type AIModelConfig = {
     providers?: Partial<Record<AIProvider, AIProviderModelOption[]>>
 }
 
-export const getResolvedAIModelConfig = (modelConfig?: AIModelConfig, customAIModels: CustomAIModel[] = []) => {
-    const customModelsByProvider = customAIModels.reduce<Partial<Record<AIProvider, AIProviderModelOption[]>>>((acc, model) => {
-        const provider = normalizeAIProvider(model.provider)
-        const label = model.label.trim()
-
-        if (!label) return acc
-
-        acc[provider] = [
-            ...(acc[provider] || []),
-            {
-                label,
-                value: label,
-            },
-        ]
-
-        return acc
-    }, {})
-
+export const getResolvedAIModelConfig = (modelConfig?: AIModelConfig) => {
     const providers = Object.fromEntries(
         Object.entries(aiProviderModels).map(([provider, models]) => {
             const providerKey = provider as AIProvider
-            const configuredModels = modelConfig?.providers?.[providerKey] || [...models]
-            const customModels = customModelsByProvider[providerKey] || []
-            const modelMap = new Map([...configuredModels, ...customModels].map((model) => [model.value, model]))
 
-            return [provider, [...modelMap.values()]]
+            return [provider, modelConfig?.providers?.[providerKey] || [...models]]
         })
     ) as AIProviderModels
 

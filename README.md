@@ -16,6 +16,12 @@ npm add @mvriu5/payload-ai @ai-sdk/google
 npm add @mvriu5/payload-ai @ai-sdk/mistral
 ```
 
+OpenRouter uses the community OpenRouter provider:
+
+```bash
+npm add @mvriu5/payload-ai @openrouter/ai-sdk-provider
+```
+
 ## Usage
 
 ```ts
@@ -59,6 +65,7 @@ const options: PayloadAiPluginOptions = {
   models: {
     defaults: {
       openai: "gpt-4.1-mini",
+      openrouter: "openai/gpt-oss-120b",
     },
     providers: {
       openai: [
@@ -121,6 +128,16 @@ payloadAiPlugin({
 
 Overrides the model list shown in the admin UI and the default model per provider.
 
+Built-in providers are `openai`, `openrouter`, `claude`, `mistral`, and `google`.
+
+OpenRouter includes these built-in model options:
+
+- `openrouter/auto`
+- `openai/gpt-oss-120b`
+- `openai/gpt-4o-mini`
+- `anthropic/claude-3.5-sonnet`
+- `google/gemini-2.0-flash-001`
+
 ### `maxOutputTokens`
 
 Controls the maximum number of output tokens the chat endpoint may generate per request. If omitted, the plugin uses `700`.
@@ -149,7 +166,8 @@ Disables endpoint and UI registration while keeping the plugin call in your conf
 
 ## Provider Environment Variables
 
-The package lazy-loads provider SDKs at runtime. If a user selects `claude`, `google`, `mistral`, or `openai`, the matching `@ai-sdk/*` package must be installed in the host app.
+The package lazy-loads provider SDKs at runtime. If a user selects `claude`, `google`, `mistral`, `openai`, or `openrouter`, the matching provider package must be installed in the host app.
+`openrouter` uses `@openrouter/ai-sdk-provider`.
 
 API key priority is:
 
@@ -157,6 +175,7 @@ API key priority is:
 2. provider environment variables
 
 - `OPENAI_API_KEY`, `OPENAI_MODEL`
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 - `GOOGLE_GENERATIVE_AI_API_KEY`, `GOOGLE_GENERATIVE_AI_MODEL`
 - `MISTRAL_API_KEY`, `MISTRAL_MODEL`
