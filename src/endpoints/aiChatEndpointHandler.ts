@@ -68,13 +68,24 @@ type SlugInput = {
   slug: string;
 };
 
+type LocalizedDataInput = Record<string, Record<string, unknown>>;
+
+type ProposalWritePayload =
+  | {
+      data: Record<string, unknown>;
+      localizedData?: never;
+    }
+  | {
+      data?: never;
+      localizedData: LocalizedDataInput;
+    };
+
 export type AIActionProposal = (
   | {
       action: "create";
       collection: string;
-      data: Record<string, unknown>;
       label: string;
-    }
+    } & ProposalWritePayload
   | {
       action: "delete";
       collection: string;
@@ -84,18 +95,17 @@ export type AIActionProposal = (
   | {
       action: "update";
       collection: string;
-      data: Record<string, unknown>;
       id: string;
       label: string;
-    }
+    } & ProposalWritePayload
   | {
       action: "updateGlobal";
-      data: Record<string, unknown>;
       label: string;
       slug: string;
-    }
+    } & ProposalWritePayload
 ) & {
   _aiSignature?: AIActionSignature;
+  locale?: string;
 };
 
 type AIChatEndpointOptions = {
@@ -105,6 +115,12 @@ type AIChatEndpointOptions = {
 };
 
 const maxProposalLabelLength = 90;
+
+const hasLocalizedData = (
+  value: unknown,
+): value is LocalizedDataInput => {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
 
 const getSafeProposalLabel = (label: string) => {
   const firstLine = label
@@ -184,7 +200,19 @@ export const createAIChatEndpointHandler =
       const addSignedProposal = <Proposal extends AIActionProposal>(
         proposal: Proposal,
       ) => {
-        if ("data" in proposal && containsSensitiveData(proposal.data)) {
+        if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
+          return {
+            error: "Proposal contains sensitive fields and cannot be created.",
+          };
+        }
+
+        if (
+          "localizedData" in proposal &&
+          hasLocalizedData(proposal.localizedData) &&
+          Object.values(proposal.localizedData).some((value) =>
+            containsSensitiveData(value),
+          )
+        ) {
           return {
             error: "Proposal contains sensitive fields and cannot be created.",
           };
@@ -234,6 +262,12 @@ export const createAIChatEndpointHandler =
         mentions: body?.mentions,
         req,
       });
+      const selectedLocales = (
+        body?.mentions
+          ?.filter((mention) => mention.type === "locale" && mention.slug)
+          .map((mention) => mention.slug as string) || []
+      ).filter((locale, index, array) => array.indexOf(locale) === index);
+      const activeLocale = selectedLocales.at(-1);
       const collectionSlugSchema = z.enum(
         collectionSlugs as [string, ...string[]],
       );
@@ -267,6 +301,7 @@ export const createAIChatEndpointHandler =
               collection: collection as never,
               depth: 2,
               id,
+              ...(activeLocale ? { locale: activeLocale } : {}),
               overrideAccess: false,
               req,
             });
@@ -299,6 +334,7 @@ export const createAIChatEndpointHandler =
 
             return req.payload.findGlobal({
               depth: 2,
+              ...(activeLocale ? { locale: activeLocale } : {}),
               overrideAccess: false,
               req,
               slug: slug as never,
@@ -321,17 +357,27 @@ export const createAIChatEndpointHandler =
         },
         proposeCreateDoc: {
           description:
-            "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure.",
-          inputSchema: z.object({
-            collection: collectionSlugSchema,
-            data: z.record(z.string(), z.unknown()),
-            label: z.string().min(1),
-          }),
+            "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+          inputSchema: z
+            .object({
+              collection: collectionSlugSchema,
+              data: z.record(z.string(), z.unknown()).optional(),
+              label: z.string().min(1),
+              localizedData: z
+                .record(z.string(), z.record(z.string(), z.unknown()))
+                .optional(),
+            })
+            .refine((value) => Boolean(value.data || value.localizedData), {
+              message: "Either data or localizedData is required.",
+            }),
           execute: async ({
             collection,
             data,
             label,
-          }: CollectionInput & DataInput & LabelInput) => {
+            localizedData,
+          }: CollectionInput &
+            Partial<DataInput> &
+            LabelInput & { localizedData?: LocalizedDataInput }) => {
             const permissionError = getDisallowedCollectionActionError(
               collection,
               "create",
@@ -341,8 +387,11 @@ export const createAIChatEndpointHandler =
             const proposal: AIActionProposal = {
               action: "create",
               collection,
-              data,
+              ...(localizedData
+                ? { localizedData }
+                : { data: data || {} }),
               label: getSafeProposalLabel(label),
+              ...(activeLocale ? { locale: activeLocale } : {}),
             };
 
             return addSignedProposal(proposal);
@@ -372,6 +421,7 @@ export const createAIChatEndpointHandler =
               collection,
               id,
               label: getSafeProposalLabel(label),
+              ...(activeLocale ? { locale: activeLocale } : {}),
             };
 
             return addSignedProposal(proposal);
@@ -379,19 +429,30 @@ export const createAIChatEndpointHandler =
         },
         proposeUpdateDoc: {
           description:
-            "Prepare a CMS document update proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure.",
-          inputSchema: z.object({
-            collection: collectionSlugSchema,
-            data: z.record(z.string(), z.unknown()),
-            id: z.string().min(1),
-            label: z.string().min(1),
-          }),
+            "Prepare a CMS document update proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+          inputSchema: z
+            .object({
+              collection: collectionSlugSchema,
+              data: z.record(z.string(), z.unknown()).optional(),
+              id: z.string().min(1),
+              label: z.string().min(1),
+              localizedData: z
+                .record(z.string(), z.record(z.string(), z.unknown()))
+                .optional(),
+            })
+            .refine((value) => Boolean(value.data || value.localizedData), {
+              message: "Either data or localizedData is required.",
+            }),
           execute: async ({
             collection,
             data,
             id,
             label,
-          }: CollectionInput & DataInput & DocIDInput & LabelInput) => {
+            localizedData,
+          }: CollectionInput &
+            Partial<DataInput> &
+            DocIDInput &
+            LabelInput & { localizedData?: LocalizedDataInput }) => {
             const permissionError = getDisallowedCollectionActionError(
               collection,
               "update",
@@ -401,9 +462,12 @@ export const createAIChatEndpointHandler =
             const proposal: AIActionProposal = {
               action: "update",
               collection,
-              data,
+              ...(localizedData
+                ? { localizedData }
+                : { data: data || {} }),
               id,
               label: getSafeProposalLabel(label),
+              ...(activeLocale ? { locale: activeLocale } : {}),
             };
 
             return addSignedProposal(proposal);
@@ -411,17 +475,27 @@ export const createAIChatEndpointHandler =
         },
         proposeUpdateGlobal: {
           description:
-            "Prepare a Payload global update proposal. This does not write to the database.",
-          inputSchema: z.object({
-            data: z.record(z.string(), z.unknown()),
-            label: z.string().min(1),
-            slug: z.string().min(1),
-          }),
+            "Prepare a Payload global update proposal. This does not write to the database. Use localizedData when writing multiple locales in one proposal.",
+          inputSchema: z
+            .object({
+              data: z.record(z.string(), z.unknown()).optional(),
+              label: z.string().min(1),
+              localizedData: z
+                .record(z.string(), z.record(z.string(), z.unknown()))
+                .optional(),
+              slug: z.string().min(1),
+            })
+            .refine((value) => Boolean(value.data || value.localizedData), {
+              message: "Either data or localizedData is required.",
+            }),
           execute: async ({
             data,
             label,
+            localizedData,
             slug,
-          }: DataInput & LabelInput & SlugInput) => {
+          }: Partial<DataInput> &
+            LabelInput &
+            SlugInput & { localizedData?: LocalizedDataInput }) => {
             const globalConfig = req.payload.config.globals?.find(
               (global) => global.slug === slug,
             );
@@ -429,8 +503,11 @@ export const createAIChatEndpointHandler =
 
             const proposal: AIActionProposal = {
               action: "updateGlobal",
-              data,
+              ...(localizedData
+                ? { localizedData }
+                : { data: data || {} }),
               label: getSafeProposalLabel(label),
+              ...(activeLocale ? { locale: activeLocale } : {}),
               slug,
             };
 
@@ -478,6 +555,7 @@ export const createAIChatEndpointHandler =
               collection: collection as never,
               depth: 1,
               limit,
+              ...(activeLocale ? { locale: activeLocale } : {}),
               overrideAccess: false,
               req,
               where,
@@ -514,6 +592,8 @@ export const createAIChatEndpointHandler =
           "You are a CMS assistant inside Payload CMS.",
           "Use tools to inspect CMS schema and content before answering content questions.",
           "When mention context is provided, use it as the selected CMS scope and prefer it over guessing collection names.",
+          "When a locale is selected in mention context, treat it as the active locale for reads, translations, and localized update proposals.",
+          "When multiple locales are selected, create one proposal that uses localizedData with one top-level key per locale code instead of separate proposals.",
           "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
           "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
           "Keep the visible response under 40 words and describe only what kind of change was proposed.",

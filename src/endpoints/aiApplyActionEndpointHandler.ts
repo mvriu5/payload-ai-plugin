@@ -51,6 +51,8 @@ type ChangeLogTarget = {
   documentID?: unknown;
 };
 
+type LocalizedDataInput = Record<string, Record<string, unknown>>;
+
 const getProposalMeta = (
   proposal?: Partial<AIActionProposal>,
 ): ProposalMeta => {
@@ -90,6 +92,12 @@ const isKnownGlobal = (req: Parameters<PayloadHandler>[0], slug: string) => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
+
+const hasLocalizedData = (
+  proposal: Partial<AIActionProposal>,
+): proposal is Partial<AIActionProposal> & { localizedData: LocalizedDataInput } => {
+  return "localizedData" in proposal && isRecord(proposal.localizedData);
 };
 
 const mergeData = (
@@ -319,14 +327,17 @@ const isActionProposal = (proposal: unknown): proposal is AIActionProposal => {
   if (!isRecord(proposal) || typeof proposal.label !== "string") return false;
 
   if (proposal.action === "create") {
-    return typeof proposal.collection === "string" && isRecord(proposal.data);
+    return (
+      typeof proposal.collection === "string" &&
+      (isRecord(proposal.data) || isRecord(proposal.localizedData))
+    );
   }
 
   if (proposal.action === "update") {
     return (
       typeof proposal.collection === "string" &&
       typeof proposal.id === "string" &&
-      isRecord(proposal.data)
+      (isRecord(proposal.data) || isRecord(proposal.localizedData))
     );
   }
 
@@ -337,7 +348,10 @@ const isActionProposal = (proposal: unknown): proposal is AIActionProposal => {
   }
 
   if (proposal.action === "updateGlobal") {
-    return typeof proposal.slug === "string" && isRecord(proposal.data);
+    return (
+      typeof proposal.slug === "string" &&
+      (isRecord(proposal.data) || isRecord(proposal.localizedData))
+    );
   }
 
   return false;
@@ -363,7 +377,17 @@ export const createAIApplyActionEndpointHandler =
       );
     if (!isActionProposal(proposal))
       return Response.json({ error: "Proposal is invalid." }, { status: 400 });
-    if ("data" in proposal && containsSensitiveData(proposal.data))
+    if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data))
+      return Response.json(
+        { error: "Proposal contains sensitive fields and cannot be applied." },
+        { status: 400 },
+      );
+    if (
+      hasLocalizedData(proposal) &&
+      Object.values(proposal.localizedData).some((value) =>
+        containsSensitiveData(value),
+      )
+    )
       return Response.json(
         { error: "Proposal contains sensitive fields and cannot be applied." },
         { status: 400 },
@@ -389,17 +413,67 @@ export const createAIApplyActionEndpointHandler =
         const globalConfig = req.payload.config.globals?.find(
           (global) => global.slug === proposal.slug,
         );
+        if (hasLocalizedData(proposal)) {
+          const beforeByLocale: Record<string, unknown> = {};
+          const afterByLocale: Record<string, unknown> = {};
+
+          for (const [locale, localeData] of Object.entries(
+            proposal.localizedData,
+          )) {
+            const localeNormalized = normalizeDataForFields(
+              (globalConfig?.fields || []) as FieldConfig[],
+              localeData,
+            );
+            const before = (await req.payload.findGlobal({
+              depth: 2,
+              locale,
+              req,
+              slug: proposal.slug as never,
+            })) as Record<string, unknown>;
+
+            await req.payload.updateGlobal({
+              data: localeNormalized.data,
+              locale,
+              overrideAccess: false,
+              req,
+              slug: proposal.slug as never,
+            });
+
+            beforeByLocale[locale] = before;
+            afterByLocale[locale] = mergeData(before, localeNormalized.data);
+          }
+
+          const change = await logAIChange({
+            changeLogCollection: options.changeLogCollection,
+            context: logContext,
+            proposal,
+            req,
+            target: {
+              after: afterByLocale,
+              before: beforeByLocale,
+            },
+          });
+
+          return Response.json({
+            change,
+            doc: undefined,
+            status: "applied",
+          });
+        }
+
         normalized = normalizeDataForFields(
           (globalConfig?.fields || []) as FieldConfig[],
           proposal.data,
         );
         const before = (await req.payload.findGlobal({
           depth: 2,
+          ...(proposal.locale ? { locale: proposal.locale } : {}),
           req,
           slug: proposal.slug as never,
         })) as Record<string, unknown>;
         const doc = await req.payload.updateGlobal({
           data: normalized.data,
+          ...(proposal.locale ? { locale: proposal.locale } : {}),
           overrideAccess: false,
           req,
           slug: proposal.slug as never,
@@ -461,13 +535,147 @@ export const createAIApplyActionEndpointHandler =
       const collectionConfig = req.payload.config.collections.find(
         (collection) => collection.slug === proposal.collection,
       ) as CollectionConfig | undefined;
-      normalized = normalizeAuthData(
-        collectionConfig,
-        normalizeDataForFields(
-          getCollectionFields(collectionConfig),
-          proposal.data,
-        ),
-      );
+      const normalizeCollectionData = (data: Record<string, unknown>) =>
+        normalizeAuthData(
+          collectionConfig,
+          normalizeDataForFields(getCollectionFields(collectionConfig), data),
+        );
+
+      if (hasLocalizedData(proposal)) {
+        if (proposal.action === "create") {
+          const localeEntries = Object.entries(proposal.localizedData);
+          const [firstLocale, firstLocaleData] = localeEntries[0] || [];
+
+          if (!firstLocale)
+            return Response.json(
+              { error: "Proposal is invalid." },
+              { status: 400 },
+            );
+
+          const firstNormalized = normalizeCollectionData(firstLocaleData);
+
+          if (
+            isAuthCollection(collectionConfig) &&
+            !firstNormalized.data.password
+          ) {
+            return Response.json(
+              {
+                error: "Password is required when creating a user.",
+              },
+              { status: 400 },
+            );
+          }
+
+          if (
+            isAuthCollection(collectionConfig) &&
+            !firstNormalized.data.email
+          ) {
+            return Response.json(
+              {
+                error: "Email is required when creating a user.",
+              },
+              { status: 400 },
+            );
+          }
+
+          const doc = await req.payload.create({
+            collection: proposal.collection as never,
+            data: firstNormalized.data,
+            locale: firstLocale,
+            overrideAccess: false,
+            req,
+          });
+          const beforeByLocale: Record<string, unknown> = {
+            [firstLocale]: {},
+          };
+          const afterByLocale: Record<string, unknown> = {
+            [firstLocale]: doc,
+          };
+
+          for (const [locale, localeData] of localeEntries.slice(1)) {
+            const localeNormalized = normalizeCollectionData(localeData);
+            await req.payload.update({
+              collection: proposal.collection as never,
+              data: localeNormalized.data,
+              id: String(doc.id),
+              locale,
+              overrideAccess: false,
+              req,
+            });
+
+            beforeByLocale[locale] = {};
+            afterByLocale[locale] = localeNormalized.data;
+          }
+
+          const change = await logAIChange({
+            changeLogCollection: options.changeLogCollection,
+            context: logContext,
+            proposal,
+            req,
+            target: {
+              after: afterByLocale,
+              before: beforeByLocale,
+              documentID: doc.id,
+            },
+          });
+
+          return Response.json({
+            change,
+            doc: getAppliedDocReference(doc),
+            status: "applied",
+          });
+        }
+
+        const beforeByLocale: Record<string, unknown> = {};
+        const afterByLocale: Record<string, unknown> = {};
+
+        for (const [locale, localeData] of Object.entries(
+          proposal.localizedData,
+        )) {
+          const localeNormalized = normalizeCollectionData(localeData);
+          const before = (await req.payload.findByID({
+            collection: proposal.collection as never,
+            depth: 2,
+            id: proposal.id,
+            locale,
+            req,
+          })) as Record<string, unknown>;
+
+          await req.payload.update({
+            collection: proposal.collection as never,
+            data: localeNormalized.data,
+            id: proposal.id,
+            locale,
+            overrideAccess: false,
+            req,
+          });
+
+          beforeByLocale[locale] = before;
+          afterByLocale[locale] = mergeData(before, localeNormalized.data);
+        }
+
+        const change = await logAIChange({
+          changeLogCollection: options.changeLogCollection,
+          context: logContext,
+          proposal,
+          req,
+          target: {
+            after: afterByLocale,
+            before: beforeByLocale,
+            documentID: proposal.id,
+          },
+        });
+
+        return Response.json({
+          change,
+          doc: {
+            id: proposal.id,
+          },
+          status: "applied",
+        });
+      }
+
+      normalized = normalizeCollectionData(proposal.data);
 
       if (
         proposal.action === "create" &&
@@ -499,6 +707,7 @@ export const createAIApplyActionEndpointHandler =
         const doc = await req.payload.create({
           collection: proposal.collection as never,
           data: normalized.data,
+          ...(proposal.locale ? { locale: proposal.locale } : {}),
           overrideAccess: false,
           req,
         });
@@ -525,12 +734,14 @@ export const createAIApplyActionEndpointHandler =
         collection: proposal.collection as never,
         depth: 2,
         id: proposal.id,
+        ...(proposal.locale ? { locale: proposal.locale } : {}),
         req,
       })) as Record<string, unknown>;
       const doc = await req.payload.update({
         collection: proposal.collection as never,
         data: normalized.data,
         id: proposal.id,
+        ...(proposal.locale ? { locale: proposal.locale } : {}),
         overrideAccess: false,
         req,
       });

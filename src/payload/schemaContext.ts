@@ -18,7 +18,7 @@ export type AIChatMention = {
   label?: string;
   parent?: string;
   slug?: string;
-  type?: "block" | "collection" | "doc" | "global";
+  type?: "block" | "collection" | "doc" | "global" | "locale";
 };
 
 export type FieldConfig = {
@@ -73,6 +73,12 @@ type MentionContext = {
   req: Parameters<PayloadHandler>[0];
 };
 
+type LocaleConfig = {
+  code: string;
+  isDefault?: boolean;
+  label: string;
+};
+
 const getSerializableRelationTo = (relationTo: unknown) => {
   if (typeof relationTo === "string") {
     return relationTo;
@@ -86,6 +92,42 @@ const getSerializableRelationTo = (relationTo: unknown) => {
   }
 
   return undefined;
+};
+
+const getLocaleConfigs = (req: Parameters<PayloadHandler>[0]): LocaleConfig[] => {
+  const localization = (req.payload.config as { localization?: { defaultLocale?: string; locales?: unknown[] } }).localization;
+  const defaultLocale = localization?.defaultLocale;
+  const locales = localization?.locales || [];
+
+  return locales.flatMap((locale) => {
+      if (typeof locale === "string") {
+        return [{
+          code: locale,
+          ...(locale === defaultLocale ? { isDefault: true } : {}),
+          label: locale,
+        }];
+      }
+
+      if (!locale || typeof locale !== "object") return [];
+
+      const code =
+        "code" in locale && typeof locale.code === "string"
+          ? locale.code
+          : "label" in locale && typeof locale.label === "string"
+            ? locale.label
+            : undefined;
+
+      if (!code) return [];
+
+      const label =
+        "label" in locale ? getSerializableLabel(locale.label, code) : code;
+
+      return [{
+        code,
+        ...(code === defaultLocale ? { isDefault: true } : {}),
+        label,
+      }];
+    });
 };
 
 const getSerializableOptions = (options: unknown) => {
@@ -161,6 +203,30 @@ const getSchemaFields = (config?: CollectionLikeConfig | null) => {
   return fields;
 };
 
+const getLocalizedFieldNames = (fields: FieldConfig[], path = ""): string[] => {
+  return fields.flatMap((field) => {
+    const fieldPath = field.name
+      ? path
+        ? `${path}.${field.name}`
+        : field.name
+      : path;
+    const nestedFields = field.fields
+      ? getLocalizedFieldNames(field.fields, fieldPath)
+      : [];
+    const nestedBlocks = field.blocks
+      ? field.blocks.flatMap((block) =>
+          getLocalizedFieldNames(block.fields || [], `${fieldPath}.${block.slug}`),
+        )
+      : [];
+
+    return [
+      ...(field.localized && fieldPath ? [fieldPath] : []),
+      ...nestedFields,
+      ...nestedBlocks,
+    ];
+  });
+};
+
 export const describeCollectionLikeConfig = ({
   config,
   permissions,
@@ -171,6 +237,8 @@ export const describeCollectionLikeConfig = ({
   type: "collection" | "global";
 }) => {
   const slug = config.slug;
+  const fields = getSchemaFields(config);
+  const localizedFieldNames = getLocalizedFieldNames(fields);
 
   return {
     access: {
@@ -186,13 +254,17 @@ export const describeCollectionLikeConfig = ({
             },
       hasPayloadAccessControl: Boolean(config.access),
     },
-    fields: getSchemaFields(config).map(describeField),
+    fields: fields.map(describeField),
     hasAuth: isAuthCollection(toNormalizeCollectionConfig(config)) || undefined,
     hasDrafts: hasDrafts(config) || undefined,
+    hasLocalizedFields: localizedFieldNames.length > 0 || undefined,
     label:
       type === "collection"
         ? config.labels?.plural || config.labels?.singular || slug
         : getSerializableLabel(config.label) || slug,
+    ...(localizedFieldNames.length > 0
+      ? { localizedFieldNames }
+      : {}),
     slug,
     type,
   };
@@ -292,8 +364,39 @@ export const getMentionContext = async ({
 
   const context: Record<string, unknown>[] = [];
   const seen = new Set<string>();
+  const localeConfigs = getLocaleConfigs(req);
+  const selectedLocales = (
+    mentions
+      .filter((mention) => mention.type === "locale" && mention.slug)
+      .map((mention) => mention.slug as string) || []
+  ).filter((locale, index, array) => array.indexOf(locale) === index);
+  const activeLocale = selectedLocales.at(-1);
+
+  if (localeConfigs.length > 0) {
+    context.push({
+      activeLocale,
+      defaultLocale: localeConfigs.find((locale) => locale.isDefault)?.code,
+      locales: localeConfigs,
+      selectedLocales,
+      type: "locales",
+    });
+  }
 
   for (const mention of mentions.slice(0, 8)) {
+    if (mention.type === "locale" && mention.slug) {
+      const locale = localeConfigs.find((item) => item.code === mention.slug);
+      if (!locale) continue;
+
+      const key = `locale:${locale.code}`;
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      context.push({
+        ...locale,
+        type: "locale",
+      });
+    }
+
     if (mention.type === "collection" && mention.slug) {
       const slug = mention.slug;
       const key = `collection:${slug}`;
@@ -334,6 +437,7 @@ export const getMentionContext = async ({
       const globalDoc = await req.payload
         .findGlobal({
           depth: 2,
+          ...(activeLocale ? { locale: activeLocale } : {}),
           overrideAccess: false,
           req,
           slug: slug as never,
@@ -386,6 +490,7 @@ export const getMentionContext = async ({
           collection: slug as never,
           depth: 2,
           id: mention.id,
+          ...(activeLocale ? { locale: activeLocale } : {}),
           overrideAccess: false,
           req,
         })
@@ -399,6 +504,7 @@ export const getMentionContext = async ({
         doc,
         id: mention.id,
         label: mention.label || mention.id,
+        ...(activeLocale ? { locale: activeLocale } : {}),
         type: "doc",
       });
     }
@@ -417,7 +523,7 @@ export const buildPromptWithMentionContext = ({
   if (mentionContext.length === 0) return prompt;
 
   return [
-    "The user selected the following Payload CMS references in the input. Treat inline text like `collection: Name` or `document: Name` as references to this context, not as literal content.",
+    "The user selected the following Payload CMS references in the input. Treat inline text like `collection: Name`, `document: Name`, or `locale: de` as references to this context, not as literal content.",
     JSON.stringify(mentionContext, null, 2),
     "User request:",
     prompt,

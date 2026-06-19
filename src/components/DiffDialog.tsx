@@ -44,6 +44,13 @@ type DisplayDiffRow =
           type: "collapsed"
       }
 
+type DiffSection = {
+    afterValue: string
+    beforeValue: string
+    id: string
+    label?: string
+}
+
 const formatDiffValue = (value: unknown) => {
     return JSON.stringify(value, null, 2)
 }
@@ -107,7 +114,7 @@ const isChangedRow = (row: DiffRow) => {
     return row.before.changed || row.after.changed
 }
 
-const buildDisplayRows = (rows: DiffRow[], expandedGroups: Set<string>) => {
+const buildDisplayRows = (rows: DiffRow[], expandedGroups: Set<string>, groupPrefix = "") => {
     const displayRows: DisplayDiffRow[] = []
     const contextRows = 2
     let index = 0
@@ -136,7 +143,8 @@ const buildDisplayRows = (rows: DiffRow[], expandedGroups: Set<string>) => {
             continue
         }
 
-        const isExpanded = expandedGroups.has(groupID)
+        const scopedGroupID = groupPrefix ? `${groupPrefix}:${groupID}` : groupID
+        const isExpanded = expandedGroups.has(scopedGroupID)
 
         for (let rowIndex = start; rowIndex < start + contextRows; rowIndex += 1) {
             displayRows.push({ index: rowIndex, row: rows[rowIndex], type: "row" })
@@ -236,18 +244,39 @@ const getDiffRows = (before: string, after: string) => {
     return rows
 }
 
+const isLocaleDiffMap = (value: unknown): value is Record<string, unknown> => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+
+    return Object.values(value).every((entry) => entry && typeof entry === "object" && !Array.isArray(entry))
+}
+
+const getDiffSections = (diff: ProposalDiff): DiffSection[] => {
+    if (isLocaleDiffMap(diff.before) && isLocaleDiffMap(diff.after)) {
+        const beforeByLocale = diff.before
+        const afterByLocale = diff.after
+        const localeKeys = Array.from(new Set([...Object.keys(beforeByLocale), ...Object.keys(afterByLocale)]))
+
+        return localeKeys.map((locale) => ({
+            afterValue: formatDiffValue(afterByLocale[locale] ?? {}),
+            beforeValue: formatDiffValue(beforeByLocale[locale] ?? {}),
+            id: locale,
+            label: `Locale: ${locale}`,
+        }))
+    }
+
+    return [
+        {
+            afterValue: formatDiffValue(diff.after),
+            beforeValue: formatDiffValue(diff.before),
+            id: "default",
+        },
+    ]
+}
+
 export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps) => {
     const [scrollLeft, setScrollLeft] = useState(0)
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
-    const beforeValue = formatDiffValue(diff.before)
-    const afterValue = formatDiffValue(diff.after)
-    const diffRows = getDiffRows(beforeValue, afterValue)
-    const displayRows = buildDisplayRows(diffRows, expandedGroups)
-    const longestLineLength = Math.max(...beforeValue.split("\n").map((line) => line.length), ...afterValue.split("\n").map((line) => line.length), 80)
-    const diffShellStyle = {
-        "--diff-line-offset": `-${scrollLeft}px`,
-        "--diff-line-width": `${longestLineLength + 8}ch`,
-    } as CSSProperties
+    const diffSections = getDiffSections(diff)
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -301,69 +330,89 @@ export const DiffDialog = ({ change, diff, onClose, proposal }: DiffDialogProps)
                         ) : null}
                     </div>
                 ) : null}
-                <div className={styles.diffShell} style={diffShellStyle}>
-                    <div className={styles.diffScroll}>
-                        <div className={styles.diffHeaderGrid}>
-                            <div className={styles.diffPaneHeader}>Current</div>
-                            <div className={styles.diffPaneHeader}>Proposed</div>
-                        </div>
-                        <div className={styles.diffRows}>
-                            {displayRows.map((displayRow) => {
-                                if (displayRow.type === "collapsed") {
-                                    return (
-                                        <button
-                                            className={styles.diffCollapsedRow}
-                                            key={`collapsed-${displayRow.id}`}
-                                            onClick={() => {
-                                                setExpandedGroups((current) => {
-                                                    const next = new Set(current)
+                {diffSections.map((section) => {
+                    const diffRows = getDiffRows(section.beforeValue, section.afterValue)
+                    const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)
+                    const longestLineLength = Math.max(
+                        ...section.beforeValue.split("\n").map((line) => line.length),
+                        ...section.afterValue.split("\n").map((line) => line.length),
+                        80
+                    )
+                    const diffShellStyle = {
+                        "--diff-line-offset": `-${scrollLeft}px`,
+                        "--diff-line-width": `${longestLineLength + 8}ch`,
+                    } as CSSProperties
 
-                                                    if (displayRow.expanded) {
-                                                        next.delete(displayRow.id)
-                                                    } else {
-                                                        next.add(displayRow.id)
-                                                    }
-
-                                                    return next
-                                                })
-                                            }}
-                                            type="button"
-                                        >
-                                            {displayRow.expanded ? "Hide" : "Show"} {displayRow.count} unchanged lines
-                                            {displayRow.path ? <span className={styles.diffCollapsedPath}>{displayRow.path}</span> : null}
-                                        </button>
-                                    )
-                                }
-
-                                const row = displayRow.row
-
-                                return (
-                                    <div className={styles.diffRow} key={`row-${displayRow.index}`}>
-                                        <span
-                                            className={[styles.diffLine, row.before.changed ? styles.diffLineRemoved : "", row.before.placeholder ? styles.diffLinePlaceholder : ""]
-                                                .filter(Boolean)
-                                                .join(" ")}
-                                        >
-                                            {row.before.changed && row.before.path ? <span className={styles.diffPathBadge}>{row.before.path}</span> : null}
-                                            <span className={styles.diffLineContent}>{row.before.text || " "}</span>
-                                        </span>
-                                        <span
-                                            className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
-                                                .filter(Boolean)
-                                                .join(" ")}
-                                        >
-                                            {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
-                                            <span className={styles.diffLineContent}>{row.after.text || " "}</span>
-                                        </span>
+                    return (
+                        <div className={styles.diffSection} key={section.id}>
+                            {section.label ? <div className={styles.diffSectionLabel}>{section.label}</div> : null}
+                            <div className={styles.diffShell} style={diffShellStyle}>
+                                <div className={styles.diffScroll}>
+                                    <div className={styles.diffHeaderGrid}>
+                                        <div className={styles.diffPaneHeader}>Current</div>
+                                        <div className={styles.diffPaneHeader}>Proposed</div>
                                     </div>
-                                )
-                            })}
+                                    <div className={styles.diffRows}>
+                                        {displayRows.map((displayRow) => {
+                                            if (displayRow.type === "collapsed") {
+                                                return (
+                                                    <button
+                                                        className={styles.diffCollapsedRow}
+                                                        key={`${section.id}-collapsed-${displayRow.id}`}
+                                                        onClick={() => {
+                                                            setExpandedGroups((current) => {
+                                                                const next = new Set(current)
+                                                                const groupID = `${section.id}:${displayRow.id}`
+
+                                                                if (displayRow.expanded) {
+                                                                    next.delete(groupID)
+                                                                } else {
+                                                                    next.add(groupID)
+                                                                }
+
+                                                                return next
+                                                            })
+                                                        }}
+                                                        type="button"
+                                                    >
+                                                        {displayRow.expanded ? "Hide" : "Show"} {displayRow.count} unchanged lines
+                                                        {displayRow.path ? <span className={styles.diffCollapsedPath}>{displayRow.path}</span> : null}
+                                                    </button>
+                                                )
+                                            }
+
+                                            const row = displayRow.row
+
+                                            return (
+                                                <div className={styles.diffRow} key={`${section.id}-row-${displayRow.index}`}>
+                                                    <span
+                                                        className={[styles.diffLine, row.before.changed ? styles.diffLineRemoved : "", row.before.placeholder ? styles.diffLinePlaceholder : ""]
+                                                            .filter(Boolean)
+                                                            .join(" ")}
+                                                    >
+                                                        {row.before.changed && row.before.path ? <span className={styles.diffPathBadge}>{row.before.path}</span> : null}
+                                                        <span className={styles.diffLineContent}>{row.before.text || " "}</span>
+                                                    </span>
+                                                    <span
+                                                        className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
+                                                            .filter(Boolean)
+                                                            .join(" ")}
+                                                    >
+                                                        {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
+                                                        <span className={styles.diffLineContent}>{row.after.text || " "}</span>
+                                                    </span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                <div className={styles.horizontalScroll} onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}>
+                                    <div className={styles.horizontalScrollSpacer} />
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div className={styles.horizontalScroll} onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}>
-                        <div className={styles.horizontalScrollSpacer} />
-                    </div>
-                </div>
+                    )
+                })}
             </div>
         </div>
     )

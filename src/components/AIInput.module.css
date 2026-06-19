@@ -179,6 +179,11 @@
     border-color: color-mix(in srgb, #7a5c9e 28%, var(--theme-elevation-150));
 }
 
+.locale {
+    background: color-mix(in srgb, #2f5da8 12%, var(--theme-bg));
+    border-color: color-mix(in srgb, #2f5da8 28%, var(--theme-elevation-150));
+}
+
 .chatButton {
     align-items: center;
     background: var(--theme-text);

@@ -17,10 +17,11 @@ import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggest
 type AIMention = {
     collection?: string
     id?: string
+    isDefault?: boolean
     label: string
     parent?: string
     slug: string
-    type: "block" | "collection" | "doc" | "global"
+    type: "block" | "collection" | "doc" | "global" | "locale"
 }
 
 type FieldWithBlocks = {
@@ -42,6 +43,17 @@ type PayloadAiAdminCustom = {
         collectionSlugs?: string[]
         models?: AIModelConfig
     }
+}
+
+type LocalizationConfig = {
+    defaultLocale?: string
+    locales?: Array<
+        | string
+        | {
+              code?: string
+              label?: unknown
+            }
+    >
 }
 
 type AIChatStreamEvent =
@@ -235,6 +247,40 @@ export const AIInput = () => {
             slug: global.slug,
             type: "global",
         })) || []
+    const localizationConfig = (config as typeof config & { localization?: LocalizationConfig }).localization
+    const localesConfig = localizationConfig?.locales ?? []
+    const locales: CollectionMentionOption[] = localesConfig.flatMap((locale) => {
+        if (typeof locale === "string") {
+            return [
+                {
+                    isDefault: locale === localizationConfig?.defaultLocale,
+                    label: locale,
+                    slug: locale,
+                    type: "locale" as const,
+                },
+            ]
+        }
+
+        if (!locale || typeof locale !== "object") return []
+
+        const slug =
+            typeof locale.code === "string"
+                ? locale.code
+                : typeof locale.label === "string"
+                  ? locale.label
+                  : null
+
+        if (!slug) return []
+
+        return [
+            {
+                isDefault: slug === localizationConfig?.defaultLocale,
+                label: getSerializableLabel(locale.label, slug),
+                slug,
+                type: "locale" as const,
+            },
+        ]
+    })
     const blocks: CollectionMentionOption[] = [
         ...config.collections
             .filter((collection) => isCollectionMentionEnabled(collection.slug))
@@ -251,11 +297,15 @@ export const AIInput = () => {
             })
         ) || []),
     ]
-    const mentionOptions = [...collections, ...globals, ...blocks]
+    const mentionOptions = [...collections, ...globals, ...blocks, ...locales]
 
     const normalizedMentionQuery = mentionQuery.toLowerCase()
     const filteredCollections = collections.filter((collection) => collection.slug.toLowerCase().includes(normalizedMentionQuery) || collection.label.toLowerCase().includes(normalizedMentionQuery))
-    const filteredMentionOptions = mentionOptions.filter((option) => option.slug.toLowerCase().includes(normalizedMentionQuery))
+    const filteredMentionOptions = mentionOptions.filter(
+        (option) =>
+            option.slug.toLowerCase().includes(normalizedMentionQuery) ||
+            option.label.toLowerCase().includes(normalizedMentionQuery)
+    )
     const documentSuggestionCollection = filteredCollections.length === 1 ? filteredCollections[0]?.slug : null
     const { documentSuggestions, resetDocumentSuggestions } = useDocumentMentionSuggestions({
         apiRoute: config.routes.api,
@@ -372,7 +422,12 @@ export const AIInput = () => {
         const badgeType = suggestion.type === "doc" ? "document" : suggestion.type
         const badgePrefix = `${badgeType}:`
         const badgeText = `${badgePrefix} ${suggestion.label}`
-        const promptText = suggestion.type === "doc" ? `${badgeText} (${suggestion.collection}/${suggestion.id})` : badgeText
+        const promptText =
+            suggestion.type === "doc"
+                ? `${badgeText} (${suggestion.collection}/${suggestion.id})`
+                : suggestion.type === "locale"
+                  ? `${badgeText} (${suggestion.slug})`
+                  : badgeText
         const badge = document.createElement("span")
 
         badge.className = [styles.badge, styles[suggestion.type], styles.inlineBadge].join(" ")

@@ -15,6 +15,8 @@ export type AIActionProposal = {
     data?: Record<string, unknown>
     id?: string
     label: string
+    locale?: string
+    localizedData?: Record<string, Record<string, unknown>>
     slug?: string
 }
 

@@ -4,10 +4,11 @@ import type { RefObject } from "react";
 export type CollectionMentionOption = {
     collection?: string;
     id?: string;
+    isDefault?: boolean;
     label: string;
     parent?: string;
     slug: string;
-    type: "block" | "collection" | "doc" | "global";
+    type: "block" | "collection" | "doc" | "global" | "locale";
 };
 
 type CollectionMentionPopoverProps = {
@@ -33,12 +34,17 @@ const suggestionGroups: { label: string, type: CollectionMentionOption["type"] }
         label: "Blocks",
         type: "block",
     },
+    {
+        label: "Locales",
+        type: "locale",
+    },
 ];
 
 const getSuggestionTitle = (suggestion: CollectionMentionOption) => {
     if (suggestion.type === "collection") return `@${suggestion.slug}`;
     if (suggestion.type === "global") return `@${suggestion.slug}`;
     if (suggestion.type === "block") return `@${suggestion.slug}`;
+    if (suggestion.type === "locale") return `@${suggestion.slug}`;
     return suggestion.label;
 };
 
@@ -46,6 +52,7 @@ const getSuggestionLabel = (suggestion: CollectionMentionOption) => {
     if (suggestion.type === "collection") return suggestion.label;
     if (suggestion.type === "global") return "global";
     if (suggestion.type === "block") return `${suggestion.parent} block`;
+    if (suggestion.type === "locale") return suggestion.isDefault ? "default locale" : "locale";
     return `${suggestion.collection} item`;
 };
 

@@ -129,6 +129,19 @@
     overflow: hidden;
 }
 
+.diffSection {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.diffSectionLabel {
+    color: var(--theme-elevation-700);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
 .diffHeaderGrid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

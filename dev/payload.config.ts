@@ -97,6 +97,20 @@ export default buildConfig({
         },
         user: "users",
     },
+    localization: {
+        defaultLocale: "en",
+        fallback: true,
+        locales: [
+            {
+                code: "en",
+                label: "English",
+            },
+            {
+                code: "de",
+                label: "Deutsch",
+            },
+        ],
+    },
     collections: [
         {
             slug: "users",
@@ -114,6 +128,7 @@ export default buildConfig({
             fields: [
                 {
                     name: "title",
+                    localized: true,
                     type: "text",
                     required: true,
                 },
@@ -125,10 +140,12 @@ export default buildConfig({
                 },
                 {
                     name: "excerpt",
+                    localized: true,
                     type: "textarea",
                 },
                 {
                     name: "content",
+                    localized: true,
                     type: "richText",
                 },
                 {
@@ -202,6 +219,7 @@ export default buildConfig({
                 {
                     name: "seo",
                     type: "group",
+                    localized: true,
                     fields: [
                         {
                             name: "title",
@@ -247,12 +265,14 @@ export default buildConfig({
             fields: [
                 {
                     name: "siteName",
+                    localized: true,
                     type: "text",
                     required: true,
                 },
                 {
                     name: "defaultSeo",
                     type: "group",
+                    localized: true,
                     fields: [
                         {
                             name: "title",
@@ -282,6 +302,7 @@ export default buildConfig({
                     fields: [
                         {
                             name: "label",
+                            localized: true,
                             type: "text",
                             required: true,
                         },
