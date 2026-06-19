@@ -60,11 +60,11 @@ export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
                         <div className={styles.item} key={`${change.title}-${index}`}>
                             <div className={styles.titleRow}>
                                 <div className={styles.itemTitle}>{change.title}</div>
-                                {change.url ? (
+                                {change.url && (
                                     <a className={styles.ghostButton} href={change.url} rel="noreferrer noopener" target="_blank">
                                         <ExternalLinkIcon />
                                     </a>
-                                ) : null}
+                                )}
                             </div>
                             <div className={styles.stats}>
                                 <code className={styles.additions}>+{change.additions}</code>
@@ -88,7 +88,6 @@ export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
                                 }}
                                 type="button"
                             >
-                                <FileDiff height={16} width={16} />
                                 Review
                             </button>
                         </div>
