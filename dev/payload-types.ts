@@ -13,650 +13,649 @@
  * via the `definition` "supportedTimezones".
  */
 export type SupportedTimezones =
-  | 'Pacific/Midway'
-  | 'Pacific/Niue'
-  | 'Pacific/Honolulu'
-  | 'Pacific/Rarotonga'
-  | 'America/Anchorage'
-  | 'Pacific/Gambier'
-  | 'America/Los_Angeles'
-  | 'America/Tijuana'
-  | 'America/Denver'
-  | 'America/Phoenix'
-  | 'America/Chicago'
-  | 'America/Guatemala'
-  | 'America/New_York'
-  | 'America/Bogota'
-  | 'America/Caracas'
-  | 'America/Santiago'
-  | 'America/Buenos_Aires'
-  | 'America/Sao_Paulo'
-  | 'Atlantic/South_Georgia'
-  | 'Atlantic/Azores'
-  | 'Atlantic/Cape_Verde'
-  | 'Europe/London'
-  | 'Europe/Berlin'
-  | 'Africa/Lagos'
-  | 'Europe/Athens'
-  | 'Africa/Cairo'
-  | 'Europe/Moscow'
-  | 'Asia/Riyadh'
-  | 'Asia/Dubai'
-  | 'Asia/Baku'
-  | 'Asia/Karachi'
-  | 'Asia/Tashkent'
-  | 'Asia/Calcutta'
-  | 'Asia/Dhaka'
-  | 'Asia/Almaty'
-  | 'Asia/Jakarta'
-  | 'Asia/Bangkok'
-  | 'Asia/Shanghai'
-  | 'Asia/Singapore'
-  | 'Asia/Tokyo'
-  | 'Asia/Seoul'
-  | 'Australia/Brisbane'
-  | 'Australia/Sydney'
-  | 'Pacific/Guam'
-  | 'Pacific/Noumea'
-  | 'Pacific/Auckland'
-  | 'Pacific/Fiji';
+    | "Pacific/Midway"
+    | "Pacific/Niue"
+    | "Pacific/Honolulu"
+    | "Pacific/Rarotonga"
+    | "America/Anchorage"
+    | "Pacific/Gambier"
+    | "America/Los_Angeles"
+    | "America/Tijuana"
+    | "America/Denver"
+    | "America/Phoenix"
+    | "America/Chicago"
+    | "America/Guatemala"
+    | "America/New_York"
+    | "America/Bogota"
+    | "America/Caracas"
+    | "America/Santiago"
+    | "America/Buenos_Aires"
+    | "America/Sao_Paulo"
+    | "Atlantic/South_Georgia"
+    | "Atlantic/Azores"
+    | "Atlantic/Cape_Verde"
+    | "Europe/London"
+    | "Europe/Berlin"
+    | "Africa/Lagos"
+    | "Europe/Athens"
+    | "Africa/Cairo"
+    | "Europe/Moscow"
+    | "Asia/Riyadh"
+    | "Asia/Dubai"
+    | "Asia/Baku"
+    | "Asia/Karachi"
+    | "Asia/Tashkent"
+    | "Asia/Calcutta"
+    | "Asia/Dhaka"
+    | "Asia/Almaty"
+    | "Asia/Jakarta"
+    | "Asia/Bangkok"
+    | "Asia/Shanghai"
+    | "Asia/Singapore"
+    | "Asia/Tokyo"
+    | "Asia/Seoul"
+    | "Australia/Brisbane"
+    | "Australia/Sydney"
+    | "Pacific/Guam"
+    | "Pacific/Noumea"
+    | "Pacific/Auckland"
+    | "Pacific/Fiji"
 
 export interface Config {
-  auth: {
-    users: UserAuthOperations;
-  };
-  blocks: {};
-  collections: {
-    users: User;
-    posts: Post;
-    media: Media;
-    'plugin-collection': PluginCollection;
-    'payload-kv': PayloadKv;
-    'payload-locked-documents': PayloadLockedDocument;
-    'payload-preferences': PayloadPreference;
-    'payload-migrations': PayloadMigration;
-  };
-  collectionsJoins: {};
-  collectionsSelect: {
-    users: UsersSelect<false> | UsersSelect<true>;
-    posts: PostsSelect<false> | PostsSelect<true>;
-    media: MediaSelect<false> | MediaSelect<true>;
-    'plugin-collection': PluginCollectionSelect<false> | PluginCollectionSelect<true>;
-    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
-    'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
-    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
-    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
-  };
-  db: {
-    defaultIDType: number;
-  };
-  fallbackLocale: null;
-  globals: {
-    'site-settings': SiteSetting;
-    navigation: Navigation;
-  };
-  globalsSelect: {
-    'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
-    navigation: NavigationSelect<false> | NavigationSelect<true>;
-  };
-  locale: null;
-  widgets: {
-    collections: CollectionsWidget;
-  };
-  user: User;
-  jobs: {
-    tasks: unknown;
-    workflows: unknown;
-  };
+    auth: {
+        users: UserAuthOperations
+    }
+    blocks: {}
+    collections: {
+        users: User
+        posts: Post
+        media: Media
+        "plugin-collection": PluginCollection
+        "payload-kv": PayloadKv
+        "payload-locked-documents": PayloadLockedDocument
+        "payload-preferences": PayloadPreference
+        "payload-migrations": PayloadMigration
+    }
+    collectionsJoins: {}
+    collectionsSelect: {
+        users: UsersSelect<false> | UsersSelect<true>
+        posts: PostsSelect<false> | PostsSelect<true>
+        media: MediaSelect<false> | MediaSelect<true>
+        "plugin-collection": PluginCollectionSelect<false> | PluginCollectionSelect<true>
+        "payload-kv": PayloadKvSelect<false> | PayloadKvSelect<true>
+        "payload-locked-documents": PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>
+        "payload-preferences": PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>
+        "payload-migrations": PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>
+    }
+    db: {
+        defaultIDType: number
+    }
+    fallbackLocale: null
+    globals: {
+        "site-settings": SiteSetting
+        navigation: Navigation
+    }
+    globalsSelect: {
+        "site-settings": SiteSettingsSelect<false> | SiteSettingsSelect<true>
+        navigation: NavigationSelect<false> | NavigationSelect<true>
+    }
+    locale: null
+    widgets: {
+        collections: CollectionsWidget
+    }
+    user: User
+    jobs: {
+        tasks: unknown
+        workflows: unknown
+    }
 }
 export interface UserAuthOperations {
-  forgotPassword: {
-    email: string;
-    password: string;
-  };
-  login: {
-    email: string;
-    password: string;
-  };
-  registerFirstUser: {
-    email: string;
-    password: string;
-  };
-  unlock: {
-    email: string;
-    password: string;
-  };
+    forgotPassword: {
+        email: string
+        password: string
+    }
+    login: {
+        email: string
+        password: string
+    }
+    registerFirstUser: {
+        email: string
+        password: string
+    }
+    unlock: {
+        email: string
+        password: string
+    }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users".
  */
 export interface User {
-  id: number;
-  aiProvider?: ('claude' | 'google' | 'mistral' | 'openai') | null;
-  aiApiKey?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  email: string;
-  resetPasswordToken?: string | null;
-  resetPasswordExpiration?: string | null;
-  salt?: string | null;
-  hash?: string | null;
-  loginAttempts?: number | null;
-  lockUntil?: string | null;
-  sessions?:
-    | {
-        id: string;
-        createdAt?: string | null;
-        expiresAt: string;
-      }[]
-    | null;
-  password?: string | null;
-  collection: 'users';
+    id: number
+    aiProvider?: ("claude" | "google" | "mistral" | "openai") | null
+    aiApiKey?: string | null
+    updatedAt: string
+    createdAt: string
+    email: string
+    resetPasswordToken?: string | null
+    resetPasswordExpiration?: string | null
+    salt?: string | null
+    hash?: string | null
+    loginAttempts?: number | null
+    lockUntil?: string | null
+    sessions?:
+        | {
+              id: string
+              createdAt?: string | null
+              expiresAt: string
+          }[]
+        | null
+    password?: string | null
+    collection: "users"
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts".
  */
 export interface Post {
-  id: number;
-  title: string;
-  slug?: string | null;
-  excerpt?: string | null;
-  content?: {
-    root: {
-      type: string;
-      children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  } | null;
-  status?: ('draft' | 'published' | 'archived') | null;
-  category?: ('news' | 'guide' | 'opinion') | null;
-  featured?: boolean | null;
-  publishedAt?: string | null;
-  heroImage?: (number | null) | Media;
-  tags?:
-    | {
-        label: string;
-        id?: string | null;
-      }[]
-    | null;
-  seo?: {
-    title?: string | null;
-    description?: string | null;
-  };
-  relatedPosts?: (number | Post)[] | null;
-  metadata?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  layout?:
-    | (
+    id: number
+    title: string
+    slug?: string | null
+    excerpt?: string | null
+    content?: {
+        root: {
+            type: string
+            children: {
+                type: any
+                version: number
+                [k: string]: unknown
+            }[]
+            direction: ("ltr" | "rtl") | null
+            format: "left" | "start" | "center" | "right" | "end" | "justify" | ""
+            indent: number
+            version: number
+        }
+        [k: string]: unknown
+    } | null
+    status?: ("draft" | "published" | "archived") | null
+    category?: ("news" | "guide" | "opinion") | null
+    featured?: boolean | null
+    publishedAt?: string | null
+    heroImage?: (number | null) | Media
+    tags?:
         | {
-            headline: string;
-            subline?: string | null;
-            image?: (number | null) | Media;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'hero';
+              label: string
+              id?: string | null
+          }[]
+        | null
+    seo?: {
+        title?: string | null
+        description?: string | null
+    }
+    relatedPosts?: (number | Post)[] | null
+    metadata?:
+        | {
+              [k: string]: unknown
           }
-        | {
-            label: string;
-            href: string;
-            style?: ('primary' | 'secondary') | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'cta';
-          }
-        | {
-            title?: string | null;
-            images?:
+        | unknown[]
+        | string
+        | number
+        | boolean
+        | null
+    layout?:
+        | (
               | {
-                  image?: (number | null) | Media;
-                  caption?: string | null;
-                  id?: string | null;
-                }[]
-              | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'gallery';
-          }
-      )[]
-    | null;
-  addedByPlugin?: string | null;
-  updatedAt: string;
-  createdAt: string;
+                    headline: string
+                    subline?: string | null
+                    image?: (number | null) | Media
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "hero"
+                }
+              | {
+                    label: string
+                    href: string
+                    style?: ("primary" | "secondary") | null
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "cta"
+                }
+              | {
+                    title?: string | null
+                    images?:
+                        | {
+                              image?: (number | null) | Media
+                              caption?: string | null
+                              id?: string | null
+                          }[]
+                        | null
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "gallery"
+                }
+          )[]
+        | null
+    addedByPlugin?: string | null
+    updatedAt: string
+    createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
-  id: number;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
+    id: number
+    updatedAt: string
+    createdAt: string
+    url?: string | null
+    thumbnailURL?: string | null
+    filename?: string | null
+    mimeType?: string | null
+    filesize?: number | null
+    width?: number | null
+    height?: number | null
+    focalX?: number | null
+    focalY?: number | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "plugin-collection".
  */
 export interface PluginCollection {
-  id: string;
-  updatedAt: string;
-  createdAt: string;
+    id: string
+    updatedAt: string
+    createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
-  id: number;
-  key: string;
-  data:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
+    id: number
+    key: string
+    data:
+        | {
+              [k: string]: unknown
+          }
+        | unknown[]
+        | string
+        | number
+        | boolean
+        | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
-  id: number;
-  document?:
-    | ({
-        relationTo: 'users';
-        value: number | User;
-      } | null)
-    | ({
-        relationTo: 'posts';
-        value: number | Post;
-      } | null)
-    | ({
-        relationTo: 'media';
-        value: number | Media;
-      } | null)
-    | ({
-        relationTo: 'plugin-collection';
-        value: string | PluginCollection;
-      } | null);
-  globalSlug?: string | null;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
-  updatedAt: string;
-  createdAt: string;
+    id: number
+    document?:
+        | ({
+              relationTo: "users"
+              value: number | User
+          } | null)
+        | ({
+              relationTo: "posts"
+              value: number | Post
+          } | null)
+        | ({
+              relationTo: "media"
+              value: number | Media
+          } | null)
+        | ({
+              relationTo: "plugin-collection"
+              value: string | PluginCollection
+          } | null)
+    globalSlug?: string | null
+    user: {
+        relationTo: "users"
+        value: number | User
+    }
+    updatedAt: string
+    createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences".
  */
 export interface PayloadPreference {
-  id: number;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
-  key?: string | null;
-  value?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  updatedAt: string;
-  createdAt: string;
+    id: number
+    user: {
+        relationTo: "users"
+        value: number | User
+    }
+    key?: string | null
+    value?:
+        | {
+              [k: string]: unknown
+          }
+        | unknown[]
+        | string
+        | number
+        | boolean
+        | null
+    updatedAt: string
+    createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations".
  */
 export interface PayloadMigration {
-  id: number;
-  name?: string | null;
-  batch?: number | null;
-  updatedAt: string;
-  createdAt: string;
+    id: number
+    name?: string | null
+    batch?: number | null
+    updatedAt: string
+    createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
-  aiProvider?: T;
-  aiApiKey?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  email?: T;
-  resetPasswordToken?: T;
-  resetPasswordExpiration?: T;
-  salt?: T;
-  hash?: T;
-  loginAttempts?: T;
-  lockUntil?: T;
-  sessions?:
-    | T
-    | {
-        id?: T;
-        createdAt?: T;
-        expiresAt?: T;
-      };
+    aiProvider?: T
+    aiApiKey?: T
+    updatedAt?: T
+    createdAt?: T
+    email?: T
+    resetPasswordToken?: T
+    resetPasswordExpiration?: T
+    salt?: T
+    hash?: T
+    loginAttempts?: T
+    lockUntil?: T
+    sessions?:
+        | T
+        | {
+              id?: T
+              createdAt?: T
+              expiresAt?: T
+          }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts_select".
  */
 export interface PostsSelect<T extends boolean = true> {
-  title?: T;
-  slug?: T;
-  excerpt?: T;
-  content?: T;
-  status?: T;
-  category?: T;
-  featured?: T;
-  publishedAt?: T;
-  heroImage?: T;
-  tags?:
-    | T
-    | {
-        label?: T;
-        id?: T;
-      };
-  seo?:
-    | T
-    | {
-        title?: T;
-        description?: T;
-      };
-  relatedPosts?: T;
-  metadata?: T;
-  layout?:
-    | T
-    | {
-        hero?:
-          | T
-          | {
-              headline?: T;
-              subline?: T;
-              image?: T;
-              id?: T;
-              blockName?: T;
-            };
-        cta?:
-          | T
-          | {
-              label?: T;
-              href?: T;
-              style?: T;
-              id?: T;
-              blockName?: T;
-            };
-        gallery?:
-          | T
-          | {
-              title?: T;
-              images?:
-                | T
-                | {
-                    image?: T;
-                    caption?: T;
-                    id?: T;
-                  };
-              id?: T;
-              blockName?: T;
-            };
-      };
-  addedByPlugin?: T;
-  updatedAt?: T;
-  createdAt?: T;
+    title?: T
+    slug?: T
+    excerpt?: T
+    content?: T
+    status?: T
+    category?: T
+    featured?: T
+    publishedAt?: T
+    heroImage?: T
+    tags?:
+        | T
+        | {
+              label?: T
+              id?: T
+          }
+    seo?:
+        | T
+        | {
+              title?: T
+              description?: T
+          }
+    relatedPosts?: T
+    metadata?: T
+    layout?:
+        | T
+        | {
+              hero?:
+                  | T
+                  | {
+                        headline?: T
+                        subline?: T
+                        image?: T
+                        id?: T
+                        blockName?: T
+                    }
+              cta?:
+                  | T
+                  | {
+                        label?: T
+                        href?: T
+                        style?: T
+                        id?: T
+                        blockName?: T
+                    }
+              gallery?:
+                  | T
+                  | {
+                        title?: T
+                        images?:
+                            | T
+                            | {
+                                  image?: T
+                                  caption?: T
+                                  id?: T
+                              }
+                        id?: T
+                        blockName?: T
+                    }
+          }
+    addedByPlugin?: T
+    updatedAt?: T
+    createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
-  updatedAt?: T;
-  createdAt?: T;
-  url?: T;
-  thumbnailURL?: T;
-  filename?: T;
-  mimeType?: T;
-  filesize?: T;
-  width?: T;
-  height?: T;
-  focalX?: T;
-  focalY?: T;
+    updatedAt?: T
+    createdAt?: T
+    url?: T
+    thumbnailURL?: T
+    filename?: T
+    mimeType?: T
+    filesize?: T
+    width?: T
+    height?: T
+    focalX?: T
+    focalY?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "plugin-collection_select".
  */
 export interface PluginCollectionSelect<T extends boolean = true> {
-  id?: T;
-  updatedAt?: T;
-  createdAt?: T;
+    id?: T
+    updatedAt?: T
+    createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
-  key?: T;
-  data?: T;
+    key?: T
+    data?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
-  document?: T;
-  globalSlug?: T;
-  user?: T;
-  updatedAt?: T;
-  createdAt?: T;
+    document?: T
+    globalSlug?: T
+    user?: T
+    updatedAt?: T
+    createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences_select".
  */
 export interface PayloadPreferencesSelect<T extends boolean = true> {
-  user?: T;
-  key?: T;
-  value?: T;
-  updatedAt?: T;
-  createdAt?: T;
+    user?: T
+    key?: T
+    value?: T
+    updatedAt?: T
+    createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations_select".
  */
 export interface PayloadMigrationsSelect<T extends boolean = true> {
-  name?: T;
-  batch?: T;
-  updatedAt?: T;
-  createdAt?: T;
+    name?: T
+    batch?: T
+    updatedAt?: T
+    createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "site-settings".
  */
 export interface SiteSetting {
-  id: number;
-  siteName: string;
-  defaultSeo?: {
-    title?: string | null;
-    description?: string | null;
-  };
-  homepageSections?:
-    | (
-        | {
-            headline: string;
-            subline?: string | null;
-            image?: (number | null) | Media;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'hero';
-          }
-        | {
-            label: string;
-            href: string;
-            style?: ('primary' | 'secondary') | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'cta';
-          }
-        | {
-            title?: string | null;
-            images?:
+    id: number
+    siteName: string
+    defaultSeo?: {
+        title?: string | null
+        description?: string | null
+    }
+    homepageSections?:
+        | (
               | {
-                  image?: (number | null) | Media;
-                  caption?: string | null;
-                  id?: string | null;
-                }[]
-              | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'gallery';
-          }
-      )[]
-    | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
+                    headline: string
+                    subline?: string | null
+                    image?: (number | null) | Media
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "hero"
+                }
+              | {
+                    label: string
+                    href: string
+                    style?: ("primary" | "secondary") | null
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "cta"
+                }
+              | {
+                    title?: string | null
+                    images?:
+                        | {
+                              image?: (number | null) | Media
+                              caption?: string | null
+                              id?: string | null
+                          }[]
+                        | null
+                    id?: string | null
+                    blockName?: string | null
+                    blockType: "gallery"
+                }
+          )[]
+        | null
+    updatedAt?: string | null
+    createdAt?: string | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "navigation".
  */
 export interface Navigation {
-  id: number;
-  items?:
-    | {
-        label: string;
-        url: string;
-        id?: string | null;
-      }[]
-    | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
+    id: number
+    items?:
+        | {
+              label: string
+              url: string
+              id?: string | null
+          }[]
+        | null
+    updatedAt?: string | null
+    createdAt?: string | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "site-settings_select".
  */
 export interface SiteSettingsSelect<T extends boolean = true> {
-  siteName?: T;
-  defaultSeo?:
-    | T
-    | {
-        title?: T;
-        description?: T;
-      };
-  homepageSections?:
-    | T
-    | {
-        hero?:
-          | T
-          | {
-              headline?: T;
-              subline?: T;
-              image?: T;
-              id?: T;
-              blockName?: T;
-            };
-        cta?:
-          | T
-          | {
-              label?: T;
-              href?: T;
-              style?: T;
-              id?: T;
-              blockName?: T;
-            };
-        gallery?:
-          | T
-          | {
-              title?: T;
-              images?:
-                | T
-                | {
-                    image?: T;
-                    caption?: T;
-                    id?: T;
-                  };
-              id?: T;
-              blockName?: T;
-            };
-      };
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
+    siteName?: T
+    defaultSeo?:
+        | T
+        | {
+              title?: T
+              description?: T
+          }
+    homepageSections?:
+        | T
+        | {
+              hero?:
+                  | T
+                  | {
+                        headline?: T
+                        subline?: T
+                        image?: T
+                        id?: T
+                        blockName?: T
+                    }
+              cta?:
+                  | T
+                  | {
+                        label?: T
+                        href?: T
+                        style?: T
+                        id?: T
+                        blockName?: T
+                    }
+              gallery?:
+                  | T
+                  | {
+                        title?: T
+                        images?:
+                            | T
+                            | {
+                                  image?: T
+                                  caption?: T
+                                  id?: T
+                              }
+                        id?: T
+                        blockName?: T
+                    }
+          }
+    updatedAt?: T
+    createdAt?: T
+    globalType?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "navigation_select".
  */
 export interface NavigationSelect<T extends boolean = true> {
-  items?:
-    | T
-    | {
-        label?: T;
-        url?: T;
-        id?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
+    items?:
+        | T
+        | {
+              label?: T
+              url?: T
+              id?: T
+          }
+    updatedAt?: T
+    createdAt?: T
+    globalType?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collections_widget".
  */
 export interface CollectionsWidget {
-  data?: {
-    [k: string]: unknown;
-  };
-  width: 'full';
+    data?: {
+        [k: string]: unknown
+    }
+    width: "full"
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "auth".
  */
 export interface Auth {
-  [k: string]: unknown;
+    [k: string]: unknown
 }
 
-
-declare module 'payload' {
-  export interface GeneratedTypes extends Config {}
+declare module "payload" {
+    export interface GeneratedTypes extends Config {}
 }

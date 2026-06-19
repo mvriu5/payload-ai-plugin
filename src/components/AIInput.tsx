@@ -6,15 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { getResolvedAIModelConfig, type AIProvider, type AIModelConfig } from "../ai/providerOptions.js"
 import { getSerializableLabel, isInternalCollection } from "../payload/shared.js"
-import { AIActionProposalList, type AIActionProposal } from "./AIActionProposalList.js"
+import { ActionToast, type ActionProposal } from "./ActionToast.js"
 import styles from "./AIInput.module.css"
-import { CollectionMentionPopover, type CollectionMentionOption } from "./CollectionMentionPopover.js"
+import { MentionPopover, type MentionOption } from "./MentionPopover.js"
 import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, Send } from "./Icons.js"
-import { RecentChangesList, type AppliedChange } from "./RecentChangesList.js"
+import { RecentChangesList, type AppliedChange } from "./AuditLogList.js"
 import { useAISettings } from "./hooks/useAISettings.js"
 import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js"
 
-type AIMention = {
+type Mention = {
     collection?: string
     id?: string
     isDefault?: boolean
@@ -38,7 +38,7 @@ type FieldWithBlocks = {
     type?: string
 }
 
-type PayloadAiAdminCustom = {
+type PayloadAIAdminCustom = {
     payloadAiPlugin?: {
         collectionSlugs?: string[]
         models?: AIModelConfig
@@ -56,7 +56,7 @@ type LocalizationConfig = {
     >
 }
 
-type AIChatStreamEvent =
+type ChatStreamEvent =
     | {
           data: {
               delta?: string
@@ -65,7 +65,7 @@ type AIChatStreamEvent =
       }
     | {
           data: {
-              proposals?: AIActionProposal[]
+              proposals?: ActionProposal[]
               usage?: {
                   inputTokens?: number
                   outputTokens?: number
@@ -85,8 +85,8 @@ type AIChatStreamEvent =
           event: "done"
       }
 
-const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; parent: string }): CollectionMentionOption[] => {
-    const options: CollectionMentionOption[] = []
+const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; parent: string }): MentionOption[] => {
+    const options: MentionOption[] = []
 
     for (const field of fields) {
         if (field.type === "blocks" && field.blocks) {
@@ -140,7 +140,7 @@ const getProviderIcon = (provider: AIProvider | null) => {
     }
 }
 
-const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
+const parseSSEEvent = (chunk: string): ChatStreamEvent | null => {
     const lines = chunk.split("\n")
     let eventName = ""
     const dataLines: string[] = []
@@ -159,7 +159,7 @@ const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
     if (!eventName) return null
 
     try {
-        const data = JSON.parse(dataLines.join("\n")) as AIChatStreamEvent["data"]
+        const data = JSON.parse(dataLines.join("\n")) as ChatStreamEvent["data"]
 
         if (eventName !== "text" && eventName !== "proposals" && eventName !== "error" && eventName !== "done") {
             return null
@@ -168,7 +168,7 @@ const parseSSEEvent = (chunk: string): AIChatStreamEvent | null => {
         return {
             data,
             event: eventName,
-        } as AIChatStreamEvent
+        } as ChatStreamEvent
     } catch {
         return null
     }
@@ -208,12 +208,12 @@ const getActiveMentionRange = (valueBeforeCaret: string) => {
     return null
 }
 
-export const AIInput = () => {
+const AIInput = () => {
     const { config } = useConfig()
     const editorRef = useRef<HTMLDivElement>(null)
     const mentionPopoverRef = useRef<HTMLDivElement>(null)
     const [prompt, setPrompt] = useState("")
-    const configuredModels = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.models
+    const configuredModels = (config.admin?.custom as PayloadAIAdminCustom | undefined)?.payloadAiPlugin?.models
     const aiModelConfig = useMemo(() => getResolvedAIModelConfig(configuredModels), [configuredModels])
     const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
         adminUserSlug: config.admin?.user,
@@ -229,7 +229,7 @@ export const AIInput = () => {
         left: number
         top: number
     }>(null)
-    const [mentions, setMentions] = useState<AIMention[]>([])
+    const [mentions, setMentions] = useState<Mention[]>([])
     const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<number[]>([])
     const [response, setResponse] = useState("")
     const [tokenUsage, setTokenUsage] = useState<null | {
@@ -238,11 +238,11 @@ export const AIInput = () => {
         totalTokens?: number
     }>(null)
     const [error, setError] = useState("")
-    const [proposals, setProposals] = useState<AIActionProposal[]>([])
+    const [proposals, setProposals] = useState<ActionProposal[]>([])
     const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isApplying, setIsApplying] = useState(false)
-    const enabledCollectionSlugs = (config.admin?.custom as PayloadAiAdminCustom | undefined)?.payloadAiPlugin?.collectionSlugs
+    const enabledCollectionSlugs = (config.admin?.custom as PayloadAIAdminCustom | undefined)?.payloadAiPlugin?.collectionSlugs
     const enabledCollectionSlugSet = useMemo(() => (enabledCollectionSlugs ? new Set(enabledCollectionSlugs) : null), [enabledCollectionSlugs])
     const isCollectionMentionEnabled = (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug)
     const recentChangesEndpoint = useMemo(
@@ -279,7 +279,7 @@ export const AIInput = () => {
         return () => window.clearTimeout(timeout)
     }, [error, isLoading, proposals.length, response])
 
-    const collections: CollectionMentionOption[] = config.collections
+    const collections: MentionOption[] = config.collections
         .filter((collection) => !isInternalCollection(collection.slug))
         .filter((collection) => isCollectionMentionEnabled(collection.slug))
         .map((collection) => ({
@@ -287,7 +287,7 @@ export const AIInput = () => {
             slug: collection.slug,
             type: "collection",
         }))
-    const globals: CollectionMentionOption[] =
+    const globals: MentionOption[] =
         config.globals?.map((global) => ({
             label: getSerializableLabel(global.label, global.slug),
             slug: global.slug,
@@ -295,7 +295,7 @@ export const AIInput = () => {
         })) || []
     const localizationConfig = (config as typeof config & { localization?: LocalizationConfig }).localization
     const localesConfig = localizationConfig?.locales ?? []
-    const locales: CollectionMentionOption[] = localesConfig.flatMap((locale) => {
+    const locales: MentionOption[] = localesConfig.flatMap((locale) => {
         if (typeof locale === "string") {
             return [
                 {
@@ -322,7 +322,7 @@ export const AIInput = () => {
             },
         ]
     })
-    const blocks: CollectionMentionOption[] = [
+    const blocks: MentionOption[] = [
         ...config.collections
             .filter((collection) => isCollectionMentionEnabled(collection.slug))
             .flatMap((collection) =>
@@ -341,8 +341,12 @@ export const AIInput = () => {
     const mentionOptions = [...collections, ...globals, ...blocks, ...locales]
 
     const normalizedMentionQuery = mentionQuery.toLowerCase()
-    const filteredCollections = collections.filter((collection) => collection.slug.toLowerCase().includes(normalizedMentionQuery) || collection.label.toLowerCase().includes(normalizedMentionQuery))
-    const filteredMentionOptions = mentionOptions.filter((option) => option.slug.toLowerCase().includes(normalizedMentionQuery) || option.label.toLowerCase().includes(normalizedMentionQuery))
+    const filteredCollections = collections.filter(
+        (collection) => collection.slug.toLowerCase().includes(normalizedMentionQuery) || collection.label.toLowerCase().includes(normalizedMentionQuery)
+    )
+    const filteredMentionOptions = mentionOptions.filter(
+        (option) => option.slug.toLowerCase().includes(normalizedMentionQuery) || option.label.toLowerCase().includes(normalizedMentionQuery)
+    )
     const documentSuggestionCollection = filteredCollections.length === 1 ? filteredCollections[0]?.slug : null
     const { documentSuggestions, resetDocumentSuggestions } = useDocumentMentionSuggestions({
         apiRoute: config.routes.api,
@@ -485,7 +489,7 @@ export const AIInput = () => {
         if (editorRef.current) editorRef.current.textContent = ""
     }
 
-    const getProposalViewURL = (proposal: AIActionProposal) => {
+    const getProposalViewURL = (proposal: ActionProposal) => {
         const adminRoute = config.routes.admin || "/admin"
 
         if (proposal.action === "updateGlobal" && proposal.slug) {
@@ -499,7 +503,7 @@ export const AIInput = () => {
         return null
     }
 
-    const insertMention = (suggestion: CollectionMentionOption) => {
+    const insertMention = (suggestion: MentionOption) => {
         const editor = editorRef.current
         if (!mentionRange || !editor) return
 
@@ -647,7 +651,7 @@ export const AIInput = () => {
         }
     }
 
-    const handleApplyProposal = async (proposal: AIActionProposal) => {
+    const handleApplyProposal = async (proposal: ActionProposal) => {
         setIsApplying(true)
         setError("")
 
@@ -742,8 +746,8 @@ export const AIInput = () => {
                             suppressContentEditableWarning
                         />
                     </div>
-                    {mentionRange ? (
-                        <CollectionMentionPopover
+                    {mentionRange && (
+                        <MentionPopover
                             containerRef={mentionPopoverRef}
                             onSelect={insertMention}
                             style={
@@ -756,7 +760,7 @@ export const AIInput = () => {
                             }
                             suggestions={mentionSuggestions}
                         />
-                    ) : null}
+                    )}
                 </div>
                 <div className={styles.chatActionsRow}>
                     <div className={styles.settings}>
@@ -764,7 +768,12 @@ export const AIInput = () => {
                             <span className={styles.settingLabel}>Model</span>
                             <div className={styles.selectWrapper}>
                                 {getProviderIcon(settingsProvider)}
-                                <select className={styles.select} disabled={!settingsProvider} onChange={(event) => setSelectedModel(event.target.value)} value={selectedModel}>
+                                <select
+                                    className={styles.select}
+                                    disabled={!settingsProvider}
+                                    onChange={(event) => setSelectedModel(event.target.value)}
+                                    value={selectedModel}
+                                >
                                     {!settingsProvider && <option value="">Select provider in account settings</option>}
                                     {settingsProvider &&
                                         aiModelConfig.providers[settingsProvider].map((model) => (
@@ -776,12 +785,17 @@ export const AIInput = () => {
                             </div>
                         </label>
                     </div>
-                    <button className={styles.chatButton} disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading} onClick={() => void handleSubmit()} type="button">
+                    <button
+                        className={styles.chatButton}
+                        disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading}
+                        onClick={() => void handleSubmit()}
+                        type="button"
+                    >
                         <Send width={14} height={14} />
                         {isLoading ? "Sending..." : "Send"}
                     </button>
                 </div>
-                <AIActionProposalList
+                <ActionToast
                     apiRoute={config.routes.api}
                     appliedProposalIndexes={appliedProposalIndexes}
                     description={response}
@@ -808,3 +822,5 @@ export const AIInput = () => {
         </div>
     )
 }
+
+export default AIInput

@@ -94,12 +94,16 @@
     },
     "knip": {
         "entry": [
+            "src/exports/client.ts",
             "dev/payload.config.ts",
             "dev/next.config.mjs",
             "dev/app/**/*.{ts,tsx}"
         ],
         "ignore": [
             "dev/payload-types.ts"
+        ],
+        "ignoreDependencies": [
+            "prettier"
         ],
         "project": [
             "src/**/*.{ts,tsx}",

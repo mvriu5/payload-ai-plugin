@@ -1,36 +1,34 @@
-import styles from "./AIActionProposalList.module.css"
+import styles from "./ActionToast.module.css"
 import { redactSensitiveData } from "../ai/sensitiveData.js"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
 import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
 import { Apply, FileDiff, Reject } from "./Icons.js"
+import { ActiveDiff } from "./AuditLogList.js"
 
-export type AIActionProposal = {
+export type ActionProposal = {
     _aiSignature?: {
         expiresAt: string
         value: string
     }
     action: "create" | "delete" | "update" | "updateGlobal"
     collection?: string
-    data?: Record<string, unknown>
     id?: string
     label: string
-    locale?: string
-    localizedData?: Record<string, Record<string, unknown>>
     slug?: string
 }
 
-type AIActionProposalListProps = {
+type ActionToastProps = {
     apiRoute: string
     appliedProposalIndexes: number[]
     description?: string
     error?: string
-    getViewURL?: (proposal: AIActionProposal) => string | null
+    getViewURL?: (proposal: ActionProposal) => string | null
     isApplying: boolean
     onDismiss?: () => void
     onDismissError?: () => void
-    onApply: (proposal: AIActionProposal, index: number) => void
-    proposals: AIActionProposal[]
+    onApply: (proposal: ActionProposal, index: number) => void
+    proposals: ActionProposal[]
     tokenUsage?: {
         inputTokens?: number
         outputTokens?: number
@@ -45,8 +43,8 @@ const getDescriptionPreview = (description: string) => {
     return `${description.slice(0, maxDescriptionLength).trim()}...`
 }
 
-const getSafeProposalDetails = (proposal: AIActionProposal) => {
-    const redactedProposal = redactSensitiveData(proposal) as AIActionProposal
+const getSafeProposalDetails = (proposal: ActionProposal) => {
+    const redactedProposal = redactSensitiveData(proposal) as ActionProposal
 
     if (redactedProposal._aiSignature) {
         redactedProposal._aiSignature = {
@@ -58,11 +56,20 @@ const getSafeProposalDetails = (proposal: AIActionProposal) => {
     return redactedProposal
 }
 
-export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, description, error, getViewURL, isApplying, onDismiss, onDismissError, onApply, proposals, tokenUsage }: AIActionProposalListProps) => {
-    const [activeDiff, setActiveDiff] = useState<{
-        diff: ProposalDiff
-        proposal: AIActionProposal
-    } | null>(null)
+export const ActionToast = ({
+    apiRoute,
+    appliedProposalIndexes,
+    description,
+    error,
+    getViewURL,
+    isApplying,
+    onDismiss,
+    onDismissError,
+    onApply,
+    proposals,
+    tokenUsage,
+}: ActionToastProps) => {
+    const [activeDiff, setActiveDiff] = useState<ActiveDiff | null>(null)
     const [diffError, setDiffError] = useState("")
     const [loadingDiffIndex, setLoadingDiffIndex] = useState<number | null>(null)
 
@@ -70,7 +77,7 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
     const descriptionPreview = description ? getDescriptionPreview(description) : ""
     const isDescriptionTruncated = Boolean(description) && descriptionPreview !== description
 
-    const openDiff = async (proposal: AIActionProposal, index: number) => {
+    const openDiff = async (proposal: ActionProposal, index: number) => {
         setDiffError("")
         setLoadingDiffIndex(index)
 
@@ -93,6 +100,7 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
             }
 
             setActiveDiff({
+                change: null,
                 diff: {
                     after: result.after,
                     before: result.before,
@@ -126,12 +134,12 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
                     <div>
                         <div className={styles.label}>AI response</div>
                         <div className={styles.description}>{descriptionPreview}</div>
-                        {isDescriptionTruncated ? (
+                        {isDescriptionTruncated && (
                             <details className={styles.details}>
                                 <summary className={styles.summary}>Full response</summary>
                                 <pre className={styles.proposalDetails}>{description}</pre>
                             </details>
-                        ) : null}
+                        )}
                     </div>
                 </div>
             )}
@@ -161,7 +169,12 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
                         </div>
                         <div className={styles.footer}>
                             <div className={styles.viewAction}>
-                                <button className={styles.secondaryButton} disabled={loadingDiffIndex === index} onClick={() => void openDiff(proposal, index)} type="button">
+                                <button
+                                    className={styles.secondaryButton}
+                                    disabled={loadingDiffIndex === index}
+                                    onClick={() => void openDiff(proposal, index)}
+                                    type="button"
+                                >
                                     <FileDiff height={16} width={16} />
                                     {loadingDiffIndex === index ? "Loading" : "Review"}
                                 </button>
@@ -185,7 +198,7 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
                     </div>
                 )
             })}
-            {diffError ? (
+            {diffError && (
                 <div className={`${styles.item} ${styles.errorItem}`}>
                     <div>
                         <div className={styles.label}>Diff review failed</div>
@@ -195,8 +208,10 @@ export const AIActionProposalList = ({ apiRoute, appliedProposalIndexes, descrip
                         Dismiss
                     </button>
                 </div>
-            ) : null}
-            {activeDiff ? <DiffDialog diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} tokenUsage={tokenUsage || undefined} /> : null}
+            )}
+            {activeDiff && (
+                <DiffDialog diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} tokenUsage={tokenUsage || undefined} />
+            )}
         </div>
     )
 }

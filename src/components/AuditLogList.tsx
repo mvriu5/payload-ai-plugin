@@ -1,23 +1,20 @@
 import { useState } from "react"
 
-import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
-import { FileDiff } from "./Icons.js"
-import styles from "./RecentChangesList.module.css"
-import type { AIActionProposal } from "./AIActionProposalList.js"
 import { ExternalLinkIcon } from "@payloadcms/ui"
+import type { ActionProposal } from "./ActionToast.js"
+import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
+import styles from "./AuditLogList.module.css"
 
 export type AppliedChange = {
-    action?: AIActionProposal["action"] | null
+    action?: ActionProposal["action"] | null
     additions: number
     after?: unknown
-    aiResponse?: string | null
     before?: unknown
     collection?: string | null
     createdAt?: string | null
     documentID?: string | null
     inputTokens?: number | null
     outputTokens?: number | null
-    prompt?: string | null
     removals: number
     slug?: string | null
     targetType?: string | null
@@ -28,11 +25,17 @@ export type AppliedChange = {
     url?: string | null
 }
 
-type RecentChangesListProps = {
+type AuditLogListProps = {
     changes: AppliedChange[]
 }
 
-const getChangeProposal = (change: AppliedChange): AIActionProposal => ({
+export type ActiveDiff = {
+    change: AppliedChange | null
+    diff: ProposalDiff
+    proposal: ActionProposal
+}
+
+const getChangeProposal = (change: AppliedChange): ActionProposal => ({
     action: change.action || "update",
     collection: change.collection || undefined,
     id: change.documentID || undefined,
@@ -40,12 +43,8 @@ const getChangeProposal = (change: AppliedChange): AIActionProposal => ({
     slug: change.slug || undefined,
 })
 
-export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
-    const [activeDiff, setActiveDiff] = useState<{
-        change: AppliedChange
-        diff: ProposalDiff
-        proposal: AIActionProposal
-    } | null>(null)
+export const RecentChangesList = ({ changes }: AuditLogListProps) => {
+    const [activeDiff, setActiveDiff] = useState<ActiveDiff | null>(null)
 
     return (
         <aside className={styles.recentChanges}>
@@ -94,7 +93,9 @@ export const RecentChangesList = ({ changes }: RecentChangesListProps) => {
                     ))
                 )}
             </div>
-            {activeDiff ? <DiffDialog change={activeDiff.change} diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} /> : null}
+            {activeDiff && activeDiff.change && (
+                <DiffDialog change={activeDiff.change} diff={activeDiff.diff} onClose={() => setActiveDiff(null)} proposal={activeDiff.proposal} />
+            )}
         </aside>
     )
 }

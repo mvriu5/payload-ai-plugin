@@ -2,20 +2,17 @@
 
 import type { TextFieldClientComponent } from "payload"
 import type { ChangeEvent } from "react"
-
 import { useField } from "@payloadcms/ui"
 
 const getFieldClassName = ({ className, isReadOnly, showError }: { className?: string; isReadOnly?: boolean; showError?: boolean }) =>
     ["field-type", "password", className, showError ? "error" : null, isReadOnly ? "read-only" : null].filter(Boolean).join(" ")
 
-export const AIApiKeyField: TextFieldClientComponent = ({ field, inputRef, path, readOnly }) => {
+const APIKeyField: TextFieldClientComponent = ({ field, inputRef, path, readOnly }) => {
     const { disabled, errorMessage, setValue, showError, value } = useField<string>({ path })
     const fieldID = `field-${path.replace(/\./g, "__")}`
     const isReadOnly = readOnly || disabled || field.admin?.disabled
 
-    const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-        setValue(event.target.value)
-    }
+    const handleChange = (event: ChangeEvent<HTMLInputElement>) => setValue(event.target.value)
 
     return (
         <div
@@ -47,3 +44,5 @@ export const AIApiKeyField: TextFieldClientComponent = ({ field, inputRef, path,
         </div>
     )
 }
+
+export default APIKeyField

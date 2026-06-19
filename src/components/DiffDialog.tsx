@@ -2,9 +2,10 @@ import { XIcon } from "@payloadcms/ui/icons/X"
 import type { CSSProperties } from "react"
 import { useEffect, useState } from "react"
 
+import { getJSONLineKey } from "../payload/shared.js"
 import styles from "./DiffDialog.module.css"
-import type { AIActionProposal } from "./AIActionProposalList.js"
-import type { AppliedChange } from "./RecentChangesList.js"
+import type { ActionProposal } from "./ActionToast.js"
+import type { AppliedChange } from "./AuditLogList.js"
 
 export type ProposalDiff = {
     after: unknown
@@ -15,7 +16,7 @@ type DiffDialogProps = {
     change?: AppliedChange
     diff: ProposalDiff
     onClose: () => void
-    proposal: AIActionProposal
+    proposal: ActionProposal
     tokenUsage?: {
         inputTokens?: number
         outputTokens?: number
@@ -28,6 +29,13 @@ type DiffLine = {
     path?: string
     placeholder?: boolean
     text: string
+}
+
+type CreateDiffLineInput = {
+    changed: boolean
+    path?: string
+    placeholder?: boolean
+    text?: string
 }
 
 type DiffRow = {
@@ -72,18 +80,12 @@ const formatDateTime = (value?: string | null) => {
     }).format(date)
 }
 
-const createLine = ({ changed, path, placeholder = false, text = "" }: { changed: boolean; path?: string; placeholder?: boolean; text?: string }): DiffLine => ({
+const createLine = ({ changed, path, placeholder = false, text = "" }: CreateDiffLineInput): DiffLine => ({
     changed,
     path,
     placeholder,
     text,
 })
-
-const getJSONLineKey = (line: string) => {
-    const match = /^(\s*)"([^"]+)":/.exec(line)
-
-    return match ? `${match[1]}${match[2]}` : null
-}
 
 const shouldPairChangedLines = (beforeLine: string, afterLine: string) => {
     const beforeKey = getJSONLineKey(beforeLine)
@@ -356,7 +358,11 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                     {diffSections.map((section) => {
                         const diffRows = getDiffRows(section.beforeValue, section.afterValue)
                         const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)
-                        const longestLineLength = Math.max(...section.beforeValue.split("\n").map((line) => line.length), ...section.afterValue.split("\n").map((line) => line.length), 80)
+                        const longestLineLength = Math.max(
+                            ...section.beforeValue.split("\n").map((line) => line.length),
+                            ...section.afterValue.split("\n").map((line) => line.length),
+                            80
+                        )
                         const diffShellStyle = {
                             "--diff-line-offset": `-${scrollLeft}px`,
                             "--diff-line-width": `${longestLineLength + 8}ch`,
@@ -395,7 +401,7 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                                                             type="button"
                                                         >
                                                             {displayRow.expanded ? "Hide" : "Show"} {displayRow.count} unchanged lines
-                                                            {displayRow.path ? <span className={styles.diffCollapsedPath}>{displayRow.path}</span> : null}
+                                                            {displayRow.path && <span className={styles.diffCollapsedPath}>{displayRow.path}</span>}
                                                         </button>
                                                     )
                                                 }
@@ -405,19 +411,31 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                                                 return (
                                                     <div className={styles.diffRow} key={`${section.id}-row-${displayRow.index}`}>
                                                         <span
-                                                            className={[styles.diffLine, row.before.changed ? styles.diffLineRemoved : "", row.before.placeholder ? styles.diffLinePlaceholder : ""]
+                                                            className={[
+                                                                styles.diffLine,
+                                                                row.before.changed && styles.diffLineRemoved,
+                                                                row.before.placeholder && styles.diffLinePlaceholder,
+                                                            ]
                                                                 .filter(Boolean)
                                                                 .join(" ")}
                                                         >
-                                                            {row.before.changed && row.before.path ? <span className={styles.diffPathBadge}>{row.before.path}</span> : null}
+                                                            {row.before.changed && row.before.path && (
+                                                                <span className={styles.diffPathBadge}>{row.before.path}</span>
+                                                            )}
                                                             <span className={styles.diffLineContent}>{row.before.text || " "}</span>
                                                         </span>
                                                         <span
-                                                            className={[styles.diffLine, row.after.changed ? styles.diffLineAdded : "", row.after.placeholder ? styles.diffLinePlaceholder : ""]
+                                                            className={[
+                                                                styles.diffLine,
+                                                                row.after.changed && styles.diffLineAdded,
+                                                                row.after.placeholder && styles.diffLinePlaceholder,
+                                                            ]
                                                                 .filter(Boolean)
                                                                 .join(" ")}
                                                         >
-                                                            {row.after.changed && row.after.path ? <span className={styles.diffPathBadge}>{row.after.path}</span> : null}
+                                                            {row.after.changed && row.after.path && (
+                                                                <span className={styles.diffPathBadge}>{row.after.path}</span>
+                                                            )}
                                                             <span className={styles.diffLineContent}>{row.after.text || " "}</span>
                                                         </span>
                                                     </div>

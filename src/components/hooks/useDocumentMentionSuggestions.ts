@@ -1,85 +1,77 @@
-"use client";
+"use client"
 
-import { formatAdminURL } from "payload/shared";
-import { useEffect, useState } from "react";
-
-import type { CollectionMentionOption } from "../CollectionMentionPopover.js";
-import { isAbortError } from "./utils.js";
+import { formatAdminURL } from "payload/shared"
+import { useEffect, useState } from "react"
+import type { MentionOption } from "../MentionPopover.js"
+import { isAbortError } from "src/payload/shared.js"
 
 type MentionRange = {
-  end: number;
-  start: number;
-};
-
-interface DocumentMentionSuggestions {
-  apiRoute: string;
-  documentSuggestionCollection?: null | string;
-  mentionQuery: string;
-  mentionRange: MentionRange | null;
+    end: number
+    start: number
 }
 
-export const useDocumentMentionSuggestions = ({
-  apiRoute,
-  documentSuggestionCollection,
-  mentionQuery,
-  mentionRange,
-}: DocumentMentionSuggestions) => {
-  const [documentSuggestions, setDocumentSuggestions] = useState<
-    CollectionMentionOption[]
-  >([]);
+interface DocumentMentionSuggestions {
+    apiRoute: string
+    documentSuggestionCollection?: null | string
+    mentionQuery: string
+    mentionRange: MentionRange | null
+}
 
-  useEffect(() => {
-    const trimmedQuery = mentionQuery.trim();
+export const useDocumentMentionSuggestions = ({ apiRoute, documentSuggestionCollection, mentionQuery, mentionRange }: DocumentMentionSuggestions) => {
+    const [documentSuggestions, setDocumentSuggestions] = useState<MentionOption[]>([])
 
-    if (!mentionRange || (!trimmedQuery && !documentSuggestionCollection)) {
-      setDocumentSuggestions([]);
-      return;
-    }
+    useEffect(() => {
+        const trimmedQuery = mentionQuery.trim()
 
-    const abortController = new AbortController();
-
-    const fetchDocumentSuggestions = async () => {
-      try {
-        const res = await fetch(
-          formatAdminURL({
-            apiRoute,
-            path: "/ai-mention-suggestions",
-          }),
-          {
-            body: JSON.stringify({
-              collectionSlug: documentSuggestionCollection,
-              query: documentSuggestionCollection ? "" : trimmedQuery,
-            }),
-            headers: { "Content-Type": "application/json" },
-            method: "POST",
-            signal: abortController.signal,
-          },
-        );
-
-        if (!res.ok) {
-          setDocumentSuggestions([]);
-          return;
+        if (!mentionRange || (!trimmedQuery && !documentSuggestionCollection)) {
+            setDocumentSuggestions([])
+            return
         }
 
-        const result = (await res.json()) as {
-          suggestions?: CollectionMentionOption[];
-        };
+        const abortController = new AbortController()
 
-        setDocumentSuggestions(result.suggestions || []);
-      } catch (err) {
-        if (isAbortError(err)) return;
+        const fetchDocumentSuggestions = async () => {
+            try {
+                const res = await fetch(
+                    formatAdminURL({
+                        apiRoute,
+                        path: "/ai-mention-suggestions",
+                    }),
+                    {
+                        body: JSON.stringify({
+                            collectionSlug: documentSuggestionCollection,
+                            query: documentSuggestionCollection ? "" : trimmedQuery,
+                        }),
+                        headers: { "Content-Type": "application/json" },
+                        method: "POST",
+                        signal: abortController.signal,
+                    }
+                )
 
-        setDocumentSuggestions([]);
-      }
-    };
+                if (!res.ok) {
+                    setDocumentSuggestions([])
+                    return
+                }
 
-    void fetchDocumentSuggestions();
+                const result = (await res.json()) as {
+                    suggestions?: MentionOption[]
+                }
 
-    return () => abortController.abort();
-  }, [apiRoute, documentSuggestionCollection, mentionQuery, mentionRange]);
+                setDocumentSuggestions(result.suggestions || [])
+            } catch (err) {
+                if (isAbortError(err)) return
 
-  return {
-    documentSuggestions,
-    resetDocumentSuggestions: () => setDocumentSuggestions([]),
-  };
-};
+                setDocumentSuggestions([])
+            }
+        }
+
+        void fetchDocumentSuggestions()
+
+        return () => abortController.abort()
+    }, [apiRoute, documentSuggestionCollection, mentionQuery, mentionRange])
+
+    return {
+        documentSuggestions,
+        resetDocumentSuggestions: () => setDocumentSuggestions([]),
+    }
+}

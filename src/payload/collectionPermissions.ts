@@ -1,127 +1,102 @@
-import type { PayloadHandler } from "payload";
+import type { PayloadHandler } from "payload"
 
-import { isInternalCollection } from "./shared.js";
+import { isInternalCollection } from "./shared.js"
 
-export type AICollectionAction = "create" | "delete" | "read" | "update";
+export type CollectionAction = "create" | "delete" | "read" | "update"
 
-export type AICollectionPermissions = Partial<
-  Record<AICollectionAction, boolean>
->;
+type CollectionPermissions = Partial<Record<CollectionAction, boolean>>
 
-export type AICollectionPermissionConfig =
-  | true
-  | AICollectionPermissions;
+type CollectionPermissionConfig = true | CollectionPermissions
 
-export type AICollectionPermissionMap = Partial<Record<string, AICollectionPermissionConfig>>;
+export type CollectionPermissionMap = Partial<Record<string, CollectionPermissionConfig>>
 
-export type ResolvedAICollectionPermissionMap = Partial<
-  Record<string, Record<AICollectionAction, boolean>>
->;
+export type ResolvedCollectionPermissionMap = Partial<Record<string, Record<CollectionAction, boolean>>>
 
-const allActions: AICollectionAction[] = ["create", "delete", "read", "update"];
+const allActions: CollectionAction[] = ["create", "delete", "read", "update"]
 
 const getKnownCollectionSlugs = (req: Parameters<PayloadHandler>[0]) => {
-  return req.payload.config.collections
-    .map((collection) => collection.slug)
-    .filter((slug) => !isInternalCollection(slug));
-};
+    return req.payload.config.collections.map((collection) => collection.slug).filter((slug) => !isInternalCollection(slug))
+}
 
-export const resolveCollectionPermissions = (
-  collections?: AICollectionPermissionMap,
-): ResolvedAICollectionPermissionMap | undefined => {
-  if (!collections) return undefined;
+export const resolveCollectionPermissions = (collections?: CollectionPermissionMap): ResolvedCollectionPermissionMap | undefined => {
+    if (!collections) return undefined
 
-  const entries = Object.entries(collections).map(([slug, config]) => {
-      if (config === true) {
+    const entries = Object.entries(collections).map(([slug, config]) => {
+        if (config === true) {
+            return [
+                slug,
+                {
+                    create: true,
+                    delete: true,
+                    read: true,
+                    update: true,
+                },
+            ]
+        }
+
+        if (!config) {
+            return [
+                slug,
+                {
+                    create: false,
+                    delete: false,
+                    read: false,
+                    update: false,
+                },
+            ]
+        }
+
         return [
-          slug,
-          {
-            create: true,
-            delete: true,
-            read: true,
-            update: true,
-          },
-        ];
-      }
+            slug,
+            {
+                create: Boolean(config.create),
+                delete: Boolean(config.delete),
+                read: Boolean(config.read),
+                update: Boolean(config.update),
+            },
+        ]
+    })
 
-      if (!config) {
-        return [
-          slug,
-          {
-            create: false,
-            delete: false,
-            read: false,
-            update: false,
-          },
-        ];
-      }
-
-      return [
-        slug,
-        {
-          create: Boolean(config.create),
-          delete: Boolean(config.delete),
-          read: Boolean(config.read),
-          update: Boolean(config.update),
-        },
-      ];
-    });
-
-  return Object.fromEntries(entries);
-};
+    return Object.fromEntries(entries)
+}
 
 export const getCollectionSlugsForAction = ({
-  action,
-  permissions,
-  req,
+    action,
+    permissions,
+    req,
 }: {
-  action: AICollectionAction;
-  permissions?: ResolvedAICollectionPermissionMap;
-  req: Parameters<PayloadHandler>[0];
+    action: CollectionAction
+    permissions?: ResolvedCollectionPermissionMap
+    req: Parameters<PayloadHandler>[0]
 }) => {
-  const knownSlugs = getKnownCollectionSlugs(req);
+    const knownSlugs = getKnownCollectionSlugs(req)
 
-  if (!permissions) return knownSlugs;
+    if (!permissions) return knownSlugs
 
-  return knownSlugs.filter((slug) => Boolean(permissions[slug]?.[action]));
-};
+    return knownSlugs.filter((slug) => Boolean(permissions[slug]?.[action]))
+}
 
 export const isCollectionActionAllowed = ({
-  action,
-  permissions,
-  req,
-  slug,
+    action,
+    permissions,
+    req,
+    slug,
 }: {
-  action: AICollectionAction;
-  permissions?: ResolvedAICollectionPermissionMap;
-  req: Parameters<PayloadHandler>[0];
-  slug: string;
+    action: CollectionAction
+    permissions?: ResolvedCollectionPermissionMap
+    req: Parameters<PayloadHandler>[0]
+    slug: string
 }) => {
-  if (!getKnownCollectionSlugs(req).includes(slug)) return false;
-  if (!permissions) return true;
+    if (!getKnownCollectionSlugs(req).includes(slug)) return false
+    if (!permissions) return true
 
-  return Boolean(permissions[slug]?.[action]);
-};
+    return Boolean(permissions[slug]?.[action])
+}
 
-export const getCollectionPermissions = ({
-  permissions,
-  slug,
-}: {
-  permissions?: ResolvedAICollectionPermissionMap;
-  slug: string;
-}) => {
-  if (!permissions) {
-    return Object.fromEntries(allActions.map((action) => [action, true])) as Record<
-      AICollectionAction,
-      boolean
-    >;
-  }
+export const getCollectionPermissions = ({ permissions, slug }: { permissions?: ResolvedCollectionPermissionMap; slug: string }) => {
+    if (!permissions) {
+        return Object.fromEntries(allActions.map((action) => [action, true])) as Record<CollectionAction, boolean>
+    }
 
-  return (
-    permissions[slug] ||
-    (Object.fromEntries(allActions.map((action) => [action, false])) as Record<
-      AICollectionAction,
-      boolean
-    >)
-  );
-};
+    return permissions[slug] || (Object.fromEntries(allActions.map((action) => [action, false])) as Record<CollectionAction, boolean>)
+}
