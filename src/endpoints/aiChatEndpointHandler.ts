@@ -576,13 +576,15 @@ export const createAIChatEndpointHandler =
         );
       };
 
+      const model = await getModel({
+        apiKey: providerConfig.apiKey,
+        model: providerConfig.modelID,
+        provider,
+      });
+
       const result = streamText({
         maxOutputTokens: 700,
-        model: getModel({
-          apiKey: providerConfig.apiKey,
-          model: providerConfig.modelID,
-          provider,
-        }),
+        model,
         prompt: buildPromptWithMentionContext({
           mentionContext,
           prompt,

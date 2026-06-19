@@ -5,14 +5,22 @@ AI assistant plugin for Payload CMS. It adds an admin dashboard assistant that c
 ## Install
 
 ```bash
-npm add @mvriu5/payload-ai
+npm add @mvriu5/payload-ai @ai-sdk/openai
+```
+
+Install only the provider SDKs you actually use:
+
+```bash
+npm add @mvriu5/payload-ai @ai-sdk/anthropic
+npm add @mvriu5/payload-ai @ai-sdk/google
+npm add @mvriu5/payload-ai @ai-sdk/mistral
 ```
 
 ## Usage
 
 ```ts
 import { buildConfig } from "payload";
-import { payloadAiPlugin } from "payload-ai-plugin";
+import { payloadAiPlugin } from "@mvriu5/payload-ai";
 
 export default buildConfig({
   plugins: [
@@ -35,7 +43,7 @@ Users can select their provider and optionally store their own API key in accoun
 ## Options
 
 ```ts
-import type { PayloadAiPluginOptions } from "payload-ai-plugin";
+import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai";
 
 const options: PayloadAiPluginOptions = {
   allowUserApiKeys: false,
@@ -130,6 +138,8 @@ Disables endpoint and UI registration while keeping the plugin call in your conf
 
 ## Provider Environment Variables
 
+The package lazy-loads provider SDKs at runtime. If a user selects `claude`, `google`, `mistral`, or `openai`, the matching `@ai-sdk/*` package must be installed in the host app.
+
 API key priority is:
 
 1. account-level API key, unless `allowUserApiKeys: false`
@@ -151,12 +161,12 @@ The apply endpoint returns only minimal status/doc references and does not retur
 ## Exports
 
 ```ts
-import { payloadAiPlugin } from "payload-ai-plugin";
-import type { PayloadAiPluginOptions } from "payload-ai-plugin";
+import { payloadAiPlugin } from "@mvriu5/payload-ai";
+import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai";
 ```
 
 Client components are exported through:
 
 ```ts
-import { AIInput, AIApiKeyField } from "payload-ai-plugin/client";
+import { AIInput, AIApiKeyField } from "@mvriu5/payload-ai/client";
 ```
