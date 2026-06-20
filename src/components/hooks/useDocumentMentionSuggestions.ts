@@ -35,7 +35,7 @@ export const useDocumentMentionSuggestions = ({ apiRoute, documentSuggestionColl
                 const res = await fetch(
                     formatAdminURL({
                         apiRoute,
-                        path: "/ai-mention-suggestions",
+                        path: "/ai-mention-suggestion",
                     }),
                     {
                         body: JSON.stringify({

@@ -152,7 +152,16 @@
 }
 
 .prefix {
+    align-items: center;
     color: var(--theme-elevation-500);
+    display: inline-flex;
+    gap: 3px;
+}
+
+.badgeIcon {
+    flex: 0 0 auto;
+    height: 12px;
+    width: 12px;
 }
 
 .name {

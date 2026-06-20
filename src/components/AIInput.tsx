@@ -210,6 +210,73 @@ const getActiveMentionRange = (valueBeforeCaret: string) => {
     return null
 }
 
+const svgNamespace = "http://www.w3.org/2000/svg"
+
+const appendSvgPath = (svg: SVGSVGElement, d: string) => {
+    const path = document.createElementNS(svgNamespace, "path")
+
+    path.setAttribute("d", d)
+    svg.append(path)
+}
+
+const createBadgeIcon = (type: Mention["type"]) => {
+    if (type === "locale") return null
+
+    const svg = document.createElementNS(svgNamespace, "svg")
+
+    svg.setAttribute("aria-hidden", "true")
+    svg.setAttribute("class", styles.badgeIcon)
+    svg.setAttribute("fill", "none")
+    svg.setAttribute("stroke", "currentColor")
+    svg.setAttribute("stroke-linecap", "round")
+    svg.setAttribute("stroke-linejoin", "round")
+    svg.setAttribute("stroke-width", "2")
+    svg.setAttribute("viewBox", "0 0 24 24")
+
+    if (type === "collection") {
+        appendSvgPath(svg, "M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2")
+    }
+
+    if (type === "doc") {
+        appendSvgPath(svg, "M14 3v4a1 1 0 0 0 1 1h4")
+        appendSvgPath(svg, "M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2")
+    }
+
+    if (type === "global") {
+        appendSvgPath(svg, "M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0")
+        appendSvgPath(svg, "M3.6 9h16.8")
+        appendSvgPath(svg, "M3.6 15h16.8")
+        appendSvgPath(svg, "M11.5 3a17 17 0 0 0 0 18")
+        appendSvgPath(svg, "M12.5 3a17 17 0 0 1 0 18")
+    }
+
+    if (type === "block") {
+        appendSvgPath(svg, "M14 4a1 1 0 0 1 1 -1h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1l0 -5")
+        appendSvgPath(svg, "M3 14h12a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h3a2 2 0 0 1 2 2v12")
+    }
+
+    return svg
+}
+
+const createBadgePrefix = (suggestion: MentionOption) => {
+    const prefix = document.createElement("span")
+    const icon = createBadgeIcon(suggestion.type)
+
+    prefix.className = styles.prefix
+
+    if (icon) {
+        prefix.append(icon)
+    }
+
+    if (suggestion.type === "doc") {
+        prefix.append(document.createTextNode(`${suggestion.collection || "document"}:`))
+    } else if (suggestion.type === "locale") {
+        prefix.textContent = "locale:"
+    }
+
+    return prefix
+}
+
 const AIInput = () => {
     const { config } = useConfig()
     const editorRef = useRef<HTMLDivElement>(null)
@@ -520,10 +587,7 @@ const AIInput = () => {
         badge.className = [styles.badge, styles[suggestion.type], styles.inlineBadge].join(" ")
         badge.contentEditable = "false"
         badge.append(
-            Object.assign(document.createElement("span"), {
-                className: styles.prefix,
-                textContent: `${badgePrefix} `,
-            }),
+            createBadgePrefix(suggestion),
             Object.assign(document.createElement("span"), {
                 className: styles.name,
                 textContent: suggestion.label,
