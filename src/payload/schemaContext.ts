@@ -57,6 +57,17 @@ type CollectionLikeConfig = {
     versions?: VersionConfig
 }
 
+type CachedCollectionDescription = {
+    fields: Record<string, unknown>[]
+    hasAuth?: boolean
+    hasDrafts?: boolean
+    hasLocalizedFields?: boolean
+    label: unknown
+    localizedFieldNames?: string[]
+    slug: string
+    useAsTitle?: string
+}
+
 type MentionContext = {
     blockContexts: (Record<string, unknown> & {
         parent: string
@@ -84,6 +95,10 @@ const getSerializableRelationTo = (relationTo: unknown) => {
 
     return undefined
 }
+
+const fieldDescriptionCache = new WeakMap<FieldConfig, Record<string, unknown>>()
+const blockDescriptionCache = new WeakMap<BlockConfig, Record<string, unknown>>()
+const collectionDescriptionCache = new WeakMap<CollectionLikeConfig, CachedCollectionDescription>()
 
 const getLocaleConfigs = (req: Parameters<PayloadHandler>[0]): LocaleConfig[] => {
     const localization = (req.payload.config as { localization?: { defaultLocale?: string; locales?: unknown[] } }).localization
@@ -195,7 +210,32 @@ const getLocalizedFieldNames = (fields: FieldConfig[], path = ""): string[] => {
     })
 }
 
-export const describeCollectionLikeConfig = ({
+const getCachedCollectionDescription = (config: CollectionLikeConfig, type: "collection" | "global") => {
+    const cached = collectionDescriptionCache.get(config)
+
+    if (cached) return cached
+
+    const slug = config.slug
+    const fields = getSchemaFields(config)
+    const localizedFieldNames = getLocalizedFieldNames(fields)
+
+    const description: CachedCollectionDescription = {
+        fields: fields.map(describeField),
+        hasAuth: isAuthCollection(toNormalizeCollectionConfig(config)) || undefined,
+        hasDrafts: hasDrafts(config) || undefined,
+        hasLocalizedFields: localizedFieldNames.length > 0 || undefined,
+        label: type === "collection" ? config.labels?.plural || config.labels?.singular || slug : getSerializableLabel(config.label) || slug,
+        ...(localizedFieldNames.length > 0 ? { localizedFieldNames } : {}),
+        ...(type === "collection" && config.admin?.useAsTitle ? { useAsTitle: config.admin.useAsTitle } : {}),
+        slug,
+    }
+
+    collectionDescriptionCache.set(config, description)
+
+    return description
+}
+
+export const describeCollectionLikeSummary = ({
     config,
     permissions,
     type,
@@ -204,9 +244,8 @@ export const describeCollectionLikeConfig = ({
     permissions?: ResolvedCollectionPermissionMap
     type: "collection" | "global"
 }) => {
-    const slug = config.slug
-    const fields = getSchemaFields(config)
-    const localizedFieldNames = getLocalizedFieldNames(fields)
+    const description = getCachedCollectionDescription(config, type)
+    const slug = description.slug
 
     return {
         access: {
@@ -222,24 +261,27 @@ export const describeCollectionLikeConfig = ({
                       },
             hasPayloadAccessControl: Boolean(config.access),
         },
-        fields: fields.map(describeField),
-        hasAuth: isAuthCollection(toNormalizeCollectionConfig(config)) || undefined,
-        hasDrafts: hasDrafts(config) || undefined,
-        hasLocalizedFields: localizedFieldNames.length > 0 || undefined,
-        label: type === "collection" ? config.labels?.plural || config.labels?.singular || slug : getSerializableLabel(config.label) || slug,
-        ...(localizedFieldNames.length > 0 ? { localizedFieldNames } : {}),
-        ...(type === "collection" && config.admin?.useAsTitle ? { useAsTitle: config.admin.useAsTitle } : {}),
+        hasAuth: description.hasAuth,
+        hasDrafts: description.hasDrafts,
+        hasLocalizedFields: description.hasLocalizedFields,
+        label: description.label,
+        localizedFieldNames: description.localizedFieldNames,
         slug,
         type,
+        useAsTitle: description.useAsTitle,
     }
 }
 
 const describeField = (field: FieldConfig): Record<string, unknown> => {
+    const cached = fieldDescriptionCache.get(field)
+
+    if (cached) return cached
+
     const label = getSerializableLabel(field.label)
     const relationTo = getSerializableRelationTo(field.relationTo)
     const options = getSerializableOptions(field.options)
 
-    return {
+    const description = {
         ...(label ? { label } : {}),
         ...(field.name ? { name: field.name } : {}),
         ...(field.type ? { type: field.type } : {}),
@@ -252,13 +294,44 @@ const describeField = (field: FieldConfig): Record<string, unknown> => {
         ...(field.fields ? { fields: field.fields.map(describeField) } : {}),
         ...(field.blocks ? { blocks: field.blocks.map(describeBlock) } : {}),
     }
+
+    fieldDescriptionCache.set(field, description)
+
+    return description
 }
 
 const describeBlock = (block: BlockConfig): Record<string, unknown> => {
-    return {
+    const cached = blockDescriptionCache.get(block)
+
+    if (cached) return cached
+
+    const description = {
         fields: (block.fields || []).map(describeField),
         label: getSerializableLabel(block.labels?.singular) || block.slug,
         slug: block.slug,
+    }
+
+    blockDescriptionCache.set(block, description)
+
+    return description
+}
+
+export const describeCollectionLikeConfig = ({
+    config,
+    permissions,
+    type,
+}: {
+    config: CollectionLikeConfig
+    permissions?: ResolvedCollectionPermissionMap
+    type: "collection" | "global"
+}) => {
+    return {
+        ...describeCollectionLikeSummary({
+            config,
+            permissions,
+            type,
+        }),
+        fields: getCachedCollectionDescription(config, type).fields,
     }
 }
 
@@ -445,9 +518,8 @@ export const buildPromptWithMentionContext = ({ mentionContext, prompt }: { ment
     if (mentionContext.length === 0) return prompt
 
     return [
-        "The user selected the following Payload CMS references in the input. Treat inline text like `collection: Name`, `document: Name`, or `locale: de` as references to this context, not as literal content.",
-        JSON.stringify(mentionContext, null, 2),
-        "User request:",
+        "Selected Payload references JSON. Treat inline reference labels as these entities:",
+        JSON.stringify(mentionContext),
         prompt,
     ].join("\n\n")
 }

@@ -12,6 +12,7 @@ import {
     buildPromptWithMentionContext,
     collectBlocks,
     describeCollectionLikeConfig,
+    describeCollectionLikeSummary,
     getAllowedCollectionSlugs,
     getMentionContext,
     type ChatMention,
@@ -55,6 +56,10 @@ type LabelInput = {
 
 type SlugInput = {
     slug: string
+}
+
+type OptionalSlugInput = {
+    slug?: string
 }
 
 type LocalizedDataInput = Record<string, Record<string, unknown>>
@@ -373,6 +378,15 @@ export const createChatHandler =
                 body?.mentions?.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []
             ).filter((locale, index, array) => array.indexOf(locale) === index)
             const activeLocale = selectedLocales.at(-1)
+            const mentionedCollectionSlugs = (
+                body?.mentions
+                    ?.flatMap((mention) => {
+                        if (mention.type === "collection" && mention.slug) return [mention.slug]
+                        if (mention.type === "doc" && mention.collection) return [mention.collection]
+                        return []
+                    })
+                    .filter((slug) => collectionSlugs.includes(slug)) || []
+            ).filter((slug, index, array) => array.indexOf(slug) === index)
             const createRequiredFieldsByCollection = Object.fromEntries(
                 allowedCollections.map((collection) => [
                     collection.slug,
@@ -381,6 +395,12 @@ export const createChatHandler =
             )
             const titleFieldByCollection = Object.fromEntries(
                 allowedCollections.flatMap((collection) => (collection.admin?.useAsTitle ? [[collection.slug, collection.admin.useAsTitle]] : []))
+            )
+            const focusedRequiredFieldsByCollection = Object.fromEntries(
+                mentionedCollectionSlugs.map((slug) => [slug, createRequiredFieldsByCollection[slug] || []])
+            )
+            const focusedTitleFieldByCollection = Object.fromEntries(
+                mentionedCollectionSlugs.flatMap((slug) => (titleFieldByCollection[slug] ? [[slug, titleFieldByCollection[slug]]] : []))
             )
             const collectionSlugSchema = z.enum(collectionSlugs as [string, ...string[]])
             const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
@@ -417,11 +437,24 @@ export const createChatHandler =
                     },
                 },
                 listCollections: {
-                    description: "List all Payload CMS collections available in this app.",
-                    inputSchema: z.object({}),
-                    execute: async () => {
+                    description: "List AI-enabled Payload collections. Omit slug for compact summaries; pass slug to get full field schema for one collection.",
+                    inputSchema: z.object({
+                        slug: collectionSlugSchema.optional(),
+                    }),
+                    execute: async ({ slug }: OptionalSlugInput) => {
+                        if (slug) {
+                            const collection = allowedCollections.find((item) => item.slug === slug)
+                            if (!collection) return { error: `Unknown collection: ${slug}` }
+
+                            return describeCollectionLikeConfig({
+                                config: collection as never,
+                                permissions: options.collections,
+                                type: "collection",
+                            })
+                        }
+
                         return allowedCollections.map((collection) =>
-                            describeCollectionLikeConfig({
+                            describeCollectionLikeSummary({
                                 config: collection as never,
                                 permissions: options.collections,
                                 type: "collection",
@@ -448,16 +481,28 @@ export const createChatHandler =
                     },
                 },
                 listGlobals: {
-                    description: "List all Payload CMS globals available in this app.",
-                    inputSchema: z.object({}),
-                    execute: async () => {
-                        return (
-                            req.payload.config.globals?.map((global) =>
-                                describeCollectionLikeConfig({
-                                    config: global as never,
-                                    type: "global",
-                                })
-                            ) || []
+                    description: "List Payload globals. Omit slug for compact summaries; pass slug to get full field schema for one global.",
+                    inputSchema: z.object({
+                        slug: z.string().optional(),
+                    }),
+                    execute: async ({ slug }: OptionalSlugInput) => {
+                        const globals = req.payload.config.globals || []
+
+                        if (slug) {
+                            const global = globals.find((item) => item.slug === slug)
+                            if (!global) return { error: `Unknown global: ${slug}` }
+
+                            return describeCollectionLikeConfig({
+                                config: global as never,
+                                type: "global",
+                            })
+                        }
+
+                        return globals.map((global) =>
+                            describeCollectionLikeSummary({
+                                config: global as never,
+                                type: "global",
+                            })
                         )
                     },
                 },
@@ -667,7 +712,7 @@ export const createChatHandler =
             })
 
             const result = streamText({
-                maxOutputTokens: options.maxOutputTokens || 1000,
+                maxOutputTokens: options.maxOutputTokens || 700,
                 model,
                 prompt: buildPromptWithMentionContext({
                     mentionContext,
@@ -675,20 +720,14 @@ export const createChatHandler =
                 }),
                 stopWhen: stepCountIs(6),
                 system: [
-                    "You are a CMS assistant inside Payload CMS.",
-                    "Use tools to inspect CMS schema and content before answering content questions.",
-                    "When mention context is provided, use it as the selected CMS scope and prefer it over guessing collection names.",
-                    "When a locale is selected in mention context, treat it as the active locale for reads, translations, and localized update proposals.",
-                    "When multiple locales are selected, create one proposal that uses localizedData with one top-level key per locale code instead of separate proposals.",
-                    `For create proposals, always include all required fields. Required create fields by collection: ${JSON.stringify(createRequiredFieldsByCollection)}.`,
-                    `Title fields by collection: ${JSON.stringify(titleFieldByCollection)}. If the user asks to create content and does not supply a title explicitly, infer a concise title from the request and include it in the create proposal.`,
-                    "If a create proposal would otherwise miss a simple required field like title, name, label, headline, _status, checkbox, or a select/radio default, include it in the tool call instead of omitting it.",
-                    "Never claim that a write has been applied unless the user confirms an action proposal in the UI.",
-                    "For create, update, and delete requests, call the proposal tools instead of directly changing data.",
-                    "Keep the visible response under 40 words and describe only what kind of change was proposed.",
-                    "Write visible responses as plain text only. Do not use Markdown formatting, bold markers (**), headings, bullets, tables, or code fences.",
-                    "Do not include proposed field values, full replacement text, quoted content, markdown sections, code blocks, or headings like 'New content'/'Neuer Inhalt' in the visible response.",
-                    "Put all concrete field values and replacement content only in proposal tool data. Proposal labels must be short action summaries and must not contain proposed content.",
+                    "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
+                    "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
+                    "Writes are proposals only. Never claim changes were applied before user confirmation.",
+                    "For create/update/delete use proposal tools. Put concrete field values only in tool data, not visible text.",
+                    "If schema details are missing, call listCollections/listGlobals with a slug before proposing.",
+                    `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
+                    `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
+                    "Visible response: plain text, under 40 words, no Markdown, no proposed content.",
                 ].join("\n"),
                 tools,
             })
