@@ -17,9 +17,30 @@ interface UseAISettingsOptions {
     defaultModels: Record<AIProvider, string>
 }
 
+const getStoredModelKey = (provider: AIProvider) => `payload-ai:selected-model:${provider}`
+
+const getStoredModel = (provider: AIProvider) => {
+    if (typeof window === "undefined") return null
+
+    return window.localStorage.getItem(getStoredModelKey(provider))
+}
+
+const storeModel = (provider: AIProvider, model: string) => {
+    if (typeof window === "undefined") return
+
+    window.localStorage.setItem(getStoredModelKey(provider), model)
+}
+
 export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAISettingsOptions) => {
     const [settingsProvider, setSettingsProvider] = useState<AIProvider | null>(null)
     const [selectedModel, setSelectedModel] = useState("")
+    const setStoredSelectedModel = (model: string) => {
+        setSelectedModel(model)
+
+        if (settingsProvider && model) {
+            storeModel(settingsProvider, model)
+        }
+    }
 
     useEffect(() => {
         if (!adminUserSlug) {
@@ -58,7 +79,7 @@ export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAIS
                 }
 
                 setSettingsProvider(provider)
-                setSelectedModel(defaultModels[provider])
+                setSelectedModel(getStoredModel(provider) || defaultModels[provider])
             } catch (err) {
                 if (isAbortError(err)) return
 
@@ -74,7 +95,7 @@ export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAIS
 
     return {
         selectedModel,
-        setSelectedModel,
+        setSelectedModel: setStoredSelectedModel,
         settingsProvider,
     }
 }
