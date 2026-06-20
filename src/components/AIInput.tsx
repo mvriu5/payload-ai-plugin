@@ -9,7 +9,7 @@ import { getSerializableLabel, isInternalCollection } from "../payload/shared.js
 import { ActionToast, type ActionProposal } from "./ActionToast.js"
 import styles from "./AIInput.module.css"
 import { MentionPopover, type MentionOption } from "./MentionPopover.js"
-import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, Send } from "./Icons.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, Send } from "./Icons.js"
 import { RecentChangesList, type AppliedChange } from "./AuditLogList.js"
 import { useAISettings } from "./hooks/useAISettings.js"
 import { useDocumentMentionSuggestions } from "./hooks/useDocumentMentionSuggestions.js"
@@ -136,7 +136,7 @@ const getProviderIcon = (provider: AIProvider | null) => {
         case "openai":
             return <OpenaiIcon {...iconProps} />
         case "openrouter":
-            return <OpenaiIcon {...iconProps} />
+            return <OpenrouterIcon {...iconProps} />
         default:
             return null
     }
@@ -602,6 +602,7 @@ const AIInput = () => {
             const reader = res.body.getReader()
             const decoder = new TextDecoder()
             let buffer = ""
+            let receivedProposals: ActionProposal[] = []
 
             while (true) {
                 const { done, value } = await reader.read()
@@ -624,7 +625,8 @@ const AIInput = () => {
                     }
 
                     if (event.event === "proposals") {
-                        setProposals(event.data.proposals || [])
+                        receivedProposals = event.data.proposals || []
+                        setProposals(receivedProposals)
                         setTokenUsage(event.data.usage || null)
                         continue
                     }
@@ -637,11 +639,16 @@ const AIInput = () => {
 
             const finalEvent = buffer.trim() ? parseSSEEvent(buffer.trim()) : null
             if (finalEvent?.event === "proposals") {
-                setProposals(finalEvent.data.proposals || [])
+                receivedProposals = finalEvent.data.proposals || []
+                setProposals(receivedProposals)
                 setTokenUsage(finalEvent.data.usage || null)
             }
             if (finalEvent?.event === "error") {
                 throw new Error(finalEvent.data.error || "AI request failed")
+            }
+
+            if (receivedProposals.length === 0) {
+                clearInput()
             }
         } catch (err) {
             setProposals([])

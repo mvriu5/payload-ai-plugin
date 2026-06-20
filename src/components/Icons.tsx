@@ -25,7 +25,7 @@ export function MistralAiIcon(props: SVGProps<SVGSVGElement>) {
 
 export function OpenaiIcon(props: SVGProps<SVGSVGElement>) {
     return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 260" {...props}>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 260" fill="currentColor" stroke="currentColor" {...props}>
             <path d="M239.184 106.203a64.72 64.72 0 0 0-5.576-53.103C219.452 28.459 191 15.784 163.213 21.74A65.586 65.586 0 0 0 52.096 45.22a64.72 64.72 0 0 0-43.23 31.36c-14.31 24.602-11.061 55.634 8.033 76.74a64.67 64.67 0 0 0 5.525 53.102c14.174 24.65 42.644 37.324 70.446 31.36a64.72 64.72 0 0 0 48.754 21.744c28.481.025 53.714-18.361 62.414-45.481a64.77 64.77 0 0 0 43.229-31.36c14.137-24.558 10.875-55.423-8.083-76.483m-97.56 136.338a48.4 48.4 0 0 1-31.105-11.255l1.535-.87l51.67-29.825a8.6 8.6 0 0 0 4.247-7.367v-72.85l21.845 12.636c.218.111.37.32.409.563v60.367c-.056 26.818-21.783 48.545-48.601 48.601M37.158 197.93a48.35 48.35 0 0 1-5.781-32.589l1.534.921l51.722 29.826a8.34 8.34 0 0 0 8.441 0l63.181-36.425v25.221a.87.87 0 0 1-.358.665l-52.335 30.184c-23.257 13.398-52.97 5.431-66.404-17.803M23.549 85.38a48.5 48.5 0 0 1 25.58-21.333v61.39a8.29 8.29 0 0 0 4.195 7.316l62.874 36.272l-21.845 12.636a.82.82 0 0 1-.767 0L41.353 151.53c-23.211-13.454-31.171-43.144-17.804-66.405zm179.466 41.695l-63.08-36.63L161.73 77.86a.82.82 0 0 1 .768 0l52.233 30.184a48.6 48.6 0 0 1-7.316 87.635v-61.391a8.54 8.54 0 0 0-4.4-7.213m21.742-32.69l-1.535-.922l-51.619-30.081a8.39 8.39 0 0 0-8.492 0L99.98 99.808V74.587a.72.72 0 0 1 .307-.665l52.233-30.133a48.652 48.652 0 0 1 72.236 50.391zM88.061 139.097l-21.845-12.585a.87.87 0 0 1-.41-.614V65.685a48.652 48.652 0 0 1 79.757-37.346l-1.535.87l-51.67 29.825a8.6 8.6 0 0 0-4.246 7.367zm11.868-25.58L128.067 97.3l28.188 16.218v32.434l-28.086 16.218l-28.188-16.218z" />
         </svg>
     )
@@ -46,19 +46,51 @@ export function GoogleGeminiIcon(props: SVGProps<SVGSVGElement>) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 188" {...props}>
             <defs>
-                <radialGradient id="SVGPMo0zqwk" cx="85.738%" cy="25.354%" r="103.154%" fx="85.738%" fy="25.354%" gradientTransform="matrix(-.86887 .47915 -.39276 -.66723 1.702 .012)">
+                <radialGradient
+                    id="SVGPMo0zqwk"
+                    cx="85.738%"
+                    cy="25.354%"
+                    r="103.154%"
+                    fx="85.738%"
+                    fy="25.354%"
+                    gradientTransform="matrix(-.86887 .47915 -.39276 -.66723 1.702 .012)"
+                >
                     <stop offset="0%" stopColor="#5baeff" />
                     <stop offset="100%" stopColor="#9cbfff" />
                 </radialGradient>
-                <radialGradient id="SVG6LOdsc2X" cx="61.879%" cy="26.683%" r="80.612%" fx="61.879%" fy="26.683%" gradientTransform="matrix(-.14736 .90946 -.98908 -.1355 .974 -.26)">
+                <radialGradient
+                    id="SVG6LOdsc2X"
+                    cx="61.879%"
+                    cy="26.683%"
+                    r="80.612%"
+                    fx="61.879%"
+                    fy="26.683%"
+                    gradientTransform="matrix(-.14736 .90946 -.98908 -.1355 .974 -.26)"
+                >
                     <stop offset="0%" stopColor="#409dff" />
                     <stop offset="100%" stopColor="#64b0ff" />
                 </radialGradient>
-                <radialGradient id="SVGRoCRHePI" cx="53.184%" cy="19.021%" r="110.789%" fx="53.184%" fy="19.021%" gradientTransform="matrix(-.16226 .97112 -.66046 -.23858 .744 -.28)">
+                <radialGradient
+                    id="SVGRoCRHePI"
+                    cx="53.184%"
+                    cy="19.021%"
+                    r="110.789%"
+                    fx="53.184%"
+                    fy="19.021%"
+                    gradientTransform="matrix(-.16226 .97112 -.66046 -.23858 .744 -.28)"
+                >
                     <stop offset="0%" stopColor="#177cff" />
                     <stop offset="100%" stopColor="#4da4ff" />
                 </radialGradient>
-                <radialGradient id="SVG8W8bkc7G" cx="-182.665%" cy="10.869%" r="521.404%" fx="-182.665%" fy="10.869%" gradientTransform="matrix(.41608 .16332 -.90933 .07473 -.968 .399)">
+                <radialGradient
+                    id="SVG8W8bkc7G"
+                    cx="-182.665%"
+                    cy="10.869%"
+                    r="521.404%"
+                    fx="-182.665%"
+                    fy="10.869%"
+                    gradientTransform="matrix(.41608 .16332 -.90933 .07473 -.968 .399)"
+                >
                     <stop offset="0%" stopColor="#1c7aff" />
                     <stop offset="100%" stopColor="#76a9ff" />
                     <stop offset="100%" stopColor="#8fb9ff" />
@@ -104,9 +136,31 @@ export function GoogleGeminiIcon(props: SVGProps<SVGSVGElement>) {
     )
 }
 
+export function OpenrouterIcon(props: SVGProps<SVGSVGElement>) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="currentColor" stroke="currentColor" {...props}>
+            <g clipPath="url(#clip0_205_3)">
+                <path d="M3 248.945C18 248.945 76 236 106 219C136 202 136 202 198 158C276.497 102.293 332 120.945 423 120.945" strokeWidth="90" />
+                <path d="M511 121.5L357.25 210.268L357.25 32.7324L511 121.5Z" />
+                <path d="M0 249C15 249 73 261.945 103 278.945C133 295.945 133 295.945 195 339.945C273.497 395.652 329 377 420 377" strokeWidth="90" />
+                <path d="M508 376.445L354.25 287.678L354.25 465.213L508 376.445Z" />
+            </g>
+        </svg>
+    )
+}
+
 export function FileDiff(props: SVGProps<SVGSVGElement>) {
     return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            {...props}
+        >
             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
             <path d="M14 3v4a1 1 0 0 0 1 1h4" />
             <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
