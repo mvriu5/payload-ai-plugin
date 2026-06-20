@@ -145,7 +145,7 @@ const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: bool
             type: "text",
             admin: {
                 components: {
-                    Field: "payload-ai-plugin/client#AIApiKeyField",
+                    Field: "@mvriu5/payload-ai/client#AIApiKeyField",
                 },
                 description: "Optional. If empty, the plugin uses the provider API key from environment variables.",
             },
@@ -193,7 +193,7 @@ export const payloadAiPlugin =
         if (!config.admin.components) config.admin.components = {}
 
         if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = []
-        config.admin.components.beforeDashboard.push(`payload-ai-plugin/client#AIInput`)
+        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#AIInput`)
 
         config.endpoints.push({
             handler: createChatHandler({
