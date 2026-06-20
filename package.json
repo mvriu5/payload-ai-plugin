@@ -55,7 +55,10 @@
         "generate:types": "pnpm dev:generate-types",
         "lint": "eslint",
         "lint:fix": "eslint ./src --fix",
-        "prepublishOnly": "pnpm clean && pnpm build"
+        "prepublishOnly": "pnpm clean && pnpm build",
+        "test": "vitest run",
+        "test:handlers": "vitest run tests/handlers",
+        "test:unit": "vitest run tests/unit"
     },
     "devDependencies": {
         "@payloadcms/db-postgres": "3.84.1",
