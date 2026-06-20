@@ -12,6 +12,33 @@ type MentionSuggestionsOptions = {
     collections?: ResolvedCollectionPermissionMap
 }
 
+type SearchableField = {
+    fields?: SearchableField[]
+    localized?: boolean
+    tabs?: {
+        fields?: SearchableField[]
+    }[]
+}
+
+const getLocaleCodes = (req: Parameters<PayloadHandler>[0]) => {
+    const localization = req.payload.config.localization
+    if (!localization) return []
+    if (Array.isArray(localization.localeCodes)) return localization.localeCodes
+    const locales = localization.locales || []
+
+    return locales.flatMap((locale) => {
+        if (typeof locale === "string") return [locale]
+        if (locale && typeof locale === "object" && "code" in locale && typeof locale.code === "string") return [locale.code]
+        return []
+    })
+}
+
+const hasLocalizedFields = (fields: SearchableField[]): boolean => {
+    return fields.some((field) => {
+        return Boolean(field.localized) || Boolean(field.fields?.length && hasLocalizedFields(field.fields)) || Boolean(field.tabs?.some((tab) => hasLocalizedFields(tab.fields || [])))
+    })
+}
+
 export const createMentionSuggestionHandler =
     (options: MentionSuggestionsOptions = {}): PayloadHandler =>
     async (req) => {
@@ -23,7 +50,15 @@ export const createMentionSuggestionHandler =
 
         if (!query && !collectionSlug) return Response.json({ suggestions: [] })
 
-        const suggestions = []
+        const suggestions: {
+            collection: string
+            id: string
+            label: string
+            slug: string
+            type: "doc"
+        }[] = []
+        const suggestionKeys = new Set<string>()
+        const normalizedQuery = query?.toLowerCase()
         const collections = req.payload.config.collections.filter((collection) => {
             if (
                 !isCollectionActionAllowed({
@@ -37,41 +72,65 @@ export const createMentionSuggestionHandler =
             if (collectionSlug) return collection.slug === collectionSlug
             return true
         })
+        const addSuggestion = ({
+            collectionSlug,
+            doc,
+            requireLabelMatch = false,
+            useAsTitle,
+        }: {
+            collectionSlug: string
+            doc: Record<string, unknown>
+            requireLabelMatch?: boolean
+            useAsTitle?: string
+        }) => {
+            const id = doc.id?.toString()
+            if (!id) return
+
+            const key = `${collectionSlug}:${id}`
+            if (suggestionKeys.has(key)) return
+
+            const label = getDocLabel(doc, useAsTitle)
+            if (requireLabelMatch && normalizedQuery && !label.toLowerCase().includes(normalizedQuery)) return
+
+            suggestionKeys.add(key)
+            suggestions.push({
+                collection: collectionSlug,
+                id,
+                label,
+                slug: key,
+                type: "doc",
+            })
+        }
 
         for (const collection of collections) {
-            const searchableFields = collection.fields
-                .filter((field) => "name" in field && ["email", "text", "textarea"].includes(field.type))
-                .map((field) => ("name" in field ? field.name : null))
-                .filter(Boolean)
+            if (suggestions.length >= 5) break
 
-            if (query && searchableFields.length === 0) continue
+            const collectionFields = collection.fields as SearchableField[]
+            const localeCodes = query && hasLocalizedFields(collectionFields) ? getLocaleCodes(req) : []
+            const localesToSearch = localeCodes.length > 0 ? localeCodes : [null]
 
-            const result = await req.payload.find({
-                collection: collection.slug as never,
-                depth: 0,
-                limit: 10,
-                overrideAccess: false,
-                req,
-                where:
-                    query && searchableFields.length > 0
-                        ? {
-                              or: searchableFields.map((field) => ({
-                                  [field as string]: {
-                                      contains: query,
-                                  },
-                              })),
-                          }
-                        : undefined,
-            })
+            for (const locale of localesToSearch) {
+                if (suggestions.length >= 5) break
 
-            for (const doc of result.docs as Record<string, unknown>[]) {
-                suggestions.push({
-                    collection: collection.slug,
-                    id: doc.id?.toString(),
-                    label: getDocLabel(doc, collection.admin?.useAsTitle),
-                    slug: `${collection.slug}:${doc.id?.toString()}`,
-                    type: "doc",
+                const result = await req.payload.find({
+                    collection: collection.slug as never,
+                    depth: 0,
+                    limit: query ? 100 : 10,
+                    ...(locale ? { locale } : {}),
+                    overrideAccess: false,
+                    req,
                 })
+
+                for (const doc of result.docs as Record<string, unknown>[]) {
+                    if (suggestions.length >= 5) break
+
+                    addSuggestion({
+                        collectionSlug: collection.slug,
+                        doc,
+                        requireLabelMatch: Boolean(normalizedQuery),
+                        useAsTitle: collection.admin?.useAsTitle,
+                    })
+                }
             }
         }
 

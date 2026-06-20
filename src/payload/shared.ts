@@ -120,8 +120,12 @@ export const getString = (value: unknown) => {
 }
 
 export const getDocLabel = (doc: Record<string, unknown>, useAsTitle?: string) => {
-    const titleField = useAsTitle && typeof doc[useAsTitle] === "string" ? doc[useAsTitle] : null
-    return (titleField || doc.title || doc.name || doc.email || doc.id || "Untitled").toString()
+    const titleField = useAsTitle ? getSerializableLabel(doc[useAsTitle]) : ""
+    const title = getSerializableLabel(doc.title)
+    const name = getSerializableLabel(doc.name)
+    const email = getSerializableLabel(doc.email)
+
+    return titleField || title || name || email || doc.id?.toString() || "Untitled"
 }
 
 export const getOptionValue = (option?: string | { label?: unknown; value?: string }) => {

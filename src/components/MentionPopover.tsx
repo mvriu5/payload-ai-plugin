@@ -25,7 +25,7 @@ const suggestionGroups: { label: string; type: MentionOption["type"] }[] = [
         type: "collection",
     },
     {
-        label: "Collection items",
+        label: "Documents",
         type: "doc",
     },
     {
