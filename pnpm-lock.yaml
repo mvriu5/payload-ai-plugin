@@ -8,6 +8,13 @@ importers:
 
   .:
     dependencies:
+      ai:
+        specifier: ^6.0.193
+        version: 6.0.205(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.81
         version: 3.0.84(zod@4.4.3)
@@ -23,13 +30,6 @@ importers:
       '@openrouter/ai-sdk-provider':
         specifier: ^2.9.1
         version: 2.9.1(ai@6.0.205(zod@4.4.3))(zod@4.4.3)
-      ai:
-        specifier: ^6.0.193
-        version: 6.0.205(zod@4.4.3)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
       '@payloadcms/db-postgres':
         specifier: 3.84.1
         version: 3.84.1(@opentelemetry/api@1.9.1)(payload@3.84.1(graphql@16.14.2)(typescript@5.9.3))
@@ -99,9 +99,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-      vite-tsconfig-paths:
-        specifier: 6.1.1
-        version: 6.1.1(typescript@5.9.3)(vite@8.0.16(@types/node@25.9.3)(esbuild@0.25.12)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0))
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(happy-dom@20.10.3)(jsdom@29.1.1)(vite@8.0.16(@types/node@25.9.3)(esbuild@0.25.12)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0))
@@ -2873,9 +2870,6 @@ packages:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
-  globrex@0.1.2:
-    resolution: {integrity: sha512-uHJgbwAMwNFf5mLst7IWLNg14x1CkeqglJb/K3doi4dw6q2IvAAmM/Y81kevy83wP+Sst+nutFTYOGg3d1lsxg==}
-
   got@14.6.6:
     resolution: {integrity: sha512-QLV1qeYSo5l13mQzWgP/y0LbMr5Plr5fJilgAIwgnwseproEbtNym8xpLsDzeZ6MWXgNE6kdWGBjdh3zT/Qerg==}
     engines: {node: '>=20'}
@@ -4096,17 +4090,6 @@ packages:
       typescript:
         optional: true
 
-  tsconfck@3.1.6:
-    resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
-    engines: {node: ^18 || >=20}
-    deprecated: unmaintained
-    hasBin: true
-    peerDependencies:
-      typescript: ^5.0.0
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
@@ -4203,11 +4186,6 @@ packages:
 
   vfile-message@4.0.3:
     resolution: {integrity: sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==}
-
-  vite-tsconfig-paths@6.1.1:
-    resolution: {integrity: sha512-2cihq7zliibCCZ8P9cKJrQBkfgdvcFkOOc3Y02o3GWUDLgqjWsZudaoiuOwO/gzTzy17cS5F7ZPo4bsnS4DGkg==}
-    peerDependencies:
-      vite: '*'
 
   vite@8.0.16:
     resolution: {integrity: sha512-h9bXPmJichP5fLmVQo3PyaGSDE2n3aPuomeAlVRm0JLmt4rY6zmPKd59HYI4LNW8oTK7tlTsuC7l/m7awx9Jcw==}
@@ -6913,8 +6891,6 @@ snapshots:
       once: 1.4.0
       path-is-absolute: 1.0.1
 
-  globrex@0.1.2: {}
-
   got@14.6.6:
     dependencies:
       '@sindresorhus/is': 7.2.0
@@ -8338,10 +8314,6 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
-  tsconfck@3.1.6(typescript@5.9.3):
-    optionalDependencies:
-      typescript: 5.9.3
-
   tslib@2.8.1: {}
 
   tsx@4.21.0:
@@ -8426,16 +8398,6 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       unist-util-stringify-position: 4.0.0
-
-  vite-tsconfig-paths@6.1.1(typescript@5.9.3)(vite@8.0.16(@types/node@25.9.3)(esbuild@0.25.12)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0)):
-    dependencies:
-      debug: 4.4.3
-      globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.9.3)
-      vite: 8.0.16(@types/node@25.9.3)(esbuild@0.25.12)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - supports-color
-      - typescript
 
   vite@8.0.16(@types/node@25.9.3)(esbuild@0.25.12)(jiti@2.7.0)(sass@1.77.4)(tsx@4.21.0)(yaml@2.9.0):
     dependencies:

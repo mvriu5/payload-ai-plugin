@@ -66,6 +66,11 @@
         "setup:hooks": "git config core.hooksPath .githooks"
     },
     "devDependencies": {
+        "@ai-sdk/anthropic": "^3.0.81",
+        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/mistral": "^3.0.37",
+        "@ai-sdk/openai": "^3.0.67",
+        "@openrouter/ai-sdk-provider": "^2.9.1",
         "@playwright/test": "^1.56.1",
         "@payloadcms/db-postgres": "3.84.1",
         "@payloadcms/next": "3.84.1",
@@ -89,11 +94,32 @@
         "rimraf": "6.1.3",
         "sharp": "0.35.1",
         "typescript": "5.9.3",
-        "vite-tsconfig-paths": "6.1.1",
         "vitest": "4.1.9"
     },
     "peerDependencies": {
+        "@ai-sdk/anthropic": "^3.0.81",
+        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/mistral": "^3.0.37",
+        "@ai-sdk/openai": "^3.0.67",
+        "@openrouter/ai-sdk-provider": "^2.9.1",
         "payload": "^3.84.1"
+    },
+    "peerDependenciesMeta": {
+        "@ai-sdk/anthropic": {
+            "optional": true
+        },
+        "@ai-sdk/google": {
+            "optional": true
+        },
+        "@ai-sdk/mistral": {
+            "optional": true
+        },
+        "@ai-sdk/openai": {
+            "optional": true
+        },
+        "@openrouter/ai-sdk-provider": {
+            "optional": true
+        }
     },
     "engines": {
         "node": "^18.20.2 || >=20.9.0",
@@ -121,11 +147,6 @@
         ]
     },
     "dependencies": {
-        "@ai-sdk/anthropic": "^3.0.81",
-        "@ai-sdk/google": "^3.0.80",
-        "@ai-sdk/mistral": "^3.0.37",
-        "@ai-sdk/openai": "^3.0.67",
-        "@openrouter/ai-sdk-provider": "^2.9.1",
         "ai": "^6.0.193",
         "zod": "^4.4.3"
     }
