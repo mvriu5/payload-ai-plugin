@@ -57,11 +57,13 @@
         "lint:fix": "eslint ./src --fix",
         "prepublishOnly": "pnpm clean && pnpm build",
         "test": "vitest run",
+        "test:all": "pnpm test && pnpm test:e2e",
         "test:components": "vitest run tests/components",
         "test:e2e": "playwright test",
         "test:e2e:headed": "playwright test --headed",
         "test:handlers": "vitest run tests/handlers",
-        "test:unit": "vitest run tests/unit"
+        "test:unit": "vitest run tests/unit",
+        "setup:hooks": "git config core.hooksPath .githooks"
     },
     "devDependencies": {
         "@playwright/test": "^1.56.1",
