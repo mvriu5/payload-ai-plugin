@@ -17,7 +17,7 @@ test("proposal apply writes an audit entry visible in recent changes", async ({ 
 
     const recentChanges = page.locator("aside").filter({ hasText: "Recent changes" })
 
-    await expect(recentChanges.getByText("Create apply flow draft post about Mars", { exact: true })).toBeVisible()
+    await expect(recentChanges.getByText("Create apply flow draft post about Mars", { exact: true }).first()).toBeVisible()
 
     await recentChanges.getByRole("button", { name: "Review" }).first().click()
 

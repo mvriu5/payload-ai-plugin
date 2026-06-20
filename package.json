@@ -56,7 +56,7 @@
         "lint": "eslint",
         "lint:fix": "eslint ./src --fix",
         "prepublishOnly": "pnpm clean && pnpm build",
-        "test": "vitest run",
+        "test": "vitest run tests/components tests/handlers tests/unit",
         "test:all": "pnpm test && pnpm test:e2e",
         "test:components": "vitest run tests/components",
         "test:e2e": "playwright test",
