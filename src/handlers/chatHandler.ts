@@ -124,6 +124,114 @@ type ChatOptions = {
     models?: AIModelConfig
 }
 
+const e2eModeEnabled = () => process.env.PAYLOAD_AI_E2E_MODE === "true"
+
+const createSSEEventStream = (
+    events: Array<{
+        data: unknown
+        event: string
+    }>
+) => {
+    const encoder = new TextEncoder()
+
+    return new ReadableStream<Uint8Array>({
+        start(controller) {
+            for (const { data, event } of events) {
+                controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+            }
+
+            controller.close()
+        },
+    })
+}
+
+const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; selectedLocales: string[] }) => {
+    const normalizedPrompt = prompt.toLowerCase()
+    const wantsCreatePost = normalizedPrompt.includes("post") && (normalizedPrompt.includes("create") || normalizedPrompt.includes("erstell"))
+    const mentionsMars = normalizedPrompt.includes("mars")
+    const multipleLocales = selectedLocales.length > 1
+    const activeLocale = selectedLocales.at(-1)
+    const proposalLabel = multipleLocales
+        ? normalizedPrompt.includes("locale review")
+            ? "Create localized locale review draft post about Mars"
+            : "Create localized draft post about Mars"
+        : normalizedPrompt.includes("apply flow")
+          ? "Create apply flow draft post about Mars"
+          : normalizedPrompt.includes("proposal review")
+            ? "Create proposal review draft post about Mars"
+            : "Create draft post about Mars"
+
+    const proposal =
+        wantsCreatePost && mentionsMars
+            ? signAIActionProposal(
+                  multipleLocales
+                      ? {
+                            action: "create",
+                            collection: "posts",
+                            label: proposalLabel,
+                            localizedData: Object.fromEntries(
+                                selectedLocales.map((locale) => [
+                                    locale,
+                                    {
+                                        content: locale === "de" ? "Mars ist der vierte Planet von der Sonne." : "Mars is the fourth planet from the Sun.",
+                                        excerpt: locale === "de" ? "Ein kurzer Entwurf ueber Mars." : "A short draft about Mars.",
+                                        title: locale === "de" ? "Mars im Ueberblick" : "Mars Overview",
+                                    },
+                                ])
+                            ),
+                            ...(activeLocale ? { locale: activeLocale } : {}),
+                        }
+                      : {
+                            action: "create",
+                            collection: "posts",
+                            data: {
+                                content: "Mars is the fourth planet from the Sun.",
+                                excerpt: "A short draft about Mars.",
+                                status: "draft",
+                                title: "Mars Overview",
+                            },
+                            label: proposalLabel,
+                            ...(activeLocale ? { locale: activeLocale } : {}),
+                        }
+              )
+            : null
+
+    const responseText = proposal ? "Prepared one draft post proposal." : "No content change was proposed."
+
+    return new Response(
+        createSSEEventStream([
+            {
+                data: {
+                    delta: responseText,
+                },
+                event: "text",
+            },
+            {
+                data: {
+                    proposals: proposal ? [proposal] : [],
+                    usage: {
+                        inputTokens: 42,
+                        outputTokens: 27,
+                        totalTokens: 69,
+                    },
+                },
+                event: "proposals",
+            },
+            {
+                data: {},
+                event: "done",
+            },
+        ]),
+        {
+            headers: {
+                "Cache-Control": "no-cache, no-transform",
+                Connection: "keep-alive",
+                "Content-Type": "text/event-stream; charset=utf-8",
+            },
+        }
+    )
+}
+
 const getRequiredFieldInfos = (fields: FieldConfig[], titleFieldName?: string, path = ""): RequiredFieldInfo[] => {
     return fields.flatMap((field) => {
         const fieldPath = field.name ? (path ? `${path}.${field.name}` : field.name) : path
@@ -279,6 +387,18 @@ export const createChatHandler =
         const prompt = body?.prompt?.trim()
         if (!prompt) return Response.json({ error: "Prompt is required" }, { status: 400 })
 
+        const selectedLocales = (
+            body?.mentions?.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []
+        ).filter((locale, index, array) => array.indexOf(locale) === index)
+        const activeLocale = selectedLocales.at(-1)
+
+        if (e2eModeEnabled()) {
+            return createE2EChatResponse({
+                prompt,
+                selectedLocales,
+            })
+        }
+
         const user = req.user as User
         const requestedProvider = body?.provider || user.aiProvider || "openai"
 
@@ -374,10 +494,6 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
-            const selectedLocales = (
-                body?.mentions?.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []
-            ).filter((locale, index, array) => array.indexOf(locale) === index)
-            const activeLocale = selectedLocales.at(-1)
             const mentionedCollectionSlugs = (
                 body?.mentions
                     ?.flatMap((mention) => {

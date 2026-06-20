@@ -58,10 +58,13 @@
         "prepublishOnly": "pnpm clean && pnpm build",
         "test": "vitest run",
         "test:components": "vitest run tests/components",
+        "test:e2e": "playwright test",
+        "test:e2e:headed": "playwright test --headed",
         "test:handlers": "vitest run tests/handlers",
         "test:unit": "vitest run tests/unit"
     },
     "devDependencies": {
+        "@playwright/test": "^1.56.1",
         "@payloadcms/db-postgres": "3.84.1",
         "@payloadcms/next": "3.84.1",
         "@payloadcms/richtext-lexical": "3.84.1",

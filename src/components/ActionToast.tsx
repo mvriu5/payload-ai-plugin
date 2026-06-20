@@ -170,6 +170,7 @@ export const ActionToast = ({
                         <div className={styles.footer}>
                             <div className={styles.viewAction}>
                                 <button
+                                    aria-label={`Review proposal: ${proposal.label}`}
                                     className={styles.secondaryButton}
                                     disabled={loadingDiffIndex === index}
                                     onClick={() => void openDiff(proposal, index)}
@@ -186,11 +187,17 @@ export const ActionToast = ({
                             </div>
                             <div className={styles.actions}>
                                 {onDismiss && (
-                                    <button className={styles.secondaryButton} onClick={onDismiss} type="button">
+                                    <button aria-label="Dismiss proposals" className={styles.secondaryButton} onClick={onDismiss} type="button">
                                         <Reject height={16} width={16} />
                                     </button>
                                 )}
-                                <button className={styles.button} disabled={isApplying || isApplied} onClick={() => onApply(proposal, index)} type="button">
+                                <button
+                                    aria-label={`Apply proposal: ${proposal.label}`}
+                                    className={styles.button}
+                                    disabled={isApplying || isApplied}
+                                    onClick={() => onApply(proposal, index)}
+                                    type="button"
+                                >
                                     <Apply height={16} width={16} />
                                 </button>
                             </div>
