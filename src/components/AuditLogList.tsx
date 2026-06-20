@@ -61,7 +61,7 @@ export const RecentChangesList = ({ allChangesURL, changes }: AuditLogListProps)
                 {changes.length === 0 ? (
                     <div className={styles.empty}>No changes yet.</div>
                 ) : (
-                    changes.map((change, index) => (
+                    changes.slice(0, 10).map((change, index) => (
                         <div className={styles.item} key={`${change.title}-${index}`}>
                             <div className={styles.titleRow}>
                                 <div className={styles.itemTitle}>{change.title}</div>
