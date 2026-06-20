@@ -3,7 +3,7 @@ import { lexicalEditor } from "@payloadcms/richtext-lexical"
 import path from "path"
 import type { Block } from "payload"
 import { buildConfig } from "payload"
-import { payloadAiPlugin } from "payload-ai-plugin"
+import { payloadAiPlugin } from "../src/index.js"
 import sharp from "sharp"
 import { fileURLToPath } from "url"
 
