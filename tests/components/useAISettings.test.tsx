@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AIProvider } from "../../src/ai/providerOptions.js"
 import { useAISettings } from "../../src/components/hooks/useAISettings.js"
+import { installLocalStorageMock } from "../fixtures/localStorage.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const defaultModels: Record<AIProvider, string> = {
@@ -19,20 +20,6 @@ const defaultModels: Record<AIProvider, string> = {
 const flushPromises = async () => {
     await act(async () => {
         await Promise.resolve()
-    })
-}
-
-const installLocalStorageMock = () => {
-    const store = new Map<string, string>()
-
-    Object.defineProperty(window, "localStorage", {
-        configurable: true,
-        value: {
-            clear: vi.fn(() => store.clear()),
-            getItem: vi.fn((key: string) => store.get(key) ?? null),
-            removeItem: vi.fn((key: string) => store.delete(key)),
-            setItem: vi.fn((key: string, value: string) => store.set(key, value)),
-        },
     })
 }
 

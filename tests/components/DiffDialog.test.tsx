@@ -5,18 +5,13 @@ import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { DiffDialog } from "../../src/components/DiffDialog.js"
+import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
+import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 vi.mock("@payloadcms/ui/icons/X", () => ({
     XIcon: () => <span aria-hidden="true">x</span>,
 }))
-
-const proposal = {
-    action: "update" as const,
-    collection: "posts",
-    id: "4",
-    label: "Update post",
-}
 
 describe("DiffDialog", () => {
     afterEach(() => {
@@ -27,17 +22,11 @@ describe("DiffDialog", () => {
         const { container } = render(
             <DiffDialog
                 diff={{
-                    after: {
-                        id: 4,
-                        title: "New",
-                    },
-                    before: {
-                        id: 4,
-                        title: "Old",
-                    },
+                    after: postJupiter,
+                    before: oldPostJupiter,
                 }}
                 onClose={vi.fn()}
-                proposal={proposal}
+                proposal={mockSignedUpdatePostProposal}
                 tokenUsage={{
                     inputTokens: 10,
                     outputTokens: 5,
@@ -47,14 +36,14 @@ describe("DiffDialog", () => {
         )
 
         expect(container.querySelector('[role="dialog"]')).toBeTruthy()
-        expect(container.textContent).toContain("Update post")
+        expect(container.textContent).toContain("Update Jupiter")
         expect(container.textContent).toContain("update in posts #4")
         expect(container.textContent).toContain("Tokens")
         expect(container.textContent).toContain("15 (10 in / 5 out)")
         expect(container.textContent).toContain("Current")
         expect(container.textContent).toContain("Proposed")
-        expect(container.textContent).toContain('"title": "Old"')
-        expect(container.textContent).toContain('"title": "New"')
+        expect(container.textContent).toContain('"title": "Old Jupiter"')
+        expect(container.textContent).toContain('"title": "Jupiter"')
         expect(container.textContent).toContain("title")
     })
 
@@ -80,7 +69,7 @@ describe("DiffDialog", () => {
                     },
                 }}
                 onClose={vi.fn()}
-                proposal={proposal}
+                proposal={mockSignedUpdatePostProposal}
             />
         )
 
@@ -93,15 +82,11 @@ describe("DiffDialog", () => {
         const { container } = render(
             <DiffDialog
                 diff={{
-                    after: {
-                        title: "New",
-                    },
-                    before: {
-                        title: "Old",
-                    },
+                    after: postJupiter,
+                    before: oldPostJupiter,
                 }}
                 onClose={onClose}
-                proposal={proposal}
+                proposal={mockSignedUpdatePostProposal}
             />
         )
 

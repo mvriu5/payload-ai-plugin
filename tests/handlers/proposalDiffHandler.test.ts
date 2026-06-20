@@ -1,24 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { signAIActionProposal } from "../../src/ai/proposalSigning.js"
 import { createProposalDiffHandler } from "../../src/handlers/proposalDiffHandler.js"
+import { sensitivePostJupiter } from "../fixtures/docs.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
+import { postsCollection } from "../fixtures/payloadConfig.js"
+import { signedUpdatePostProposal, unsignedUpdatePostProposal } from "../fixtures/proposals.js"
 
 const originalPayloadSecret = process.env.PAYLOAD_SECRET
-
-const postsCollection = {
-    fields: [
-        {
-            name: "title",
-            type: "text",
-        },
-        {
-            name: "apiKey",
-            type: "text",
-        },
-    ],
-    slug: "posts",
-}
 
 describe("proposalDiffHandler", () => {
     beforeEach(() => {
@@ -51,13 +39,7 @@ describe("proposalDiffHandler", () => {
             createMockRequest({
                 body: {
                     proposal: {
-                        action: "update",
-                        collection: "posts",
-                        data: {
-                            title: "New",
-                        },
-                        id: "4",
-                        label: "Update post",
+                        ...unsignedUpdatePostProposal({ title: "New" }),
                     },
                 },
             })
@@ -67,21 +49,8 @@ describe("proposalDiffHandler", () => {
     })
 
     it("builds before and after state for signed collection updates", async () => {
-        const proposal = signAIActionProposal({
-            action: "update",
-            collection: "posts",
-            data: {
-                title: "Jupiter",
-            },
-            id: "4",
-            label: "Update post",
-        })
-        const findByID = vi.fn().mockResolvedValue({
-            apiKey: "secret",
-            id: "4",
-            slug: "jupiter",
-            title: "Old title",
-        })
+        const proposal = signedUpdatePostProposal()
+        const findByID = vi.fn().mockResolvedValue(sensitivePostJupiter)
         const handler = createProposalDiffHandler()
         const req = createMockRequest({
             body: {
@@ -110,21 +79,13 @@ describe("proposalDiffHandler", () => {
                 apiKey: "[redacted]",
                 id: "4",
                 slug: "jupiter",
-                title: "Old title",
+                title: "Old Jupiter",
             },
         })
     })
 
     it("honors collection read permissions", async () => {
-        const proposal = signAIActionProposal({
-            action: "update",
-            collection: "posts",
-            data: {
-                title: "Jupiter",
-            },
-            id: "4",
-            label: "Update post",
-        })
+        const proposal = signedUpdatePostProposal()
         const handler = createProposalDiffHandler({
             collections: {
                 posts: {

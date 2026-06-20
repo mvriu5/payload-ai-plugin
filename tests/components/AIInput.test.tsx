@@ -5,6 +5,8 @@ import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import AIInput from "../../src/components/AIInput.js"
+import { adminConfig } from "../fixtures/payloadConfig.js"
+import { createJSONResponse, createStreamResponse, installFetchMock } from "../fixtures/fetch.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const mockUseConfig = vi.hoisted(() => vi.fn())
@@ -42,43 +44,6 @@ vi.mock("../../src/components/AuditLogList.js", () => ({
     ),
 }))
 
-const config = {
-    admin: {
-        custom: {
-            payloadAiPlugin: {
-                collectionSlugs: ["posts"],
-            },
-        },
-        user: "users",
-    },
-    collections: [
-        {
-            fields: [],
-            labels: {
-                singular: "Post",
-            },
-            slug: "posts",
-        },
-    ],
-    globals: [],
-    routes: {
-        admin: "/admin",
-        api: "/api",
-    },
-}
-
-const createJSONResponse = (value: unknown, ok = true) =>
-    ({
-        json: vi.fn().mockResolvedValue(value),
-        ok,
-    }) as Response
-
-const createStreamResponse = (body: string) =>
-    ({
-        body: new Response(body).body,
-        ok: true,
-    }) as Response
-
 const flushPromises = async () => {
     await act(async () => {
         await Promise.resolve()
@@ -87,7 +52,7 @@ const flushPromises = async () => {
 
 describe("AIInput", () => {
     beforeEach(() => {
-        mockUseConfig.mockReturnValue({ config })
+        mockUseConfig.mockReturnValue({ config: adminConfig })
         mockUseAISettings.mockReturnValue({
             selectedModel: "gpt-test",
             setSelectedModel: mockSetSelectedModel,
@@ -105,7 +70,7 @@ describe("AIInput", () => {
     })
 
     it("loads recent changes from the audit-log endpoint and links to the AI collection", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue(
+        installFetchMock(vi.fn().mockResolvedValue(
             createJSONResponse({
                 changes: [
                     {
@@ -115,7 +80,7 @@ describe("AIInput", () => {
                     },
                 ],
             })
-        ) as never
+        ))
 
         const { container } = render(<AIInput />)
         await flushPromises()
@@ -136,7 +101,7 @@ describe("AIInput", () => {
                         "event: done\ndata: {}\n\n"
                 )
             )
-        globalThis.fetch = fetchMock as never
+        installFetchMock(fetchMock)
 
         const { container } = render(<AIInput />)
         await flushPromises()
@@ -176,7 +141,7 @@ describe("AIInput", () => {
             .fn()
             .mockResolvedValueOnce(createJSONResponse({ changes: [] }))
             .mockResolvedValueOnce(createJSONResponse({ error: "Missing key" }, false))
-        globalThis.fetch = fetchMock as never
+        installFetchMock(fetchMock)
 
         const { container } = render(<AIInput />)
         await flushPromises()
@@ -199,7 +164,7 @@ describe("AIInput", () => {
     })
 
     it("updates the selected model through settings", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue(createJSONResponse({ changes: [] })) as never
+        installFetchMock(vi.fn().mockResolvedValue(createJSONResponse({ changes: [] })))
         const { container } = render(<AIInput />)
         await flushPromises()
         const select = container.querySelector("select")

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createChatHandler } from "../../src/handlers/chatHandler.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
+import { postsCollection } from "../fixtures/payloadConfig.js"
 
 const streamText = vi.hoisted(() => vi.fn())
 const getModel = vi.hoisted(() => vi.fn())
@@ -23,20 +24,6 @@ vi.mock("../../src/ai/providerRuntime.js", async () => {
         getModel,
     }
 })
-
-const postsCollection = {
-    admin: {
-        useAsTitle: "title",
-    },
-    fields: [
-        {
-            name: "title",
-            required: true,
-            type: "text",
-        },
-    ],
-    slug: "posts",
-}
 
 const readText = async (response: Response) => response.text()
 

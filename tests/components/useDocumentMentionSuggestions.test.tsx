@@ -5,6 +5,8 @@ import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useDocumentMentionSuggestions } from "../../src/components/hooks/useDocumentMentionSuggestions.js"
+import { mentionOptionJupiter } from "../fixtures/docs.js"
+import { createJSONResponse, installFetchMock } from "../fixtures/fetch.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const flushPromises = async () => {
@@ -47,7 +49,7 @@ describe("useDocumentMentionSuggestions", () => {
     })
 
     it("does not fetch without an active mention range", async () => {
-        globalThis.fetch = vi.fn() as never
+        installFetchMock()
 
         render(<HookTest query="j" range={null} />)
         await flushPromises()
@@ -56,20 +58,13 @@ describe("useDocumentMentionSuggestions", () => {
     })
 
     it("fetches document suggestions for the typed query", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            json: vi.fn().mockResolvedValue({
-                suggestions: [
-                    {
-                        collection: "posts",
-                        id: "4",
-                        label: "Jupiter",
-                        slug: "posts:4",
-                        type: "doc",
-                    },
-                ],
-            }),
-            ok: true,
-        }) as never
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createJSONResponse({
+                    suggestions: [mentionOptionJupiter],
+                })
+            )
+        )
 
         const { container } = render(<HookTest query=" j " />)
         await flushPromises()
@@ -90,12 +85,13 @@ describe("useDocumentMentionSuggestions", () => {
     })
 
     it("fetches all documents from the selected collection instead of using the query", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            json: vi.fn().mockResolvedValue({
-                suggestions: [],
-            }),
-            ok: true,
-        }) as never
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createJSONResponse({
+                    suggestions: [],
+                })
+            )
+        )
 
         render(<HookTest collection="posts" query="posts" />)
         await flushPromises()
@@ -112,20 +108,13 @@ describe("useDocumentMentionSuggestions", () => {
     })
 
     it("can reset loaded suggestions", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            json: vi.fn().mockResolvedValue({
-                suggestions: [
-                    {
-                        collection: "posts",
-                        id: "4",
-                        label: "Jupiter",
-                        slug: "posts:4",
-                        type: "doc",
-                    },
-                ],
-            }),
-            ok: true,
-        }) as never
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createJSONResponse({
+                    suggestions: [mentionOptionJupiter],
+                })
+            )
+        )
 
         const { container } = render(<HookTest query="j" />)
         await flushPromises()

@@ -1,21 +1,9 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { createMentionSuggestionHandler } from "../../src/handlers/mentionSuggestionHandler.js"
+import { postJupiter, postMars } from "../fixtures/docs.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
-
-const postsCollection = {
-    admin: {
-        useAsTitle: "title",
-    },
-    fields: [
-        {
-            localized: true,
-            name: "title",
-            type: "text",
-        },
-    ],
-    slug: "posts",
-}
+import { localizedConfig, postsCollection, usersCollection } from "../fixtures/payloadConfig.js"
 
 describe("mentionSuggestionHandler", () => {
     it("rejects anonymous users", async () => {
@@ -35,16 +23,7 @@ describe("mentionSuggestionHandler", () => {
 
     it("searches documents by their visible localized title label", async () => {
         const find = vi.fn().mockResolvedValue({
-            docs: [
-                {
-                    id: 4,
-                    title: "Jupiter",
-                },
-                {
-                    id: 5,
-                    title: "Saturn",
-                },
-            ],
+            docs: [postJupiter, postMars],
         })
         const handler = createMentionSuggestionHandler()
         const response = await handler(
@@ -54,9 +33,7 @@ describe("mentionSuggestionHandler", () => {
                 },
                 collections: [postsCollection],
                 find,
-                localization: {
-                    localeCodes: ["en", "de"],
-                },
+                localization: localizedConfig,
             })
         )
 
@@ -73,7 +50,7 @@ describe("mentionSuggestionHandler", () => {
             suggestions: [
                 {
                     collection: "posts",
-                    id: "4",
+                    id: postJupiter.id,
                     label: "Jupiter",
                     slug: "posts:4",
                     type: "doc",
@@ -84,12 +61,7 @@ describe("mentionSuggestionHandler", () => {
 
     it("limits suggestions to readable collections and deduplicates locale results", async () => {
         const find = vi.fn().mockResolvedValue({
-            docs: [
-                {
-                    id: "4",
-                    title: "Jupiter",
-                },
-            ],
+            docs: [postJupiter],
         })
         const handler = createMentionSuggestionHandler({
             collections: {
@@ -114,15 +86,10 @@ describe("mentionSuggestionHandler", () => {
                 },
                 collections: [
                     postsCollection,
-                    {
-                        fields: [{ name: "email", type: "email" }],
-                        slug: "users",
-                    },
+                    usersCollection,
                 ],
                 find,
-                localization: {
-                    localeCodes: ["en", "de"],
-                },
+                localization: localizedConfig,
             })
         )
 

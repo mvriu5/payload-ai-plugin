@@ -5,22 +5,16 @@ import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ActionToast, type ActionProposal } from "../../src/components/ActionToast.js"
+import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
+import { createJSONResponse, installFetchMock } from "../fixtures/fetch.js"
+import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 vi.mock("../../src/components/DiffDialog.js", () => ({
     DiffDialog: ({ proposal }: { proposal: ActionProposal }) => <div role="dialog">Diff for {proposal.label}</div>,
 }))
 
-const proposal: ActionProposal = {
-    _aiSignature: {
-        expiresAt: "2026-01-01T00:10:00.000Z",
-        value: "signature",
-    },
-    action: "update",
-    collection: "posts",
-    id: "4",
-    label: "Update post",
-}
+const proposal: ActionProposal = mockSignedUpdatePostProposal
 
 describe("ActionToast", () => {
     afterEach(() => {
@@ -75,7 +69,7 @@ describe("ActionToast", () => {
             />
         )
 
-        expect(container.textContent).toContain("Update post")
+        expect(container.textContent).toContain("Update Jupiter")
         expect(container.textContent).toContain("update in posts #4")
         expect(container.textContent).toContain("Prepared update")
         expect(container.textContent).toContain("[redacted]")
@@ -93,17 +87,14 @@ describe("ActionToast", () => {
     })
 
     it("loads and opens proposal diffs", async () => {
-        globalThis.fetch = vi.fn().mockResolvedValue({
-            json: vi.fn().mockResolvedValue({
-                after: {
-                    title: "New",
-                },
-                before: {
-                    title: "Old",
-                },
-            }),
-            ok: true,
-        }) as never
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createJSONResponse({
+                    after: postJupiter,
+                    before: oldPostJupiter,
+                })
+            )
+        )
         const { container } = render(<ActionToast apiRoute="/api" appliedProposalIndexes={[]} isApplying={false} onApply={vi.fn()} proposals={[proposal]} />)
         const reviewButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Review")
 
@@ -119,6 +110,6 @@ describe("ActionToast", () => {
                 method: "POST",
             })
         )
-        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Update post")
+        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Update Jupiter")
     })
 })

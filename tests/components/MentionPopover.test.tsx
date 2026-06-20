@@ -4,40 +4,9 @@ import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { MentionPopover, type MentionOption } from "../../src/components/MentionPopover.js"
+import { MentionPopover } from "../../src/components/MentionPopover.js"
+import { mentionOptions } from "../fixtures/docs.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
-
-const suggestions: MentionOption[] = [
-    {
-        label: "Posts",
-        slug: "posts",
-        type: "collection",
-    },
-    {
-        collection: "posts",
-        id: "4",
-        label: "Jupiter",
-        slug: "posts:4",
-        type: "doc",
-    },
-    {
-        label: "Site Settings",
-        slug: "site-settings",
-        type: "global",
-    },
-    {
-        label: "Hero",
-        parent: "posts",
-        slug: "hero",
-        type: "block",
-    },
-    {
-        isDefault: true,
-        label: "English",
-        slug: "en",
-        type: "locale",
-    },
-]
 
 describe("MentionPopover", () => {
     afterEach(() => {
@@ -45,7 +14,7 @@ describe("MentionPopover", () => {
     })
 
     it("renders grouped suggestions with visible labels", () => {
-        const { container } = render(<MentionPopover onSelect={vi.fn()} suggestions={suggestions} />)
+        const { container } = render(<MentionPopover onSelect={vi.fn()} suggestions={mentionOptions} />)
 
         expect(container.textContent).toContain("Collections")
         expect(container.textContent).toContain("@posts")
@@ -65,19 +34,19 @@ describe("MentionPopover", () => {
 
     it("calls onSelect on mouse down", () => {
         const onSelect = vi.fn()
-        const { container } = render(<MentionPopover onSelect={onSelect} suggestions={suggestions} />)
+        const { container } = render(<MentionPopover onSelect={onSelect} suggestions={mentionOptions} />)
         const documentButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Jupiter"))
 
         act(() => {
             documentButton?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
         })
 
-        expect(onSelect).toHaveBeenCalledWith(suggestions[1])
+        expect(onSelect).toHaveBeenCalledWith(mentionOptions[1])
     })
 
     it("supports keyboard selection and arrow navigation", () => {
         const onSelect = vi.fn()
-        const { container } = render(<MentionPopover onSelect={onSelect} suggestions={suggestions.slice(0, 2)} />)
+        const { container } = render(<MentionPopover onSelect={onSelect} suggestions={mentionOptions.slice(0, 2)} />)
         const buttons = container.querySelectorAll("button")
 
         buttons[0].focus()
@@ -91,6 +60,6 @@ describe("MentionPopover", () => {
             buttons[1].dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }))
         })
 
-        expect(onSelect).toHaveBeenCalledWith(suggestions[1])
+        expect(onSelect).toHaveBeenCalledWith(mentionOptions[1])
     })
 })

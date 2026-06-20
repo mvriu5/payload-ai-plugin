@@ -1,20 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { signAIActionProposal } from "../../src/ai/proposalSigning.js"
 import { createApplyActionHandler } from "../../src/handlers/applyActionHandler.js"
+import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
+import { auditLogCollectionSlug, postsCollection } from "../fixtures/payloadConfig.js"
+import { signedDeletePostProposal, signedSensitiveUpdatePostProposal, signedUpdatePostProposal, unsignedUpdatePostProposal } from "../fixtures/proposals.js"
 
 const originalPayloadSecret = process.env.PAYLOAD_SECRET
-
-const postsCollection = {
-    fields: [
-        {
-            name: "title",
-            type: "text",
-        },
-    ],
-    slug: "posts",
-}
 
 describe("applyActionHandler", () => {
     beforeEach(() => {
@@ -44,13 +36,7 @@ describe("applyActionHandler", () => {
             createMockRequest({
                 body: {
                     proposal: {
-                        action: "update",
-                        collection: "posts",
-                        data: {
-                            title: "Jupiter",
-                        },
-                        id: "4",
-                        label: "Update post",
+                        ...unsignedUpdatePostProposal(),
                     },
                 },
                 create,
@@ -65,26 +51,15 @@ describe("applyActionHandler", () => {
     })
 
     it("applies signed collection updates and writes an audit log entry through mocks only", async () => {
-        const proposal = signAIActionProposal({
-            action: "update",
-            collection: "posts",
-            data: {
-                title: "Jupiter",
-            },
-            id: "4",
-            label: "Update post",
-        })
-        const findByID = vi.fn().mockResolvedValue({
-            id: "4",
-            title: "Old title",
-        })
+        const proposal = signedUpdatePostProposal()
+        const findByID = vi.fn().mockResolvedValue(oldPostJupiter)
         const update = vi.fn().mockResolvedValue({
-            id: "4",
+            id: postJupiter.id,
         })
         const create = vi.fn().mockResolvedValue({
             id: "audit-1",
         })
-        const handler = createApplyActionHandler({ changeLogCollection: "payload-ai-auditlog" })
+        const handler = createApplyActionHandler({ changeLogCollection: auditLogCollectionSlug })
         const req = createMockRequest({
             body: {
                 aiResponse: "Prepared update",
@@ -110,7 +85,7 @@ describe("applyActionHandler", () => {
         expect(findByID).toHaveBeenCalledWith({
             collection: "posts",
             depth: 2,
-            id: "4",
+            id: postJupiter.id,
             req,
         })
         expect(update).toHaveBeenCalledWith({
@@ -118,22 +93,24 @@ describe("applyActionHandler", () => {
             data: {
                 title: "Jupiter",
             },
-            id: "4",
+            id: postJupiter.id,
             overrideAccess: false,
             req,
         })
         expect(create).toHaveBeenCalledWith(
             expect.objectContaining({
-                collection: "payload-ai-auditlog",
+                collection: auditLogCollectionSlug,
                 data: expect.objectContaining({
                     action: "update",
                     after: {
                         id: "4",
+                        slug: "jupiter",
                         title: "Jupiter",
                     },
                     before: {
                         id: "4",
-                        title: "Old title",
+                        slug: "jupiter",
+                        title: "Old Jupiter",
                     },
                     collection: "posts",
                     documentID: "4",
@@ -141,7 +118,7 @@ describe("applyActionHandler", () => {
                     outputTokens: 5,
                     prompt: "Make title Jupiter",
                     targetURL: "/admin/collections/posts/4",
-                    title: "Update post",
+                    title: "Update Jupiter",
                     totalTokens: 15,
                     userID: "user-1",
                     userLabel: "ada@example.com",
@@ -159,16 +136,8 @@ describe("applyActionHandler", () => {
     })
 
     it("applies signed deletes with mocked payload delete", async () => {
-        const proposal = signAIActionProposal({
-            action: "delete",
-            collection: "posts",
-            id: "4",
-            label: "Delete post",
-        })
-        const deleteOperation = vi.fn().mockResolvedValue({
-            id: "4",
-            title: "Old title",
-        })
+        const proposal = signedDeletePostProposal()
+        const deleteOperation = vi.fn().mockResolvedValue(oldPostJupiter)
         const handler = createApplyActionHandler()
         const req = createMockRequest({
             body: {
@@ -195,15 +164,7 @@ describe("applyActionHandler", () => {
     })
 
     it("rejects sensitive proposal payloads without applying them", async () => {
-        const proposal = signAIActionProposal({
-            action: "update",
-            collection: "posts",
-            data: {
-                apiKey: "secret",
-            },
-            id: "4",
-            label: "Update post",
-        })
+        const proposal = signedSensitiveUpdatePostProposal()
         const update = vi.fn()
         const handler = createApplyActionHandler()
         const response = await handler(

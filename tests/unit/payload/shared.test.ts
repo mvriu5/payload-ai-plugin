@@ -9,15 +9,17 @@ import {
     mergeData,
     setValueAtPath,
 } from "../../../src/payload/shared.js"
+import { localizedPostJupiter, oldPostJupiter, postJupiter } from "../../fixtures/docs.js"
+import { unsignedDeletePostProposal, unsignedUpdatePostProposal } from "../../fixtures/proposals.js"
 
 describe("payload shared helpers", () => {
     describe("getDocLabel", () => {
         it("uses the configured title field", () => {
-            expect(getDocLabel({ id: 1, headline: "Home" }, "headline")).toBe("Home")
+            expect(getDocLabel(postJupiter, "title")).toBe("Jupiter")
         })
 
         it("uses localized title values", () => {
-            expect(getDocLabel({ id: 1, title: { de: "Jupiter", en: "Jupiter EN" } }, "title")).toBe("Jupiter")
+            expect(getDocLabel(localizedPostJupiter, "title")).toBe("Jupiter")
         })
 
         it("falls back to common fields and id", () => {
@@ -27,28 +29,16 @@ describe("payload shared helpers", () => {
     })
 
     describe("mergeData", () => {
-        it("deep merges records without replacing nested objects", () => {
+        it("merges existing document data with proposal data", () => {
             expect(
                 mergeData(
-                    {
-                        hero: {
-                            title: "Old",
-                            visible: true,
-                        },
-                        slug: "home",
-                    },
-                    {
-                        hero: {
-                            title: "New",
-                        },
-                    }
+                    oldPostJupiter,
+                    unsignedUpdatePostProposal().data
                 )
             ).toEqual({
-                hero: {
-                    title: "New",
-                    visible: true,
-                },
-                slug: "home",
+                id: "4",
+                slug: "jupiter",
+                title: "Jupiter",
             })
         })
 
@@ -61,12 +51,10 @@ describe("payload shared helpers", () => {
         it("accepts create proposals with exactly one write payload", () => {
             expect(
                 isActionProposal({
-                    action: "create",
-                    collection: "posts",
-                    data: {
-                        title: "Post",
-                    },
+                    ...unsignedUpdatePostProposal(),
                     label: "Create post",
+                    action: "create",
+                    id: undefined,
                 })
             ).toBe(true)
 
@@ -100,9 +88,7 @@ describe("payload shared helpers", () => {
             expect(
                 isActionProposal({
                     action: "delete",
-                    collection: "posts",
-                    id: "1",
-                    label: "Delete post",
+                    ...unsignedDeletePostProposal(),
                 })
             ).toBe(true)
         })

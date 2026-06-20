@@ -4,7 +4,8 @@ import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { RecentChangesList, type AppliedChange } from "../../src/components/AuditLogList.js"
+import { RecentChangesList } from "../../src/components/AuditLogList.js"
+import { appliedChangeJupiter, createAppliedChangeJupiter } from "../fixtures/docs.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 vi.mock("@payloadcms/ui", () => ({
@@ -14,22 +15,6 @@ vi.mock("@payloadcms/ui", () => ({
 vi.mock("../../src/components/DiffDialog.js", () => ({
     DiffDialog: ({ proposal }: { proposal: { label: string } }) => <div role="dialog">Diff for {proposal.label}</div>,
 }))
-
-const createChange = (index: number): AppliedChange => ({
-    action: "update",
-    additions: index,
-    after: {
-        title: `After ${index}`,
-    },
-    before: {
-        title: `Before ${index}`,
-    },
-    collection: "posts",
-    documentID: String(index),
-    removals: index + 1,
-    title: `Change ${index}`,
-    url: `/admin/collections/posts/${index}`,
-})
 
 describe("RecentChangesList", () => {
     afterEach(() => {
@@ -50,21 +35,21 @@ describe("RecentChangesList", () => {
     })
 
     it("renders at most 10 changes", () => {
-        const { container } = render(<RecentChangesList changes={Array.from({ length: 12 }, (_, index) => createChange(index + 1))} />)
+        const { container } = render(<RecentChangesList changes={Array.from({ length: 12 }, (_, index) => createAppliedChangeJupiter(index + 1))} />)
 
         expect(container.querySelectorAll("button")).toHaveLength(10)
-        expect(container.textContent).toContain("Change 10")
-        expect(container.textContent).not.toContain("Change 11")
+        expect(container.textContent).toContain("Jupiter change 10")
+        expect(container.textContent).not.toContain("Jupiter change 11")
     })
 
     it("opens the diff dialog for reviewable changes", () => {
-        const { container } = render(<RecentChangesList changes={[createChange(1)]} />)
+        const { container } = render(<RecentChangesList changes={[appliedChangeJupiter]} />)
         const reviewButton = container.querySelector("button")
 
         act(() => {
             reviewButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
         })
 
-        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Change 1")
+        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Updated Jupiter")
     })
 })
