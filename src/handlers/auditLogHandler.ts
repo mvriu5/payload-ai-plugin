@@ -13,7 +13,7 @@ export const createAuditLogHandler =
         const result = await req.payload.find({
             collection: options.changeLogCollection as never,
             depth: 0,
-            limit: 12,
+            limit: 10,
             overrideAccess: false,
             req,
             sort: "-createdAt",

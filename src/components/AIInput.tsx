@@ -211,6 +211,7 @@ const getActiveMentionRange = (valueBeforeCaret: string) => {
 }
 
 const svgNamespace = "http://www.w3.org/2000/svg"
+const auditLogCollectionSlug = "payload-ai-auditlog"
 
 const appendSvgPath = (svg: SVGSVGElement, d: string) => {
     const path = document.createElementNS(svgNamespace, "path")
@@ -318,10 +319,11 @@ const AIInput = () => {
         () =>
             formatAdminURL({
                 apiRoute: config.routes.api,
-                path: "/ai-recent-changes",
+                path: "/ai-audit-log",
             }),
         [config.routes.api]
     )
+    const allChangesURL = useMemo(() => `${config.routes.admin || "/admin"}/collections/${auditLogCollectionSlug}`, [config.routes.admin])
     const loadRecentChanges = useCallback(async () => {
         const res = await fetch(recentChangesEndpoint)
         const result = (await res.json().catch(() => null)) as {
@@ -329,7 +331,7 @@ const AIInput = () => {
         } | null
 
         if (res.ok && result?.changes) {
-            setAppliedChanges(result.changes)
+            setAppliedChanges(result.changes.slice(0, 10))
         }
     }, [recentChangesEndpoint])
 
@@ -765,7 +767,7 @@ const AIInput = () => {
             setResponse("")
             setTokenUsage(null)
             if (result.change) {
-                setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 12))
+                setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 10))
             }
             void loadRecentChanges().catch(() => undefined)
             clearInput()
@@ -891,7 +893,7 @@ const AIInput = () => {
                     tokenUsage={tokenUsage}
                 />
             </div>
-            <RecentChangesList changes={appliedChanges} />
+            <RecentChangesList allChangesURL={allChangesURL} changes={appliedChanges} />
         </div>
     )
 }

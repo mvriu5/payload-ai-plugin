@@ -26,6 +26,7 @@ export type AppliedChange = {
 }
 
 type AuditLogListProps = {
+    allChangesURL?: string
     changes: AppliedChange[]
 }
 
@@ -43,13 +44,18 @@ const getChangeProposal = (change: AppliedChange): ActionProposal => ({
     slug: change.slug || undefined,
 })
 
-export const RecentChangesList = ({ changes }: AuditLogListProps) => {
+export const RecentChangesList = ({ allChangesURL, changes }: AuditLogListProps) => {
     const [activeDiff, setActiveDiff] = useState<ActiveDiff | null>(null)
 
     return (
         <aside className={styles.recentChanges}>
             <div className={styles.header}>
                 <h3 className={styles.title}>Recent changes</h3>
+                {allChangesURL && (
+                    <a className={styles.headerGhostButton} href={allChangesURL}>
+                        View all
+                    </a>
+                )}
             </div>
             <div className={styles.list}>
                 {changes.length === 0 ? (

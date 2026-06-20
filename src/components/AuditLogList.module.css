@@ -8,8 +8,25 @@
 }
 
 .header {
+    align-items: center;
+    display: flex;
     flex: 0 0 auto;
+    gap: 10px;
+    justify-content: space-between;
     margin-bottom: 10px;
+}
+
+.headerGhostButton {
+    color: var(--theme-elevation-500);
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 24px;
+    min-height: 24px;
+    text-decoration: none;
+}
+
+.headerGhostButton:hover {
+    text-decoration: underline;
 }
 
 .title {
