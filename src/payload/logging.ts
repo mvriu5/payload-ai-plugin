@@ -26,5 +26,5 @@ export const logHandlerEvent = (req: Parameters<PayloadHandler>[0], level: LogLe
     const log = logger?.[level]
     if (typeof log !== "function") return
 
-    log(entry)
+    log.call(logger, entry)
 }

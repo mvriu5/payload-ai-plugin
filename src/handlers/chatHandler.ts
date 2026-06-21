@@ -93,6 +93,13 @@ type TokenUsage = {
     totalTokens?: number
 }
 
+type ProposalToolName = "proposeCreateDoc" | "proposeDeleteDoc" | "proposeUpdateDoc" | "proposeUpdateGlobal"
+
+type ToolChoice = {
+    toolName: ProposalToolName
+    type: "tool"
+}
+
 type RequiredFieldInfo = {
     defaultValue?: unknown
     isTitleField?: boolean
@@ -111,6 +118,12 @@ type ProposalWritePayload =
           data?: never
           localizedData: LocalizedDataInput
       }
+
+const nonEmptyLocalizedDataSchema = z
+    .record(z.string(), z.record(z.string(), z.unknown()))
+    .refine((value) => Object.keys(value).length > 0, {
+        message: "localizedData must include at least one locale entry.",
+    })
 
 export type ActionProposal = (
     | ({
@@ -498,6 +511,80 @@ const formatProposalIssuesForRetry = (issues: ProposalValidationIssue[]) => {
         .join("; ")
 }
 
+const createCollectionAliasMap = (collections: Array<{ labels?: { plural?: unknown; singular?: unknown }; slug: string }>) => {
+    const aliasMap = new Map<string, string>()
+
+    const addAlias = (alias: string | undefined, slug: string) => {
+        const normalizedAlias = alias?.trim().toLowerCase()
+        if (!normalizedAlias) return
+        if (!aliasMap.has(normalizedAlias)) {
+            aliasMap.set(normalizedAlias, slug)
+        }
+    }
+
+    for (const collection of collections) {
+        addAlias(collection.slug, collection.slug)
+        addAlias(collection.slug.replace(/-/g, " "), collection.slug)
+
+        const singular = typeof collection.labels?.singular === "string" ? collection.labels.singular : undefined
+        const plural = typeof collection.labels?.plural === "string" ? collection.labels.plural : undefined
+
+        addAlias(singular, collection.slug)
+        addAlias(plural, collection.slug)
+
+        if (singular?.endsWith("s")) {
+            addAlias(singular.slice(0, -1), collection.slug)
+        }
+
+        if (plural?.endsWith("s")) {
+            addAlias(plural.slice(0, -1), collection.slug)
+        }
+    }
+
+    return Object.fromEntries(aliasMap.entries())
+}
+
+const getLikelyCollectionMatches = ({ aliasMap, prompt }: { aliasMap: Record<string, string>; prompt: string }) => {
+    const normalizedPrompt = prompt.toLowerCase()
+    const matches = Object.entries(aliasMap)
+        .filter(([alias]) => normalizedPrompt.includes(alias))
+        .map(([, slug]) => slug)
+
+    return [...new Set(matches)]
+}
+
+const hasWriteIntent = (prompt: string) => {
+    const normalizedPrompt = prompt.toLowerCase()
+    return /\b(create|build|generate|write|draft|make|add|update|edit|change|revise|refine|rewrite|translate|delete|remove)\b/.test(normalizedPrompt)
+}
+
+const getIntentToolChoice = (prompt: string): ToolChoice | undefined => {
+    const normalizedPrompt = prompt.toLowerCase()
+
+    if (/\b(delete|remove)\b/.test(normalizedPrompt)) {
+        return {
+            toolName: "proposeDeleteDoc",
+            type: "tool",
+        }
+    }
+
+    if (/\b(create|build|generate|write|draft|make|add)\b/.test(normalizedPrompt)) {
+        return {
+            toolName: "proposeCreateDoc",
+            type: "tool",
+        }
+    }
+
+    if (/\b(update|edit|change|revise|refine|rewrite|translate)\b/.test(normalizedPrompt)) {
+        return {
+            toolName: "proposeUpdateDoc",
+            type: "tool",
+        }
+    }
+
+    return undefined
+}
+
 export const createChatHandler =
     (options: ChatOptions = {}): PayloadHandler =>
     async (req) => {
@@ -693,14 +780,24 @@ export const createChatHandler =
             const focusedTitleFieldByCollection = Object.fromEntries(
                 mentionedCollectionSlugs.flatMap((slug) => (titleFieldByCollection[slug] ? [[slug, titleFieldByCollection[slug]]] : []))
             )
+            const collectionAliasMap = createCollectionAliasMap(allowedCollections)
+            const likelyCollectionMatches = getLikelyCollectionMatches({
+                aliasMap: collectionAliasMap,
+                prompt,
+            })
+            const writeIntent = hasWriteIntent(prompt)
+            const intentToolChoice = getIntentToolChoice(prompt)
             logHandlerEvent(req, "info", {
                 activeLocale,
                 allowedCollectionCount: allowedCollections.length,
                 collectionSlugs,
                 focusedCollections: mentionedCollectionSlugs,
                 globalSlugs,
+                intentToolChoice,
+                likelyCollectionMatches,
                 msg: "AI chat context prepared",
                 selectedLocales,
+                writeIntent,
             })
             const collectionSlugSchema = z.enum(collectionSlugs as [string, ...string[]])
             const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
@@ -834,7 +931,7 @@ export const createChatHandler =
                             collection: collectionSlugSchema,
                             data: z.record(z.string(), z.unknown()).optional(),
                             label: z.string().min(1),
-                            localizedData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+                            localizedData: nonEmptyLocalizedDataSchema.optional(),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
@@ -925,7 +1022,7 @@ export const createChatHandler =
                             data: z.record(z.string(), z.unknown()).optional(),
                             id: z.string().min(1),
                             label: z.string().min(1),
-                            localizedData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+                            localizedData: nonEmptyLocalizedDataSchema.optional(),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
@@ -978,7 +1075,7 @@ export const createChatHandler =
                         .object({
                             data: z.record(z.string(), z.unknown()).optional(),
                             label: z.string().min(1),
-                            localizedData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+                            localizedData: nonEmptyLocalizedDataSchema.optional(),
                             slug: z.string().min(1),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
@@ -1092,14 +1189,20 @@ export const createChatHandler =
                     "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
                     "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
                     "Writes are proposals only. Never claim changes were applied before user confirmation.",
-                    "For create/update/delete use proposal tools. Put concrete field values only in tool data, not visible text.",
+                    "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
+                    "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",
+                    "Put concrete field values only in tool data, not visible text.",
                     "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
                     "For arrays: every item must be an object matching the child field schema, not free text.",
                     "If schema details are missing, call listCollections/listGlobals with a slug before proposing.",
+                    `Collection aliases: ${JSON.stringify(collectionAliasMap)}.`,
+                    `Likely collection matches for this prompt: ${JSON.stringify(likelyCollectionMatches)}.`,
                     `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
                     `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
+                    `Preferred proposal tool for this prompt: ${intentToolChoice?.toolName || "none"}.`,
                     "Visible response: plain text, under 40 words, no Markdown, no proposed content.",
                 ].join("\n"),
+                ...(intentToolChoice ? { toolChoice: intentToolChoice } : {}),
                 tools,
             })
 
