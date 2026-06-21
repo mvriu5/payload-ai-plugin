@@ -786,13 +786,36 @@ export const createChatHandler =
                 prompt,
             })
             const writeIntent = hasWriteIntent(prompt)
-            const intentToolChoice = getIntentToolChoice(prompt)
+            const inferredCollectionSlug =
+                mentionedCollectionSlugs.length === 1
+                    ? mentionedCollectionSlugs[0]
+                    : mentionedCollectionSlugs.length === 0 && likelyCollectionMatches.length === 1
+                      ? likelyCollectionMatches[0]
+                      : undefined
+            const inferredCollectionConfig = inferredCollectionSlug
+                ? allowedCollections.find((collection) => collection.slug === inferredCollectionSlug)
+                : undefined
+            if (
+                inferredCollectionConfig &&
+                !mentionContext.some((item) => item.type === "collection" && item.slug === inferredCollectionConfig.slug)
+            ) {
+                mentionContext.push({
+                    ...describeCollectionLikeConfig({
+                        config: inferredCollectionConfig as never,
+                        permissions: options.collections,
+                        type: "collection",
+                    }),
+                    inferredFromPrompt: true,
+                })
+            }
+            const intentToolChoice = inferredCollectionConfig ? getIntentToolChoice(prompt) : undefined
             logHandlerEvent(req, "info", {
                 activeLocale,
                 allowedCollectionCount: allowedCollections.length,
                 collectionSlugs,
                 focusedCollections: mentionedCollectionSlugs,
                 globalSlugs,
+                inferredCollectionSlug,
                 intentToolChoice,
                 likelyCollectionMatches,
                 msg: "AI chat context prepared",
@@ -1194,7 +1217,7 @@ export const createChatHandler =
                     "Put concrete field values only in tool data, not visible text.",
                     "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
                     "For arrays: every item must be an object matching the child field schema, not free text.",
-                    "If schema details are missing, call listCollections/listGlobals with a slug before proposing.",
+                    "If schema details are missing, call listCollections/listGlobals with a slug before proposing. If an inferred collection schema is already present in context, use it directly.",
                     `Collection aliases: ${JSON.stringify(collectionAliasMap)}.`,
                     `Likely collection matches for this prompt: ${JSON.stringify(likelyCollectionMatches)}.`,
                     `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
