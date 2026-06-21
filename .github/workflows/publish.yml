@@ -1,34 +1,34 @@
 name: NPM publish
 
 on:
-  release:
-    types: [published]
+    release:
+        types: [published]
 
 permissions:
-  contents: read
+    contents: read
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+    publish:
+        runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v6
+        steps:
+            - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
+            - uses: pnpm/action-setup@v6
+              with:
+                  version: 10
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org/
-          cache: pnpm
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 22
+                  registry-url: https://registry.npmjs.org/
+                  cache: pnpm
 
-      - run: pnpm install
-      - run: pnpm test --if-present
-      - run: npm publish --access public
-        env:
-            NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+            - run: pnpm install
+            - run: pnpm run --if-present test
+            - run: npm publish --access public
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
