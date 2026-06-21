@@ -36,6 +36,17 @@ type PrepareProposalDataArgs = {
     mode: ProposalMode
 }
 
+type NormalizeFieldValueArgs = {
+    enforceRequiredChildren: boolean
+    field: FieldConfig
+    issues: ProposalValidationIssue[]
+    label: string
+    mode: ProposalMode
+    path: string
+    titleFieldName?: string
+    value: unknown
+}
+
 const isTitleLikeField = (field: FieldConfig, titleFieldName?: string) => {
     const normalizedName = field.name?.toLowerCase()
 
@@ -56,13 +67,10 @@ const getFieldOptionValues = (field: FieldConfig) => {
 const getDefaultFieldValue = ({ field, label, titleFieldName }: { field: FieldConfig; label: string; titleFieldName?: string }) => {
     if (field.defaultValue !== undefined) return field.defaultValue
 
+    if (field.name === "_status") return "draft"
     if (field.type === "checkbox") return false
     if (field.type === "select" || field.type === "radio") {
         return getOptionValue(field.options?.[0])
-    }
-
-    if (field.type === "richText" && isTitleLikeField(field, titleFieldName)) {
-        return createLexicalText(getSafeProposalLabel(label))
     }
 
     if (["email", "text", "textarea"].includes(field.type || "") && isTitleLikeField(field, titleFieldName)) {
@@ -168,25 +176,7 @@ const normalizeRelationshipValue = ({
     return normalizeSingle(value, path)
 }
 
-const normalizeFieldValue = ({
-    enforceRequiredChildren,
-    field,
-    issues,
-    label,
-    mode,
-    path,
-    titleFieldName,
-    value,
-}: {
-    enforceRequiredChildren: boolean
-    field: FieldConfig
-    issues: ProposalValidationIssue[]
-    label: string
-    mode: ProposalMode
-    path: string
-    titleFieldName?: string
-    value: unknown
-}): unknown => {
+const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mode, path, titleFieldName, value }: NormalizeFieldValueArgs): unknown => {
     if (field.type === "group") {
         if (!isRecord(value)) {
             addIssue(issues, {
@@ -198,6 +188,7 @@ const normalizeFieldValue = ({
         }
 
         return normalizeRecordForFields({
+            allowSafeFallback: false,
             enforceRequiredChildren: mode === "create" || enforceRequiredChildren,
             fields: field.fields || [],
             issues,
@@ -242,6 +233,7 @@ const normalizeFieldValue = ({
 
                 const wrappedItem = { [itemLabelField.name]: item }
                 return normalizeRecordForFields({
+                    allowSafeFallback: false,
                     enforceRequiredChildren: true,
                     fields: field.fields || [],
                     issues,
@@ -254,6 +246,7 @@ const normalizeFieldValue = ({
             }
 
             return normalizeRecordForFields({
+                allowSafeFallback: false,
                 enforceRequiredChildren: true,
                 fields: field.fields || [],
                 issues,
@@ -319,6 +312,7 @@ const normalizeFieldValue = ({
 
             const { blockType: _blockType, slug: _slug, type: _type, ...blockData } = item
             const normalizedBlock = normalizeRecordForFields({
+                allowSafeFallback: false,
                 enforceRequiredChildren: true,
                 fields: block.fields || [],
                 issues,
@@ -397,6 +391,7 @@ const normalizeFieldValue = ({
 }
 
 const normalizeRecordForFields = ({
+    allowSafeFallback,
     enforceRequiredChildren,
     fields,
     issues,
@@ -406,6 +401,7 @@ const normalizeRecordForFields = ({
     titleFieldName,
     value,
 }: {
+    allowSafeFallback: boolean
     enforceRequiredChildren: boolean
     fields: readonly FieldConfig[]
     issues: ProposalValidationIssue[]
@@ -452,15 +448,17 @@ const normalizeRecordForFields = ({
             const fieldPath = path ? `${path}.${field.name}` : field.name
 
             if (normalizedData[field.name] === undefined) {
-                const fallbackValue = getDefaultFieldValue({
-                    field,
-                    label,
-                    titleFieldName,
-                })
+                if (allowSafeFallback) {
+                    const fallbackValue = getDefaultFieldValue({
+                        field,
+                        label,
+                        titleFieldName,
+                    })
 
-                if (fallbackValue !== undefined) {
-                    normalizedData[field.name] = fallbackValue
-                    continue
+                    if (fallbackValue !== undefined) {
+                        normalizedData[field.name] = fallbackValue
+                        continue
+                    }
                 }
 
                 addIssue(issues, {
@@ -491,6 +489,7 @@ const prepareSingleLocaleData = ({
     titleFieldName?: string
 }) => {
     const normalizedData = normalizeRecordForFields({
+        allowSafeFallback: true,
         enforceRequiredChildren: false,
         fields,
         issues,
