@@ -31,14 +31,17 @@ export type PreparedProposalData = {
 type PrepareProposalDataArgs = {
     collectionConfig?: CollectionConfig
     data?: Record<string, unknown>
+    inferenceText?: string
     label: string
     localizedData?: LocalizedDataInput
     mode: ProposalMode
 }
 
 type NormalizeFieldValueArgs = {
+    coercedFields: string[]
     enforceRequiredChildren: boolean
     field: FieldConfig
+    inferenceText?: string
     issues: ProposalValidationIssue[]
     label: string
     mode: ProposalMode
@@ -64,14 +67,72 @@ const getFieldOptionValues = (field: FieldConfig) => {
     return (field.options || []).map((option) => getOptionValue(option)).filter((option): option is string => Boolean(option))
 }
 
-const getDefaultFieldValue = ({ field, label, titleFieldName }: { field: FieldConfig; label: string; titleFieldName?: string }) => {
-    if (field.defaultValue !== undefined) return field.defaultValue
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+const getFieldNameVariants = (fieldName?: string) => {
+    if (!fieldName) return []
+
+    const spacedName = fieldName
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[_-]+/g, " ")
+        .toLowerCase()
+
+    return Array.from(new Set([fieldName.toLowerCase(), spacedName])).filter(Boolean)
+}
+
+const inferOptionValueFromText = ({ field, requireFieldMention = false, text }: { field: FieldConfig; requireFieldMention?: boolean; text?: string }) => {
+    const normalizedText = text?.trim().toLowerCase()
+    if (!normalizedText) return undefined
+
+    if (requireFieldMention) {
+        const fieldMentioned = getFieldNameVariants(field.name).some((variant) => {
+            const pattern = new RegExp(`\\b${escapeRegExp(variant)}\\b`, "i")
+            return pattern.test(normalizedText)
+        })
+
+        if (!fieldMentioned) return undefined
+    }
+
+    const optionValues = getFieldOptionValues(field).sort((left, right) => right.length - left.length)
+
+    return optionValues.find((optionValue) => {
+        const pattern = new RegExp(`\\b${escapeRegExp(optionValue.toLowerCase())}\\b`, "i")
+        return pattern.test(normalizedText)
+    })
+}
+
+const getDefaultFieldValue = ({
+    field,
+    inferenceText,
+    label,
+    titleFieldName,
+}: {
+    field: FieldConfig
+    inferenceText?: string
+    label: string
+    titleFieldName?: string
+}) => {
     if (field.name === "_status") return "draft"
     if (field.type === "checkbox") return false
     if (field.type === "select" || field.type === "radio") {
+        const inferredOptionValue = inferOptionValueFromText({
+            field,
+            requireFieldMention: true,
+            text: inferenceText || label,
+        })
+
+        if (inferredOptionValue !== undefined) {
+            return inferredOptionValue
+        }
+
+        if (field.defaultValue !== undefined) {
+            return field.defaultValue
+        }
+
         return getOptionValue(field.options?.[0])
     }
+
+    if (field.defaultValue !== undefined) return field.defaultValue
 
     if (["email", "text", "textarea"].includes(field.type || "") && isTitleLikeField(field, titleFieldName)) {
         return getSafeProposalLabel(label)
@@ -82,6 +143,19 @@ const getDefaultFieldValue = ({ field, label, titleFieldName }: { field: FieldCo
 
 const addIssue = (issues: ProposalValidationIssue[], issue: ProposalValidationIssue) => {
     issues.push(issue)
+}
+
+const normalizeRelationshipScalar = (value: number | string) => {
+    if (typeof value === "number") {
+        if (!Number.isInteger(value) || value <= 0) return undefined
+        return value
+    }
+
+    const trimmedValue = value.trim()
+    if (!trimmedValue || /\s/.test(trimmedValue)) return undefined
+    if (/^\d+$/.test(trimmedValue) && Number(trimmedValue) <= 0) return undefined
+
+    return trimmedValue
 }
 
 const normalizeRelationshipValue = ({
@@ -102,18 +176,34 @@ const normalizeRelationshipValue = ({
           : []
 
     const normalizeSingle = (item: unknown, itemPath: string) => {
-        if (typeof item === "number") return item
-        if (typeof item === "string") {
-            if (/\s/.test(item.trim())) {
-                addIssue(issues, {
-                    code: "invalid_relationship",
-                    message: "Relationship and upload fields must use a document ID, not free text.",
-                    path: itemPath,
-                })
-                return undefined
+        if (typeof item === "number") {
+            const normalizedValue = normalizeRelationshipScalar(item)
+
+            if (normalizedValue !== undefined) {
+                return normalizedValue
             }
 
-            return item
+            addIssue(issues, {
+                code: "invalid_relationship",
+                message: "Relationship and upload fields must use a valid document ID.",
+                path: itemPath,
+            })
+            return undefined
+        }
+
+        if (typeof item === "string") {
+            const normalizedValue = normalizeRelationshipScalar(item)
+
+            if (normalizedValue !== undefined) {
+                return normalizedValue
+            }
+
+            addIssue(issues, {
+                code: "invalid_relationship",
+                message: "Relationship and upload fields must use a valid document ID, not free text.",
+                path: itemPath,
+            })
+            return undefined
         }
 
         if (!isRecord(item)) {
@@ -126,10 +216,32 @@ const normalizeRelationshipValue = ({
         }
 
         if (typeof item.id === "string" || typeof item.id === "number") {
-            return item.id
+            const normalizedValue = normalizeRelationshipScalar(item.id)
+
+            if (normalizedValue !== undefined) {
+                return normalizedValue
+            }
+
+            addIssue(issues, {
+                code: "invalid_relationship",
+                message: "Relationship and upload fields must use a valid document ID.",
+                path: itemPath,
+            })
+            return undefined
         }
 
         if (typeof item.value === "string" || typeof item.value === "number") {
+            const normalizedValue = normalizeRelationshipScalar(item.value)
+
+            if (normalizedValue === undefined) {
+                addIssue(issues, {
+                    code: "invalid_relationship",
+                    message: "Relationship and upload fields must use a valid document ID.",
+                    path: itemPath,
+                })
+                return undefined
+            }
+
             if (allowedRelationTargets.length > 1) {
                 const relationTo = typeof item.relationTo === "string" ? item.relationTo : null
 
@@ -144,11 +256,11 @@ const normalizeRelationshipValue = ({
 
                 return {
                     relationTo,
-                    value: item.value,
+                    value: normalizedValue,
                 }
             }
 
-            return item.value
+            return normalizedValue
         }
 
         addIssue(issues, {
@@ -176,7 +288,7 @@ const normalizeRelationshipValue = ({
     return normalizeSingle(value, path)
 }
 
-const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mode, path, titleFieldName, value }: NormalizeFieldValueArgs): unknown => {
+const normalizeFieldValue = ({ coercedFields, enforceRequiredChildren, field, inferenceText, issues, label, mode, path, titleFieldName, value }: NormalizeFieldValueArgs): unknown => {
     if (field.type === "group") {
         if (!isRecord(value)) {
             addIssue(issues, {
@@ -189,8 +301,10 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
 
         return normalizeRecordForFields({
             allowSafeFallback: false,
+            coercedFields,
             enforceRequiredChildren: mode === "create" || enforceRequiredChildren,
             fields: field.fields || [],
+            inferenceText,
             issues,
             label,
             mode,
@@ -234,8 +348,10 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
                 const wrappedItem = { [itemLabelField.name]: item }
                 return normalizeRecordForFields({
                     allowSafeFallback: false,
+                    coercedFields,
                     enforceRequiredChildren: true,
                     fields: field.fields || [],
+                    inferenceText,
                     issues,
                     label,
                     mode,
@@ -247,8 +363,10 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
 
             return normalizeRecordForFields({
                 allowSafeFallback: false,
+                coercedFields,
                 enforceRequiredChildren: true,
                 fields: field.fields || [],
+                inferenceText,
                 issues,
                 label,
                 mode,
@@ -313,8 +431,10 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
             const { blockType: _blockType, slug: _slug, type: _type, ...blockData } = item
             const normalizedBlock = normalizeRecordForFields({
                 allowSafeFallback: false,
+                coercedFields,
                 enforceRequiredChildren: true,
                 fields: block.fields || [],
+                inferenceText,
                 issues,
                 label,
                 mode,
@@ -357,6 +477,19 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
     if (field.type === "select" || field.type === "radio") {
         const optionValues = getFieldOptionValues(field)
         const stringValue = value === null ? "" : String(value)
+        const inferredOptionValue = inferOptionValueFromText({
+            field,
+            requireFieldMention: true,
+            text: inferenceText || label,
+        })
+
+        if (inferredOptionValue && optionValues.includes(inferredOptionValue)) {
+            if (stringValue !== inferredOptionValue) {
+                coercedFields.push(path)
+            }
+
+            return inferredOptionValue
+        }
 
         if (stringValue && optionValues.includes(stringValue)) return stringValue
 
@@ -392,8 +525,10 @@ const normalizeFieldValue = ({ enforceRequiredChildren, field, issues, label, mo
 
 const normalizeRecordForFields = ({
     allowSafeFallback,
+    coercedFields,
     enforceRequiredChildren,
     fields,
+    inferenceText,
     issues,
     label,
     mode,
@@ -402,8 +537,10 @@ const normalizeRecordForFields = ({
     value,
 }: {
     allowSafeFallback: boolean
+    coercedFields: string[]
     enforceRequiredChildren: boolean
     fields: readonly FieldConfig[]
+    inferenceText?: string
     issues: ProposalValidationIssue[]
     label: string
     mode: ProposalMode
@@ -428,8 +565,10 @@ const normalizeRecordForFields = ({
         }
 
         const normalizedValue = normalizeFieldValue({
+            coercedFields,
             enforceRequiredChildren,
             field,
+            inferenceText,
             issues,
             label,
             mode,
@@ -451,6 +590,7 @@ const normalizeRecordForFields = ({
                 if (allowSafeFallback) {
                     const fallbackValue = getDefaultFieldValue({
                         field,
+                        inferenceText,
                         label,
                         titleFieldName,
                     })
@@ -470,19 +610,39 @@ const normalizeRecordForFields = ({
         }
     }
 
+    for (const field of fields.filter((candidate): candidate is FieldConfig & { name: string } => Boolean(candidate.name))) {
+        if (normalizedData[field.name] !== undefined) continue
+        if (field.type !== "select" && field.type !== "radio") continue
+
+        const inferredOptionValue = inferOptionValueFromText({
+            field,
+            requireFieldMention: true,
+            text: inferenceText || label,
+        })
+
+        if (inferredOptionValue !== undefined) {
+            normalizedData[field.name] = inferredOptionValue
+            coercedFields.push(path ? `${path}.${field.name}` : field.name)
+        }
+    }
+
     return normalizedData
 }
 
 const prepareSingleLocaleData = ({
+    coercedFields,
     data,
     fields,
+    inferenceText,
     issues,
     label,
     mode,
     titleFieldName,
 }: {
+    coercedFields: string[]
     data: Record<string, unknown>
     fields: readonly FieldConfig[]
+    inferenceText?: string
     issues: ProposalValidationIssue[]
     label: string
     mode: ProposalMode
@@ -490,8 +650,10 @@ const prepareSingleLocaleData = ({
 }) => {
     const normalizedData = normalizeRecordForFields({
         allowSafeFallback: true,
+        coercedFields,
         enforceRequiredChildren: false,
         fields,
+        inferenceText,
         issues,
         label,
         mode,
@@ -503,7 +665,7 @@ const prepareSingleLocaleData = ({
     return normalizeDataForFields(fields, normalizedData).data
 }
 
-export const prepareProposalWriteData = ({ collectionConfig, data, label, localizedData, mode }: PrepareProposalDataArgs): PreparedProposalData => {
+export const prepareProposalWriteData = ({ collectionConfig, data, inferenceText, label, localizedData, mode }: PrepareProposalDataArgs): PreparedProposalData => {
     const schemaFields = getSchemaFields(collectionConfig)
     const titleFieldName = typeof collectionConfig?.admin?.useAsTitle === "string" ? collectionConfig.admin.useAsTitle : undefined
     const issues: ProposalValidationIssue[] = []
@@ -539,8 +701,10 @@ export const prepareProposalWriteData = ({ collectionConfig, data, label, locali
             }
 
             const normalizedLocaleData = prepareSingleLocaleData({
+                coercedFields,
                 data: localeValue,
                 fields: schemaFields,
+                inferenceText,
                 issues,
                 label,
                 mode,
@@ -589,8 +753,10 @@ export const prepareProposalWriteData = ({ collectionConfig, data, label, locali
 
     const sourceData = data || {}
     const normalizedData = prepareSingleLocaleData({
+        coercedFields,
         data: sourceData,
         fields: schemaFields,
+        inferenceText,
         issues,
         label,
         mode,

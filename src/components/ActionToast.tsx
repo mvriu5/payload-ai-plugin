@@ -28,6 +28,7 @@ type ActionToastProps = {
     onDismiss?: () => void
     onDismissError?: () => void
     onApply: (proposal: ActionProposal, index: number) => void
+    prompt?: string
     proposals: ActionProposal[]
     tokenUsage?: {
         inputTokens?: number
@@ -66,6 +67,7 @@ export const ActionToast = ({
     onDismiss,
     onDismissError,
     onApply,
+    prompt,
     proposals,
     tokenUsage,
 }: ActionToastProps) => {
@@ -88,7 +90,7 @@ export const ActionToast = ({
                     path: "/ai-proposal-diff",
                 }),
                 {
-                    body: JSON.stringify({ proposal }),
+                    body: JSON.stringify({ proposal, prompt }),
                     headers: { "Content-Type": "application/json" },
                     method: "POST",
                 }

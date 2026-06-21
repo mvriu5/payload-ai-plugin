@@ -430,6 +430,7 @@ export const createApplyActionHandler =
         })
 
         try {
+            const inferenceText = logContext.prompt
             const defaultLocale = getDefaultLocale(req)
 
             if (proposal.action === "updateGlobal") {
@@ -459,6 +460,7 @@ export const createApplyActionHandler =
                             fields: (globalConfig?.fields || []) as FieldConfig[],
                             slug: proposal.slug,
                         },
+                        inferenceText,
                         label: proposal.label,
                         localizedData: proposal.localizedData,
                         mode: "update",
@@ -545,6 +547,7 @@ export const createApplyActionHandler =
                         slug: proposal.slug,
                     },
                     data: proposal.data,
+                    inferenceText,
                     label: proposal.label,
                     mode: "update",
                 })
@@ -653,6 +656,7 @@ export const createApplyActionHandler =
             if (hasLocalizedData(proposal)) {
                 const preparedData = prepareProposalWriteData({
                     collectionConfig,
+                    inferenceText,
                     label: proposal.label,
                     localizedData: proposal.localizedData,
                     mode: proposal.action,
@@ -823,6 +827,7 @@ export const createApplyActionHandler =
             const preparedData = prepareProposalWriteData({
                 collectionConfig,
                 data: proposal.data,
+                inferenceText,
                 label: proposal.label,
                 mode: proposal.action,
             })

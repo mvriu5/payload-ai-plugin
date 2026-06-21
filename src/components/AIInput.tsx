@@ -63,7 +63,7 @@ type ChatStreamEvent =
               model?: string
               proposalCount?: number
               provider?: string
-              reason?: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed"
+              reason?: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed" | "write_intent_without_tool_call"
               selectedLocales?: string[]
               toolFailures?: Array<{
                   collection?: string
@@ -221,6 +221,8 @@ const getDebugReasonLabel = (reason?: ChatDebugInfo["reason"]) => {
             return "Proposal created."
         case "tool_validation_failed":
             return "Tool validation failed before a proposal could be created."
+        case "write_intent_without_tool_call":
+            return "The selected model did not produce the required proposal tool call for this content change."
         default:
             return "Unknown"
     }
@@ -260,6 +262,14 @@ const getApplyDebugReasonLabel = (reason?: ApplyDebugInfo["reason"]) => {
     }
 }
 
+const getChatDebugMessage = (debugInfo: ChatDebugInfo) => {
+    if (debugInfo.toolFailures?.length) {
+        return debugInfo.toolFailures[0]?.message || getDebugReasonLabel(debugInfo.reason)
+    }
+
+    return getDebugReasonLabel(debugInfo.reason)
+}
+
 const isMentionBoundary = (character: string | undefined) => {
     return character === undefined || /\s/.test(character)
 }
@@ -294,6 +304,7 @@ const getActiveMentionRange = (valueBeforeCaret: string) => {
 
 const svgNamespace = "http://www.w3.org/2000/svg"
 const auditLogCollectionSlug = "payload-ai-auditlog"
+const responseOnlyToastCooldownMs = 10000
 
 const appendSvgPath = (svg: SVGSVGElement, d: string) => {
     const path = document.createElementNS(svgNamespace, "path")
@@ -429,7 +440,7 @@ const AIInput = () => {
         const timeout = window.setTimeout(() => {
             setResponse("")
             clearInput()
-        }, 5000)
+        }, responseOnlyToastCooldownMs)
 
         return () => window.clearTimeout(timeout)
     }, [error, isLoading, proposals.length, response])
@@ -512,6 +523,7 @@ const AIInput = () => {
     const mentionSuggestions = [...filteredMentionOptions, ...documentSuggestions]
     const shouldShowChatDebugInfo = Boolean(chatDebugInfo) && (Boolean(error) || chatDebugInfo?.reason !== "proposal_created")
     const shouldShowApplyDebugInfo = Boolean(applyDebugInfo) && Boolean(error)
+    const actionToastDescription = response
 
     const getTextBeforeCaret = (element: HTMLElement) => {
         const selection = window.getSelection()
@@ -756,7 +768,10 @@ const AIInput = () => {
             const reader = res.body.getReader()
             const decoder = new TextDecoder()
             let buffer = ""
+            let finalDebugInfo: ChatDebugInfo | null = null
             let receivedProposals: ActionProposal[] = []
+            let receivedText = ""
+            let receivedVisibleText = ""
 
             while (true) {
                 const { done, value } = await reader.read()
@@ -773,7 +788,10 @@ const AIInput = () => {
 
                     if (event.event === "text") {
                         if (event.data.delta) {
-                            setResponse((current) => current + sanitizeResponseText(event.data.delta || ""))
+                            const nextDelta = sanitizeResponseText(event.data.delta || "")
+                            receivedText += nextDelta
+                            receivedVisibleText += nextDelta.replace(/\s+/g, "")
+                            setResponse((current) => current + nextDelta)
                         }
                         continue
                     }
@@ -786,7 +804,20 @@ const AIInput = () => {
                     }
 
                     if (event.event === "debug") {
+                        finalDebugInfo = event.data
                         setChatDebugInfo(event.data)
+
+                        if ((event.data.proposalCount || 0) === 0 && !receivedVisibleText) {
+                            // Show specific tool validation message if present, otherwise a generic no‑action message
+                            if (event.data.reason === "tool_validation_failed") {
+                                const msg = getChatDebugMessage(event.data)
+                                setResponse(msg)
+                                // Auto‑clear after the standard toast timeout
+                                window.setTimeout(() => setResponse(""), responseOnlyToastCooldownMs)
+                            } else {
+                                setResponse("No action needed")
+                            }
+                        }
                         continue
                     }
 
@@ -803,13 +834,36 @@ const AIInput = () => {
                 setTokenUsage(finalEvent.data.usage || null)
             }
             if (finalEvent?.event === "debug") {
+                finalDebugInfo = finalEvent.data
                 setChatDebugInfo(finalEvent.data)
+                if ((finalEvent.data.proposalCount || 0) === 0 && !receivedVisibleText) {
+                    // Same logic as above for the final event
+                    if (finalEvent.data.reason === "tool_validation_failed") {
+                        setResponse(getChatDebugMessage(finalEvent.data))
+                    } else {
+                        setResponse("No action needed")
+                    }
+                }
             }
             if (finalEvent?.event === "error") {
                 throw new Error(finalEvent.data.error || "AI request failed")
             }
 
             if (receivedProposals.length === 0) {
+                if (finalDebugInfo) {
+                    const debugMessage = getChatDebugMessage(finalDebugInfo)
+                    const isMeaningfulVisibleText = receivedVisibleText.length >= 12
+                    const trimmedReceivedText = receivedText.trim()
+
+                    if (!isMeaningfulVisibleText || trimmedReceivedText.length < 12) {
+                        setResponse(debugMessage)
+                    } else {
+                        setResponse((current) => current.trim() || debugMessage)
+                    }
+                } else {
+                    // Fallback when no debug info is provided (e.g., tool validation failures without a debug event)
+                    setResponse("No action needed")
+                }
                 clearInput()
             }
         } catch (err) {
@@ -963,7 +1017,15 @@ const AIInput = () => {
                     </div>
                     <button
                         className={styles.chatButton}
-                        disabled={!prompt.trim() || !settingsProvider || !selectedModel || isLoading}
+                        disabled={
+                            !prompt.trim() ||
+                            !settingsProvider ||
+                            !selectedModel ||
+                            isLoading ||
+                            Boolean(error) ||
+                            Boolean(actionToastDescription) ||
+                            proposals.length > 0
+                        }
                         onClick={() => void handleSubmit()}
                         type="button"
                     >
@@ -974,7 +1036,7 @@ const AIInput = () => {
                 <ActionToast
                     apiRoute={config.routes.api}
                     appliedProposalIndexes={appliedProposalIndexes}
-                    description={response}
+                    description={actionToastDescription}
                     error={error}
                     getViewURL={getProposalViewURL}
                     isApplying={isApplying}
@@ -993,36 +1055,10 @@ const AIInput = () => {
                     }}
                     onApply={(proposal, _index) => void handleApplyProposal(proposal)}
                     proposals={proposals}
+                    prompt={prompt}
                     tokenUsage={tokenUsage}
                 />
-                {shouldShowChatDebugInfo && chatDebugInfo && (
-                    <div className={styles.debugInfo}>
-                        <strong>AI debug</strong>
-                        <br />
-                        Reason: {getDebugReasonLabel(chatDebugInfo.reason)}
-                        <br />
-                        Provider / model: {chatDebugInfo.provider || "unknown"} / {chatDebugInfo.model || "unknown"}
-                        <br />
-                        Proposals: {chatDebugInfo.proposalCount ?? 0}
-                        {chatDebugInfo.selectedLocales?.length ? (
-                            <>
-                                <br />
-                                Locales: {chatDebugInfo.selectedLocales.join(", ")}
-                            </>
-                        ) : null}
-                        {chatDebugInfo.toolFailures?.length ? (
-                            <>
-                                <br />
-                                Tool failures:
-                                {chatDebugInfo.toolFailures.map((failure, index) => (
-                                    <div key={`${failure.tool}-${index}`}>
-                                        - {failure.tool}: {failure.message}
-                                    </div>
-                                ))}
-                            </>
-                        ) : null}
-                    </div>
-                )}
+
                 {shouldShowApplyDebugInfo && applyDebugInfo && (
                     <div className={styles.debugInfo}>
                         <strong>Apply debug</strong>

@@ -55,7 +55,7 @@ type ChatDebugPayload = {
     model: string
     proposalCount: number
     provider: string
-    reason: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed"
+    reason: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed" | "write_intent_without_tool_call"
     selectedLocales: string[]
     toolFailures: ToolFailure[]
     usage?: TokenUsage | null
@@ -107,6 +107,22 @@ type RequiredFieldInfo = {
     options?: (string | { label?: unknown; value?: string })[]
     path: string
     type?: string
+}
+
+type BlockFieldConfig = ProposalFieldConfig & {
+    blocks?: Array<{
+        fields?: ProposalFieldConfig[]
+        slug: string
+    }>
+    fields?: ProposalFieldConfig[]
+    name?: string
+    type?: string
+}
+
+type RelationshipTargetReference = {
+    collection: string
+    id: number | string
+    path: string
 }
 
 type ProposalWritePayload =
@@ -181,9 +197,18 @@ const createSSEEventStream = (
     })
 }
 
-const getChatCompletionReason = ({ proposalCount, toolFailures }: { proposalCount: number; toolFailures: ToolFailure[] }) => {
+const getChatCompletionReason = ({
+    proposalCount,
+    toolFailures,
+    writeIntent,
+}: {
+    proposalCount: number
+    toolFailures: ToolFailure[]
+    writeIntent: boolean
+}) => {
     if (proposalCount > 0) return "proposal_created" as const
     if (toolFailures.length > 0) return "tool_validation_failed" as const
+    if (writeIntent) return "write_intent_without_tool_call" as const
     return "model_did_not_call_tool" as const
 }
 
@@ -194,6 +219,7 @@ const createDebugPayload = ({
     selectedLocales,
     toolFailures,
     usage,
+    writeIntent,
 }: {
     activeLocale?: string
     debug: ChatDebug
@@ -201,6 +227,7 @@ const createDebugPayload = ({
     selectedLocales: string[]
     toolFailures: ToolFailure[]
     usage?: TokenUsage | null
+    writeIntent: boolean
 }): ChatDebugPayload => ({
     activeLocale,
     model: debug.model,
@@ -209,6 +236,7 @@ const createDebugPayload = ({
     reason: getChatCompletionReason({
         proposalCount,
         toolFailures,
+        writeIntent,
     }),
     selectedLocales,
     toolFailures,
@@ -282,6 +310,7 @@ const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; se
             outputTokens: 27,
             totalTokens: 69,
         },
+        writeIntent: wantsCreatePost,
     })
 
     return new Response(
@@ -478,6 +507,283 @@ const getProposalSummary = (proposal: ActionProposal) => ({
     locales: "localizedData" in proposal && proposal.localizedData ? Object.keys(proposal.localizedData) : undefined,
     slug: "slug" in proposal ? proposal.slug : undefined,
 })
+
+const getCollectionBlockTypes = (fields: readonly BlockFieldConfig[]): string[] => {
+    const blockTypes = new Set<string>()
+
+    const visitFields = (items: readonly BlockFieldConfig[]) => {
+        for (const field of items) {
+            if (field.type === "blocks" && field.blocks) {
+                for (const block of field.blocks) {
+                    blockTypes.add(block.slug)
+                    if (block.fields?.length) {
+                        visitFields(block.fields as BlockFieldConfig[])
+                    }
+                }
+            }
+
+            if (field.fields?.length) {
+                visitFields(field.fields as BlockFieldConfig[])
+            }
+        }
+    }
+
+    visitFields(fields)
+
+    return [...blockTypes]
+}
+
+const getRequestedBlockTypes = ({
+    availableBlockTypes,
+    mentions,
+    prompt,
+}: {
+    availableBlockTypes: string[]
+    mentions?: ChatMention[]
+    prompt: string
+}) => {
+    const requestedBlockTypes = new Set<string>()
+    const normalizedPrompt = prompt.toLowerCase()
+
+    for (const mention of mentions || []) {
+        if (mention.type === "block" && mention.slug && availableBlockTypes.includes(mention.slug)) {
+            requestedBlockTypes.add(mention.slug)
+        }
+    }
+
+    for (const blockType of availableBlockTypes) {
+        const escapedBlockType = blockType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        const blockPattern = new RegExp(`\\b${escapedBlockType}\\b(?:\\s+block)?`, "i")
+
+        if (blockPattern.test(normalizedPrompt)) {
+            requestedBlockTypes.add(blockType)
+        }
+    }
+
+    return [...requestedBlockTypes]
+}
+
+const collectProposalBlockTypes = ({
+    data,
+    fields,
+}: {
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+}): Set<string> => {
+    const foundBlockTypes = new Set<string>()
+
+    const visitFields = (items: readonly BlockFieldConfig[], value: Record<string, unknown>) => {
+        for (const field of items) {
+            if (!field.name) continue
+
+            const fieldValue = value[field.name]
+            if (fieldValue === undefined || fieldValue === null) continue
+
+            if (field.type === "blocks" && Array.isArray(fieldValue)) {
+                for (const blockItem of fieldValue) {
+                    if (!isRecord(blockItem)) continue
+
+                    const blockType =
+                        typeof blockItem.blockType === "string"
+                            ? blockItem.blockType
+                            : typeof blockItem.type === "string"
+                              ? blockItem.type
+                              : typeof blockItem.slug === "string"
+                                ? blockItem.slug
+                                : null
+
+                    if (blockType) {
+                        foundBlockTypes.add(blockType)
+                    }
+
+                    if (blockType) {
+                        const blockConfig = field.blocks?.find((candidate) => candidate.slug === blockType)
+                        if (blockConfig?.fields?.length) {
+                            visitFields(blockConfig.fields as BlockFieldConfig[], blockItem)
+                        }
+                    }
+                }
+
+                continue
+            }
+
+            if (field.type === "group" && isRecord(fieldValue) && field.fields?.length) {
+                visitFields(field.fields as BlockFieldConfig[], fieldValue)
+                continue
+            }
+
+            if (field.type === "array" && Array.isArray(fieldValue) && field.fields?.length) {
+                for (const item of fieldValue) {
+                    if (isRecord(item)) {
+                        visitFields(field.fields as BlockFieldConfig[], item)
+                    }
+                }
+            }
+        }
+    }
+
+    visitFields(fields, data)
+
+    return foundBlockTypes
+}
+
+const collectRelationshipTargets = ({
+    data,
+    fields,
+    path = "",
+}: {
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+    path?: string
+}): RelationshipTargetReference[] => {
+    const targets: RelationshipTargetReference[] = []
+
+    for (const field of fields) {
+        if (!field.name) continue
+
+        const fieldPath = path ? `${path}.${field.name}` : field.name
+        const fieldValue = data[field.name]
+
+        if (fieldValue === undefined || fieldValue === null) continue
+
+        if (field.type === "relationship" || field.type === "upload") {
+            const relationTargets = Array.isArray(field.relationTo)
+                ? field.relationTo.filter((item): item is string => typeof item === "string")
+                : typeof field.relationTo === "string"
+                  ? [field.relationTo]
+                  : []
+
+            const collectSingle = (value: unknown, itemPath: string) => {
+                if (typeof value === "string" || typeof value === "number") {
+                    if (relationTargets.length === 1) {
+                        targets.push({
+                            collection: relationTargets[0],
+                            id: value,
+                            path: itemPath,
+                        })
+                    }
+
+                    return
+                }
+
+                if (!isRecord(value)) return
+
+                const relationTo = typeof value.relationTo === "string" ? value.relationTo : relationTargets[0]
+                const id =
+                    typeof value.id === "string" || typeof value.id === "number"
+                        ? value.id
+                        : typeof value.value === "string" || typeof value.value === "number"
+                          ? value.value
+                          : undefined
+
+                if (!relationTo || id === undefined) return
+
+                targets.push({
+                    collection: relationTo,
+                    id,
+                    path: itemPath,
+                })
+            }
+
+            if (field.hasMany && Array.isArray(fieldValue)) {
+                fieldValue.forEach((item, index) => collectSingle(item, `${fieldPath}.${index}`))
+            } else {
+                collectSingle(fieldValue, fieldPath)
+            }
+
+            continue
+        }
+
+        if (field.type === "group" && isRecord(fieldValue) && field.fields?.length) {
+            targets.push(
+                ...collectRelationshipTargets({
+                    data: fieldValue,
+                    fields: field.fields as BlockFieldConfig[],
+                    path: fieldPath,
+                })
+            )
+            continue
+        }
+
+        if (field.type === "array" && Array.isArray(fieldValue) && field.fields?.length) {
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                targets.push(
+                    ...collectRelationshipTargets({
+                        data: item,
+                        fields: field.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+            continue
+        }
+
+        if (field.type === "blocks" && Array.isArray(fieldValue) && field.blocks?.length) {
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                const blockType =
+                    typeof item.blockType === "string"
+                        ? item.blockType
+                        : typeof item.type === "string"
+                          ? item.type
+                          : typeof item.slug === "string"
+                            ? item.slug
+                            : null
+
+                if (!blockType) return
+
+                const blockConfig = field.blocks?.find((candidate) => candidate.slug === blockType)
+                if (!blockConfig?.fields?.length) return
+
+                targets.push(
+                    ...collectRelationshipTargets({
+                        data: item,
+                        fields: blockConfig.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+        }
+    }
+
+    return targets
+}
+
+const validateRelationshipTargetsExist = async ({
+    data,
+    fields,
+    req,
+}: {
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+    req: Parameters<PayloadHandler>[0]
+}) => {
+    const targets = collectRelationshipTargets({
+        data,
+        fields,
+    })
+
+    const invalidTargets: RelationshipTargetReference[] = []
+
+    for (const target of targets) {
+        try {
+            await req.payload.findByID({
+                collection: target.collection as never,
+                depth: 0,
+                id: String(target.id),
+                overrideAccess: false,
+                req,
+            })
+        } catch {
+            invalidTargets.push(target)
+        }
+    }
+
+    return invalidTargets
+}
 
 const getMentionSummary = (mentions?: ChatMention[]) =>
     mentions?.map((mention) => ({
@@ -968,9 +1274,11 @@ export const createChatHandler =
                         const permissionError = getDisallowedCollectionActionError(collection, "create")
                         if (permissionError) return permissionError
                         const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
                             data,
+                            inferenceText: prompt,
                             label,
                             localizedData,
                             mode: "create",
@@ -991,6 +1299,84 @@ export const createChatHandler =
                                 message: missingTitleField
                                     ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
                                     : `Create proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
+                                tool: "proposeCreateDoc",
+                            })
+                        }
+
+                        const requestedBlockTypes = getRequestedBlockTypes({
+                            availableBlockTypes: getCollectionBlockTypes(collectionFields),
+                            mentions: body?.mentions,
+                            prompt,
+                        })
+
+                        if (requestedBlockTypes.length > 0) {
+                            const proposalBlockTypes = new Set<string>()
+
+                            if (preparedData.data) {
+                                for (const blockType of collectProposalBlockTypes({
+                                    data: preparedData.data,
+                                    fields: collectionFields,
+                                })) {
+                                    proposalBlockTypes.add(blockType)
+                                }
+                            }
+
+                            if (preparedData.localizedData) {
+                                for (const localeData of Object.values(preparedData.localizedData)) {
+                                    for (const blockType of collectProposalBlockTypes({
+                                        data: localeData,
+                                        fields: collectionFields,
+                                    })) {
+                                        proposalBlockTypes.add(blockType)
+                                    }
+                                }
+                            }
+
+                            const missingBlockTypes = requestedBlockTypes.filter((blockType) => !proposalBlockTypes.has(blockType))
+
+                            if (missingBlockTypes.length > 0) {
+                                return createToolError({
+                                    collection,
+                                    details: {
+                                        missingBlockTypes,
+                                        requestedBlockTypes,
+                                    },
+                                    message: `Create proposal for ${collection} is missing required block types from the request: ${missingBlockTypes.join(", ")}. Add them to the appropriate blocks field using exact blockType values and complete required fields.`,
+                                    tool: "proposeCreateDoc",
+                                })
+                            }
+                        }
+
+                        const invalidRelationshipTargets = [
+                            ...(preparedData.data
+                                ? await validateRelationshipTargetsExist({
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                      req,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? (
+                                      await Promise.all(
+                                          Object.values(preparedData.localizedData).map((localeData) =>
+                                              validateRelationshipTargetsExist({
+                                                  data: localeData,
+                                                  fields: collectionFields,
+                                                  req,
+                                              })
+                                          )
+                                      )
+                                  ).flat()
+                                : []),
+                        ]
+
+                        if (invalidRelationshipTargets.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    invalidRelationshipTargets,
+                                },
+                                message: `Create proposal for ${collection} contains relationship or upload references that do not exist: ${invalidRelationshipTargets.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}.`,
                                 tool: "proposeCreateDoc",
                             })
                         }
@@ -1060,9 +1446,11 @@ export const createChatHandler =
                         const permissionError = getDisallowedCollectionActionError(collection, "update")
                         if (permissionError) return permissionError
                         const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
                             data,
+                            inferenceText: prompt,
                             label,
                             localizedData,
                             mode: "update",
@@ -1075,6 +1463,40 @@ export const createChatHandler =
                                     issues: preparedData.issues,
                                 },
                                 message: `Update proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
+                                tool: "proposeUpdateDoc",
+                            })
+                        }
+
+                        const invalidRelationshipTargets = [
+                            ...(preparedData.data
+                                ? await validateRelationshipTargetsExist({
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                      req,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? (
+                                      await Promise.all(
+                                          Object.values(preparedData.localizedData).map((localeData) =>
+                                              validateRelationshipTargetsExist({
+                                                  data: localeData,
+                                                  fields: collectionFields,
+                                                  req,
+                                              })
+                                          )
+                                      )
+                                  ).flat()
+                                : []),
+                        ]
+
+                        if (invalidRelationshipTargets.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    invalidRelationshipTargets,
+                                },
+                                message: `Update proposal for ${collection} contains relationship or upload references that do not exist: ${invalidRelationshipTargets.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}.`,
                                 tool: "proposeUpdateDoc",
                             })
                         }
@@ -1124,6 +1546,7 @@ export const createChatHandler =
                                 slug: globalConfig.slug,
                             },
                             data,
+                            inferenceText: prompt,
                             label,
                             localizedData,
                             mode: "update",
@@ -1259,6 +1682,7 @@ export const createChatHandler =
                                 const reason = getChatCompletionReason({
                                     proposalCount: proposals.length,
                                     toolFailures,
+                                    writeIntent,
                                 })
                                 const debugPayload = createDebugPayload({
                                     activeLocale,
@@ -1267,6 +1691,7 @@ export const createChatHandler =
                                     selectedLocales,
                                     toolFailures,
                                     usage,
+                                    writeIntent,
                                 })
                                 logHandlerEvent(req, proposals.length > 0 ? "info" : "warn", {
                                     activeLocale,
@@ -1292,6 +1717,7 @@ export const createChatHandler =
                             const reason = getChatCompletionReason({
                                 proposalCount: proposals.length,
                                 toolFailures,
+                                writeIntent,
                             })
                             const debugPayload = createDebugPayload({
                                 activeLocale,
@@ -1300,6 +1726,7 @@ export const createChatHandler =
                                 selectedLocales,
                                 toolFailures,
                                 usage,
+                                writeIntent,
                             })
                             logHandlerEvent(req, proposals.length > 0 ? "info" : "warn", {
                                 activeLocale,

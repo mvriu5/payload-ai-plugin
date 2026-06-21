@@ -9,6 +9,7 @@ import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from 
 import type { ActionProposal } from "./chatHandler.js"
 
 type ProposalDiffBody = {
+    prompt?: string
     proposal?: ActionProposal
 }
 
@@ -29,6 +30,7 @@ export const createProposalDiffHandler =
         if (!isActionProposal(proposal)) return Response.json({ error: "Proposal is invalid." }, { status: 400 })
 
         try {
+            const inferenceText = body?.prompt
             const defaultLocale = getDefaultLocale(req)
 
             if (proposal.action === "updateGlobal") {
@@ -47,6 +49,7 @@ export const createProposalDiffHandler =
                             fields: (globalConfig.fields || []) as FieldConfig[],
                             slug: proposal.slug,
                         },
+                        inferenceText,
                         label: proposal.label,
                         localizedData: proposal.localizedData,
                         mode: "update",
@@ -96,6 +99,7 @@ export const createProposalDiffHandler =
                         slug: proposal.slug,
                     },
                     data: proposal.data,
+                    inferenceText,
                     label: proposal.label,
                     mode: "update",
                 })
@@ -150,6 +154,7 @@ export const createProposalDiffHandler =
             if (hasLocalizedData(proposal)) {
                 const preparedData = prepareProposalWriteData({
                     collectionConfig,
+                    inferenceText,
                     label: proposal.label,
                     localizedData: proposal.localizedData,
                     mode: proposal.action,
@@ -224,6 +229,7 @@ export const createProposalDiffHandler =
             const preparedData = prepareProposalWriteData({
                 collectionConfig,
                 data: proposal.data,
+                inferenceText,
                 label: proposal.label,
                 mode: proposal.action,
             })
