@@ -243,6 +243,10 @@ const getApplyDebugReasonLabel = (reason?: ApplyDebugInfo["reason"]) => {
             return "Target global was not found."
         case "unknown_or_disallowed_collection":
             return "Target collection is unknown or not allowed."
+        case "invalid_collection_write_shape":
+            return "Proposal data does not match the target collection schema."
+        case "invalid_global_write_shape":
+            return "Proposal data does not match the target global schema."
         case "localized_create_without_locales":
             return "Localized create proposal had no locale entries."
         case "missing_auth_password":

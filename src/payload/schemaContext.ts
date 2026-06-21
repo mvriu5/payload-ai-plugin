@@ -1,7 +1,12 @@
 import type { PayloadHandler } from "payload"
 
 import { getCollectionPermissions, getCollectionSlugsForAction, type ResolvedCollectionPermissionMap } from "./collectionPermissions.js"
-import { getCollectionFields, isAuthCollection, type CollectionConfig as NormalizeCollectionConfig } from "./normalizeData.js"
+import {
+    getSchemaFields as getNormalizeSchemaFields,
+    hasDrafts,
+    isAuthCollection,
+    type CollectionConfig as NormalizeCollectionConfig,
+} from "./normalizeData.js"
 import { getSerializableLabel, isInternalCollection, isRecord } from "./shared.js"
 
 export type ChatMention = {
@@ -14,9 +19,7 @@ export type ChatMention = {
 }
 
 export type FieldConfig = {
-    admin?: {
-        condition?: unknown
-    }
+    admin?: Record<string, unknown>
     blocks?: BlockConfig[]
     defaultValue?: unknown
     fields?: FieldConfig[]
@@ -39,8 +42,6 @@ type BlockConfig = {
     slug: string
 }
 
-type VersionConfig = boolean | { drafts?: boolean | Record<string, unknown> }
-
 type CollectionLikeConfig = {
     admin?: {
         useAsTitle?: string
@@ -54,7 +55,7 @@ type CollectionLikeConfig = {
         singular?: unknown
     }
     slug: string
-    versions?: VersionConfig
+    versions?: NormalizeCollectionConfig["versions"]
 }
 
 type CachedCollectionDescription = {
@@ -164,15 +165,6 @@ const getSerializableOptions = (options: unknown) => {
     return serializedOptions.length > 0 ? serializedOptions : undefined
 }
 
-const hasDrafts = (config?: CollectionLikeConfig | null) => {
-    const versions = config?.versions
-
-    if (!versions || versions === true) return false
-    if (!isRecord(versions)) return false
-
-    return Boolean(versions.drafts)
-}
-
 const toNormalizeCollectionConfig = (config?: CollectionLikeConfig | null): NormalizeCollectionConfig | undefined => {
     if (!config) return undefined
 
@@ -185,19 +177,7 @@ const toNormalizeCollectionConfig = (config?: CollectionLikeConfig | null): Norm
 
 const getSchemaFields = (config?: CollectionLikeConfig | null) => {
     const normalizedConfig = toNormalizeCollectionConfig(config)
-    const fields = isAuthCollection(normalizedConfig) ? getCollectionFields(normalizedConfig) : [...(config?.fields || [])]
-
-    if (hasDrafts(config)) {
-        fields.push({
-            label: "Status",
-            name: "_status",
-            options: ["draft", "published"],
-            required: true,
-            type: "select",
-        })
-    }
-
-    return fields
+    return getNormalizeSchemaFields(normalizedConfig) as FieldConfig[]
 }
 
 const getLocalizedFieldNames = (fields: FieldConfig[], path = ""): string[] => {
@@ -517,9 +497,5 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
 export const buildPromptWithMentionContext = ({ mentionContext, prompt }: { mentionContext: Record<string, unknown>[]; prompt: string }) => {
     if (mentionContext.length === 0) return prompt
 
-    return [
-        "Selected Payload references JSON. Treat inline reference labels as these entities:",
-        JSON.stringify(mentionContext),
-        prompt,
-    ].join("\n\n")
+    return ["Selected Payload references JSON. Treat inline reference labels as these entities:", JSON.stringify(mentionContext), prompt].join("\n\n")
 }

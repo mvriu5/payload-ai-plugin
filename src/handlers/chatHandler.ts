@@ -8,6 +8,8 @@ import { isAIProvider, type AIModelConfig, type AIProvider } from "../ai/provide
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
+import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
+import { prepareProposalWriteData } from "../payload/proposalData.js"
 import {
     buildPromptWithMentionContext,
     collectBlocks,
@@ -820,49 +822,46 @@ export const createChatHandler =
                     }: CollectionInput & Partial<DataInput> & LabelInput & { localizedData?: LocalizedDataInput }) => {
                         const permissionError = getDisallowedCollectionActionError(collection, "create")
                         if (permissionError) return permissionError
-                        const completedCreatePayload = fillMissingCreateFields({
+                        const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const preparedData = prepareProposalWriteData({
+                            collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
                             data,
                             label,
                             localizedData,
-                            requiredFields: createRequiredFieldsByCollection[collection] || [],
-                        })
-                        const missingFields = getMissingCreateFields({
-                            data: completedCreatePayload.data,
-                            localizedData: completedCreatePayload.localizedData,
-                            requiredFields: createRequiredFieldsByCollection[collection] || [],
+                            mode: "create",
                         })
 
-                        if (missingFields.length > 0) {
+                        if (preparedData.issues.length > 0) {
                             const titleFieldName = titleFieldByCollection[collection]
                             const missingTitleField = titleFieldName
-                                ? missingFields.some((field) => field === titleFieldName || field.endsWith(`:${titleFieldName}`))
+                                ? preparedData.issues.some((issue) => issue.path === titleFieldName || issue.path.endsWith(`.${titleFieldName}`))
                                 : false
 
                             return createToolError({
                                 collection,
                                 details: {
-                                    missingFields,
+                                    issues: preparedData.issues,
                                     titleFieldName,
                                 },
                                 message: missingTitleField
                                     ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
-                                    : `Create proposal is missing required fields for ${collection}: ${missingFields.join(", ")}`,
+                                    : `Create proposal for ${collection} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
                                 tool: "proposeCreateDoc",
                             })
                         }
 
-                        const proposal: ActionProposal = completedCreatePayload.localizedData
+                        const proposal: ActionProposal = preparedData.localizedData
                             ? {
                                   action: "create",
                                   collection,
                                   label: getSafeProposalLabel(label),
-                                  localizedData: completedCreatePayload.localizedData,
+                                  localizedData: preparedData.localizedData,
                                   ...(activeLocale ? { locale: activeLocale } : {}),
                               }
                             : {
                                   action: "create",
                                   collection,
-                                  data: completedCreatePayload.data || {},
+                                  data: preparedData.data || {},
                                   label: getSafeProposalLabel(label),
                                   ...(activeLocale ? { locale: activeLocale } : {}),
                               }
@@ -915,11 +914,30 @@ export const createChatHandler =
                     }: CollectionInput & Partial<DataInput> & DocIDInput & LabelInput & { localizedData?: LocalizedDataInput }) => {
                         const permissionError = getDisallowedCollectionActionError(collection, "update")
                         if (permissionError) return permissionError
+                        const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const preparedData = prepareProposalWriteData({
+                            collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
+                            data,
+                            label,
+                            localizedData,
+                            mode: "update",
+                        })
+
+                        if (preparedData.issues.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    issues: preparedData.issues,
+                                },
+                                message: `Update proposal for ${collection} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
+                                tool: "proposeUpdateDoc",
+                            })
+                        }
 
                         const proposal: ActionProposal = {
                             action: "update",
                             collection,
-                            ...(localizedData ? { localizedData } : { data: data || {} }),
+                            ...(preparedData.localizedData ? { localizedData: preparedData.localizedData } : { data: preparedData.data || {} }),
                             id,
                             label: getSafeProposalLabel(label),
                             ...(activeLocale ? { locale: activeLocale } : {}),
@@ -955,10 +973,31 @@ export const createChatHandler =
                                 tool: "proposeUpdateGlobal",
                             })
                         }
+                        const preparedData = prepareProposalWriteData({
+                            collectionConfig: {
+                                fields: (globalConfig.fields || []) as ProposalFieldConfig[],
+                                slug: globalConfig.slug,
+                            },
+                            data,
+                            label,
+                            localizedData,
+                            mode: "update",
+                        })
+
+                        if (preparedData.issues.length > 0) {
+                            return createToolError({
+                                details: {
+                                    issues: preparedData.issues,
+                                },
+                                message: `Update proposal for global ${slug} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
+                                slug,
+                                tool: "proposeUpdateGlobal",
+                            })
+                        }
 
                         const proposal: ActionProposal = {
                             action: "updateGlobal",
-                            ...(localizedData ? { localizedData } : { data: data || {} }),
+                            ...(preparedData.localizedData ? { localizedData: preparedData.localizedData } : { data: preparedData.data || {} }),
                             label: getSafeProposalLabel(label),
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             slug,

@@ -2,14 +2,8 @@ import type { PayloadHandler } from "payload"
 
 import { verifyActionProposal } from "../ai/proposalSigning.js"
 import { redactSensitiveData } from "../ai/sensitiveData.js"
-import {
-    getCollectionFields,
-    getLocalizedRequiredFallbackData,
-    normalizeAuthData,
-    normalizeDataForFields,
-    type CollectionConfig,
-    type FieldConfig,
-} from "../payload/normalizeData.js"
+import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../payload/normalizeData.js"
+import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../payload/proposalData.js"
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../payload/shared.js"
 import type { ActionProposal } from "./chatHandler.js"
@@ -20,25 +14,6 @@ type ProposalDiffBody = {
 
 type ProposalDiffOptions = {
     collections?: ResolvedCollectionPermissionMap
-}
-
-const applyLocalizedRequiredFallback = ({
-    data,
-    fallbackSource,
-    fields,
-}: {
-    data: Record<string, unknown>
-    fallbackSource: Record<string, unknown>
-    fields: FieldConfig[]
-}) => {
-    return mergeData(
-        getLocalizedRequiredFallbackData({
-            fields,
-            source: fallbackSource,
-            target: data,
-        }),
-        data
-    )
 }
 
 export const createProposalDiffHandler =
@@ -63,7 +38,22 @@ export const createProposalDiffHandler =
                 if (hasLocalizedData(proposal)) {
                     const beforeByLocale: Record<string, unknown> = {}
                     const afterByLocale: Record<string, unknown> = {}
-                    const globalFields = (globalConfig.fields || []) as FieldConfig[]
+                    const globalFields = getSchemaFields({
+                        fields: (globalConfig.fields || []) as FieldConfig[],
+                        slug: proposal.slug,
+                    })
+                    const preparedData = prepareProposalWriteData({
+                        collectionConfig: {
+                            fields: (globalConfig.fields || []) as FieldConfig[],
+                            slug: proposal.slug,
+                        },
+                        label: proposal.label,
+                        localizedData: proposal.localizedData,
+                        mode: "update",
+                    })
+                    if (preparedData.issues.length > 0 || !preparedData.localizedData) {
+                        return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                    }
                     const defaultLocaleDoc = defaultLocale
                         ? ((await req.payload.findGlobal({
                               depth: 2,
@@ -75,8 +65,7 @@ export const createProposalDiffHandler =
                           })) as Record<string, unknown>)
                         : null
 
-                    for (const [locale, localeData] of Object.entries(proposal.localizedData)) {
-                        const normalized = normalizeDataForFields(globalFields, localeData)
+                    for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
                         const doc = (await req.payload.findGlobal({
                             depth: 2,
                             fallbackLocale: false,
@@ -85,10 +74,10 @@ export const createProposalDiffHandler =
                             req,
                             slug: proposal.slug as never,
                         })) as Record<string, unknown>
-                        const completedData = applyLocalizedRequiredFallback({
-                            data: normalized.data,
+                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
                             fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || doc,
                             fields: globalFields,
+                            preparedData: localeData,
                         })
 
                         beforeByLocale[locale] = redactSensitiveData(doc)
@@ -101,7 +90,18 @@ export const createProposalDiffHandler =
                     })
                 }
 
-                const normalized = normalizeDataForFields((globalConfig.fields || []) as FieldConfig[], proposal.data)
+                const preparedData = prepareProposalWriteData({
+                    collectionConfig: {
+                        fields: (globalConfig.fields || []) as FieldConfig[],
+                        slug: proposal.slug,
+                    },
+                    data: proposal.data,
+                    label: proposal.label,
+                    mode: "update",
+                })
+                if (preparedData.issues.length > 0 || !preparedData.data) {
+                    return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                }
                 const doc = (await req.payload.findGlobal({
                     depth: 2,
                     ...(proposal.locale ? { locale: proposal.locale } : {}),
@@ -111,7 +111,7 @@ export const createProposalDiffHandler =
                 })) as Record<string, unknown>
 
                 return Response.json({
-                    after: redactSensitiveData(mergeData(doc, normalized.data)),
+                    after: redactSensitiveData(mergeData(doc, preparedData.data)),
                     before: redactSensitiveData(doc),
                 })
             }
@@ -145,11 +145,18 @@ export const createProposalDiffHandler =
             const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === proposal.collection) as
                 | CollectionConfig
                 | undefined
-            const collectionFields = getCollectionFields(collectionConfig)
-            const normalizeCollectionData = (data: Record<string, unknown>) =>
-                normalizeAuthData(collectionConfig, normalizeDataForFields(collectionFields, data))
+            const collectionFields = getSchemaFields(collectionConfig)
 
             if (hasLocalizedData(proposal)) {
+                const preparedData = prepareProposalWriteData({
+                    collectionConfig,
+                    label: proposal.label,
+                    localizedData: proposal.localizedData,
+                    mode: proposal.action,
+                })
+                if (preparedData.issues.length > 0 || !preparedData.localizedData) {
+                    return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                }
                 const afterByLocale: Record<string, unknown> = {}
                 const beforeByLocale: Record<string, unknown> = {}
                 const defaultLocaleDoc =
@@ -166,8 +173,7 @@ export const createProposalDiffHandler =
                         : null
                 let createFallbackSource: Record<string, unknown> | null = null
 
-                for (const [locale, localeData] of Object.entries(proposal.localizedData)) {
-                    const normalized = normalizeCollectionData(localeData)
+                for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
                     const fallbackSource =
                         proposal.action === "create"
                             ? createFallbackSource || {}
@@ -182,10 +188,10 @@ export const createProposalDiffHandler =
                                     req,
                                 })) as Record<string, unknown>)
                               : defaultLocaleDoc || {}
-                    const completedData = applyLocalizedRequiredFallback({
-                        data: normalized.data,
+                    const completedData = applyLocalizedRequiredFallbackToPreparedData({
                         fallbackSource,
                         fields: collectionFields,
+                        preparedData: localeData,
                     })
 
                     if (proposal.action === "create") {
@@ -215,11 +221,19 @@ export const createProposalDiffHandler =
                 })
             }
 
-            const normalized = normalizeCollectionData(proposal.data)
+            const preparedData = prepareProposalWriteData({
+                collectionConfig,
+                data: proposal.data,
+                label: proposal.label,
+                mode: proposal.action,
+            })
+            if (preparedData.issues.length > 0 || !preparedData.data) {
+                return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+            }
 
             if (proposal.action === "create") {
                 return Response.json({
-                    after: redactSensitiveData(normalized.data),
+                    after: redactSensitiveData(preparedData.data),
                     before: {},
                 })
             }
@@ -234,7 +248,7 @@ export const createProposalDiffHandler =
             })) as Record<string, unknown>
 
             return Response.json({
-                after: redactSensitiveData(mergeData(doc, normalized.data)),
+                after: redactSensitiveData(mergeData(doc, preparedData.data)),
                 before: redactSensitiveData(doc),
             })
         } catch (err) {

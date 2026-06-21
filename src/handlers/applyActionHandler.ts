@@ -2,16 +2,8 @@ import type { PayloadHandler } from "payload"
 
 import { verifyActionProposal } from "../ai/proposalSigning.js"
 import { containsSensitiveData, redactSensitiveData } from "../ai/sensitiveData.js"
-import {
-    getCollectionFields,
-    getLocalizedRequiredFallbackData,
-    isAuthCollection,
-    normalizeAuthData,
-    normalizeDataForFields,
-    type CollectionConfig,
-    type FieldConfig,
-    type NormalizedData,
-} from "../payload/normalizeData.js"
+import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../payload/normalizeData.js"
+import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../payload/proposalData.js"
 import type { ActionProposal } from "./chatHandler.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import {
@@ -135,25 +127,6 @@ const isAllowedCollection = (
         req,
         slug: collection,
     })
-}
-
-const applyLocalizedRequiredFallback = ({
-    data,
-    fallbackSource,
-    fields,
-}: {
-    data: Record<string, unknown>
-    fallbackSource: Record<string, unknown>
-    fields: FieldConfig[]
-}) => {
-    return mergeData(
-        getLocalizedRequiredFallbackData({
-            fields,
-            source: fallbackSource,
-            target: data,
-        }),
-        data
-    )
 }
 
 const countDiffChanges = ({ after, before }: { after: unknown; before: unknown }) => {
@@ -437,7 +410,6 @@ export const createApplyActionHandler =
             })
         }
 
-        let normalized: NormalizedData | undefined
         const logContext: ApplyActionLogContext = {
             aiResponse: typeof body?.aiResponse === "string" && body.aiResponse.trim() ? body.aiResponse.trim() : undefined,
             prompt: typeof body?.prompt === "string" && body.prompt.trim() ? body.prompt.trim() : undefined,
@@ -478,7 +450,35 @@ export const createApplyActionHandler =
                 if (hasLocalizedData(proposal)) {
                     const beforeByLocale: Record<string, unknown> = {}
                     const afterByLocale: Record<string, unknown> = {}
-                    const globalFields = (globalConfig?.fields || []) as FieldConfig[]
+                    const globalFields = getSchemaFields({
+                        fields: (globalConfig?.fields || []) as FieldConfig[],
+                        slug: proposal.slug,
+                    })
+                    const preparedData = prepareProposalWriteData({
+                        collectionConfig: {
+                            fields: (globalConfig?.fields || []) as FieldConfig[],
+                            slug: proposal.slug,
+                        },
+                        label: proposal.label,
+                        localizedData: proposal.localizedData,
+                        mode: "update",
+                    })
+
+                    if (preparedData.issues.length > 0 || !preparedData.localizedData) {
+                        return failApply({
+                            debug: createApplyDebugPayload({
+                                details: {
+                                    issues: preparedData.issues,
+                                },
+                                phase: "apply_validation",
+                                proposal,
+                                reason: "invalid_global_write_shape",
+                            }),
+                            error: "Proposal is invalid.",
+                            logMessage: "AI apply blocked: invalid global proposal data",
+                            proposal,
+                        })
+                    }
                     const defaultLocaleDoc = defaultLocale
                         ? ((await req.payload.findGlobal({
                               depth: 2,
@@ -489,8 +489,7 @@ export const createApplyActionHandler =
                           })) as Record<string, unknown>)
                         : null
 
-                    for (const [locale, localeData] of Object.entries(proposal.localizedData)) {
-                        const localeNormalized = normalizeDataForFields(globalFields, localeData)
+                    for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
                         const before = (await req.payload.findGlobal({
                             depth: 2,
                             fallbackLocale: false,
@@ -498,10 +497,10 @@ export const createApplyActionHandler =
                             req,
                             slug: proposal.slug as never,
                         })) as Record<string, unknown>
-                        const completedData = applyLocalizedRequiredFallback({
-                            data: localeNormalized.data,
+                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
                             fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
                             fields: globalFields,
+                            preparedData: localeData,
                         })
 
                         await req.payload.updateGlobal({
@@ -540,7 +539,30 @@ export const createApplyActionHandler =
                     })
                 }
 
-                normalized = normalizeDataForFields((globalConfig?.fields || []) as FieldConfig[], proposal.data)
+                const preparedData = prepareProposalWriteData({
+                    collectionConfig: {
+                        fields: (globalConfig?.fields || []) as FieldConfig[],
+                        slug: proposal.slug,
+                    },
+                    data: proposal.data,
+                    label: proposal.label,
+                    mode: "update",
+                })
+                if (preparedData.issues.length > 0 || !preparedData.data) {
+                    return failApply({
+                        debug: createApplyDebugPayload({
+                            details: {
+                                issues: preparedData.issues,
+                            },
+                            phase: "apply_validation",
+                            proposal,
+                            reason: "invalid_global_write_shape",
+                        }),
+                        error: "Proposal is invalid.",
+                        logMessage: "AI apply blocked: invalid global proposal data",
+                        proposal,
+                    })
+                }
                 const before = (await req.payload.findGlobal({
                     depth: 2,
                     ...(proposal.locale ? { locale: proposal.locale } : {}),
@@ -548,7 +570,7 @@ export const createApplyActionHandler =
                     slug: proposal.slug as never,
                 })) as Record<string, unknown>
                 const doc = await req.payload.updateGlobal({
-                    data: normalized.data,
+                    data: preparedData.data,
                     ...(proposal.locale ? { locale: proposal.locale } : {}),
                     overrideAccess: false,
                     req,
@@ -560,7 +582,7 @@ export const createApplyActionHandler =
                     proposal,
                     req,
                     target: {
-                        after: mergeData(before, normalized.data),
+                        after: mergeData(before, preparedData.data),
                         before,
                     },
                 })
@@ -626,13 +648,34 @@ export const createApplyActionHandler =
             const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === proposal.collection) as
                 | CollectionConfig
                 | undefined
-            const collectionFields = getCollectionFields(collectionConfig)
-            const normalizeCollectionData = (data: Record<string, unknown>) =>
-                normalizeAuthData(collectionConfig, normalizeDataForFields(collectionFields, data))
+            const collectionFields = getSchemaFields(collectionConfig)
 
             if (hasLocalizedData(proposal)) {
+                const preparedData = prepareProposalWriteData({
+                    collectionConfig,
+                    label: proposal.label,
+                    localizedData: proposal.localizedData,
+                    mode: proposal.action,
+                })
+
+                if (preparedData.issues.length > 0 || !preparedData.localizedData) {
+                    return failApply({
+                        debug: createApplyDebugPayload({
+                            details: {
+                                issues: preparedData.issues,
+                            },
+                            phase: "apply_validation",
+                            proposal,
+                            reason: "invalid_collection_write_shape",
+                        }),
+                        error: "Proposal is invalid.",
+                        logMessage: "AI apply blocked: invalid collection proposal data",
+                        proposal,
+                    })
+                }
+
                 if (proposal.action === "create") {
-                    const localeEntries = Object.entries(proposal.localizedData)
+                    const localeEntries = Object.entries(preparedData.localizedData)
                     const [firstLocale, firstLocaleData] = localeEntries[0] || []
 
                     if (!firstLocale) {
@@ -648,37 +691,9 @@ export const createApplyActionHandler =
                         })
                     }
 
-                    const firstNormalized = normalizeCollectionData(firstLocaleData)
-
-                    if (isAuthCollection(collectionConfig) && !firstNormalized.data.password) {
-                        return failApply({
-                            debug: createApplyDebugPayload({
-                                phase: "apply_validation",
-                                proposal,
-                                reason: "missing_auth_password",
-                            }),
-                            error: "Password is required when creating a user.",
-                            logMessage: "AI apply blocked: missing password for auth collection create",
-                            proposal,
-                        })
-                    }
-
-                    if (isAuthCollection(collectionConfig) && !firstNormalized.data.email) {
-                        return failApply({
-                            debug: createApplyDebugPayload({
-                                phase: "apply_validation",
-                                proposal,
-                                reason: "missing_auth_email",
-                            }),
-                            error: "Email is required when creating a user.",
-                            logMessage: "AI apply blocked: missing email for auth collection create",
-                            proposal,
-                        })
-                    }
-
                     const doc = await req.payload.create({
                         collection: proposal.collection as never,
-                        data: firstNormalized.data,
+                        data: firstLocaleData,
                         locale: firstLocale,
                         overrideAccess: false,
                         req,
@@ -692,11 +707,10 @@ export const createApplyActionHandler =
                     let fallbackSource = doc as Record<string, unknown>
 
                     for (const [locale, localeData] of localeEntries.slice(1)) {
-                        const localeNormalized = normalizeCollectionData(localeData)
-                        const completedData = applyLocalizedRequiredFallback({
-                            data: localeNormalized.data,
+                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
                             fallbackSource,
                             fields: collectionFields,
+                            preparedData: localeData,
                         })
                         await req.payload.update({
                             collection: proposal.collection as never,
@@ -750,8 +764,7 @@ export const createApplyActionHandler =
                       })) as Record<string, unknown>)
                     : null
 
-                for (const [locale, localeData] of Object.entries(proposal.localizedData)) {
-                    const localeNormalized = normalizeCollectionData(localeData)
+                for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
                     const before = (await req.payload.findByID({
                         collection: proposal.collection as never,
                         depth: 2,
@@ -760,10 +773,10 @@ export const createApplyActionHandler =
                         locale,
                         req,
                     })) as Record<string, unknown>
-                    const completedData = applyLocalizedRequiredFallback({
-                        data: localeNormalized.data,
+                    const completedData = applyLocalizedRequiredFallbackToPreparedData({
                         fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
                         fields: collectionFields,
+                        preparedData: localeData,
                     })
 
                     await req.payload.update({
@@ -807,30 +820,25 @@ export const createApplyActionHandler =
                 })
             }
 
-            normalized = normalizeCollectionData(proposal.data)
+            const preparedData = prepareProposalWriteData({
+                collectionConfig,
+                data: proposal.data,
+                label: proposal.label,
+                mode: proposal.action,
+            })
 
-            if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.password) {
+            if (preparedData.issues.length > 0 || !preparedData.data) {
                 return failApply({
                     debug: createApplyDebugPayload({
+                        details: {
+                            issues: preparedData.issues,
+                        },
                         phase: "apply_validation",
                         proposal,
-                        reason: "missing_auth_password",
+                        reason: "invalid_collection_write_shape",
                     }),
-                    error: "Password is required when creating a user.",
-                    logMessage: "AI apply blocked: missing password for auth collection create",
-                    proposal,
-                })
-            }
-
-            if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.email) {
-                return failApply({
-                    debug: createApplyDebugPayload({
-                        phase: "apply_validation",
-                        proposal,
-                        reason: "missing_auth_email",
-                    }),
-                    error: "Email is required when creating a user.",
-                    logMessage: "AI apply blocked: missing email for auth collection create",
+                    error: "Proposal is invalid.",
+                    logMessage: "AI apply blocked: invalid collection proposal data",
                     proposal,
                 })
             }
@@ -838,7 +846,7 @@ export const createApplyActionHandler =
             if (proposal.action === "create") {
                 const doc = await req.payload.create({
                     collection: proposal.collection as never,
-                    data: normalized.data,
+                    data: preparedData.data,
                     ...(proposal.locale ? { locale: proposal.locale } : {}),
                     overrideAccess: false,
                     req,
@@ -877,7 +885,7 @@ export const createApplyActionHandler =
             })) as Record<string, unknown>
             const doc = await req.payload.update({
                 collection: proposal.collection as never,
-                data: normalized.data,
+                data: preparedData.data,
                 id: proposal.id,
                 ...(proposal.locale ? { locale: proposal.locale } : {}),
                 overrideAccess: false,
@@ -889,7 +897,7 @@ export const createApplyActionHandler =
                 proposal,
                 req,
                 target: {
-                    after: mergeData(before, normalized.data),
+                    after: mergeData(before, preparedData.data),
                     before,
                     documentID: proposal.id,
                 },

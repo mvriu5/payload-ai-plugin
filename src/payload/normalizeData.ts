@@ -1,26 +1,31 @@
 import { isRecord } from "./shared.js"
 
 export type FieldConfig = {
-    blocks?: BlockConfig[]
+    admin?: Record<string, unknown>
+    blocks?: readonly BlockConfig[]
     defaultValue?: unknown
-    fields?: FieldConfig[]
+    fields?: readonly FieldConfig[]
+    hasMany?: boolean
     label?: unknown
     localized?: boolean
     name?: string
-    options?: (string | { value?: string })[]
+    options?: readonly (string | { value?: string })[]
+    relationTo?: unknown
     required?: boolean
     type?: string
 }
 
 type BlockConfig = {
-    fields?: FieldConfig[]
+    fields?: readonly FieldConfig[]
     slug: string
 }
 
 export type CollectionConfig = {
+    admin?: Record<string, unknown>
     auth?: unknown
-    fields: FieldConfig[]
+    fields?: readonly FieldConfig[]
     slug: string
+    versions?: boolean | { drafts?: boolean | Record<string, unknown> }
 }
 
 export type NormalizedData = {
@@ -31,7 +36,7 @@ export type NormalizedData = {
 
 const SKIP_FIELD = Symbol("skipField")
 
-const getNamedFields = (fields: FieldConfig[]) => {
+const getNamedFields = (fields: readonly FieldConfig[]) => {
     return fields.filter((field): field is FieldConfig & { name: string } => Boolean(field.name))
 }
 
@@ -58,7 +63,31 @@ export const getCollectionFields = (collectionConfig?: CollectionConfig | null) 
     return fields
 }
 
-const createLexicalText = (value: unknown) => {
+export const hasDrafts = (collectionConfig?: CollectionConfig | null) => {
+    const versions = collectionConfig?.versions
+
+    if (!versions || versions === true || !isRecord(versions)) return false
+
+    return Boolean(versions.drafts)
+}
+
+export const getSchemaFields = (collectionConfig?: CollectionConfig | null) => {
+    const fields = getCollectionFields(collectionConfig)
+
+    if (hasDrafts(collectionConfig)) {
+        fields.push({
+            defaultValue: "draft",
+            name: "_status",
+            options: ["draft", "published"],
+            required: true,
+            type: "select",
+        })
+    }
+
+    return fields
+}
+
+export const createLexicalText = (value: unknown) => {
     if (isRecord(value) && isRecord(value.root)) return value
 
     const text = Array.isArray(value) ? value.join("\n") : String(value || "")
@@ -217,7 +246,7 @@ const normalizeLooseKnownFieldValue = (key: string, value: unknown) => {
     return value
 }
 
-export const normalizeDataForFields = (fields: FieldConfig[], data: Record<string, unknown>): NormalizedData => {
+export const normalizeDataForFields = (fields: readonly FieldConfig[], data: Record<string, unknown>): NormalizedData => {
     const namedFields = getNamedFields(fields)
     const fieldsByName = new Map(namedFields.map((field) => [field.name, field]))
     const normalizedData: Record<string, unknown> = {}
@@ -269,7 +298,7 @@ export const getLocalizedRequiredFallbackData = ({
     source,
     target,
 }: {
-    fields: FieldConfig[]
+    fields: readonly FieldConfig[]
     source: Record<string, unknown>
     target: Record<string, unknown>
 }): Record<string, unknown> => {
