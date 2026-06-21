@@ -135,11 +135,9 @@ type ProposalWritePayload =
           localizedData: LocalizedDataInput
       }
 
-const nonEmptyLocalizedDataSchema = z
-    .record(z.string(), z.record(z.string(), z.unknown()))
-    .refine((value) => Object.keys(value).length > 0, {
-        message: "localizedData must include at least one locale entry.",
-    })
+const nonEmptyLocalizedDataSchema = z.record(z.string(), z.record(z.string(), z.unknown())).refine((value) => Object.keys(value).length > 0, {
+    message: "localizedData must include at least one locale entry.",
+})
 
 export type ActionProposal = (
     | ({
@@ -533,15 +531,7 @@ const getCollectionBlockTypes = (fields: readonly BlockFieldConfig[]): string[] 
     return [...blockTypes]
 }
 
-const getRequestedBlockTypes = ({
-    availableBlockTypes,
-    mentions,
-    prompt,
-}: {
-    availableBlockTypes: string[]
-    mentions?: ChatMention[]
-    prompt: string
-}) => {
+const getRequestedBlockTypes = ({ availableBlockTypes, mentions, prompt }: { availableBlockTypes: string[]; mentions?: ChatMention[]; prompt: string }) => {
     const requestedBlockTypes = new Set<string>()
     const normalizedPrompt = prompt.toLowerCase()
 
@@ -563,13 +553,7 @@ const getRequestedBlockTypes = ({
     return [...requestedBlockTypes]
 }
 
-const collectProposalBlockTypes = ({
-    data,
-    fields,
-}: {
-    data: Record<string, unknown>
-    fields: readonly BlockFieldConfig[]
-}): Set<string> => {
+const collectProposalBlockTypes = ({ data, fields }: { data: Record<string, unknown>; fields: readonly BlockFieldConfig[] }): Set<string> => {
     const foundBlockTypes = new Set<string>()
 
     const visitFields = (items: readonly BlockFieldConfig[], value: Record<string, unknown>) => {
@@ -1101,10 +1085,7 @@ export const createChatHandler =
             const inferredCollectionConfig = inferredCollectionSlug
                 ? allowedCollections.find((collection) => collection.slug === inferredCollectionSlug)
                 : undefined
-            if (
-                inferredCollectionConfig &&
-                !mentionContext.some((item) => item.type === "collection" && item.slug === inferredCollectionConfig.slug)
-            ) {
+            if (inferredCollectionConfig && !mentionContext.some((item) => item.type === "collection" && item.slug === inferredCollectionConfig.slug)) {
                 mentionContext.push({
                     ...describeCollectionLikeConfig({
                         config: inferredCollectionConfig as never,

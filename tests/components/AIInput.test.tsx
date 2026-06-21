@@ -70,17 +70,19 @@ describe("AIInput", () => {
     })
 
     it("loads recent changes from the audit-log endpoint and links to the AI collection", async () => {
-        installFetchMock(vi.fn().mockResolvedValue(
-            createJSONResponse({
-                changes: [
-                    {
-                        additions: 1,
-                        removals: 0,
-                        title: "Change",
-                    },
-                ],
-            })
-        ))
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createJSONResponse({
+                    changes: [
+                        {
+                            additions: 1,
+                            removals: 0,
+                            title: "Change",
+                        },
+                    ],
+                })
+            )
+        )
 
         const { container } = render(<AIInput />)
         await flushPromises()
