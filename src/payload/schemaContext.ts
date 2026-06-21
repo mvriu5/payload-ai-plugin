@@ -270,6 +270,16 @@ const describeField = (field: FieldConfig): Record<string, unknown> => {
         ...(field.localized ? { localized: field.localized } : {}),
         ...(relationTo ? { relationTo } : {}),
         ...(options ? { options } : {}),
+        ...(field.type === "blocks" && field.blocks
+            ? {
+                  acceptedBlockTypes: field.blocks.map((block) => block.slug),
+                  blockExample: [
+                      {
+                          ...getBlockExample(field.blocks[0]),
+                      },
+                  ],
+              }
+            : {}),
         ...(field.admin?.condition ? { hasCondition: true } : {}),
         ...(field.fields ? { fields: field.fields.map(describeField) } : {}),
         ...(field.blocks ? { blocks: field.blocks.map(describeBlock) } : {}),
@@ -286,6 +296,8 @@ const describeBlock = (block: BlockConfig): Record<string, unknown> => {
     if (cached) return cached
 
     const description = {
+        blockType: block.slug,
+        example: getBlockExample(block),
         fields: (block.fields || []).map(describeField),
         label: getSerializableLabel(block.labels?.singular) || block.slug,
         slug: block.slug,
@@ -294,6 +306,56 @@ const describeBlock = (block: BlockConfig): Record<string, unknown> => {
     blockDescriptionCache.set(block, description)
 
     return description
+}
+
+const getBlockExample = (block?: BlockConfig) => {
+    if (!block) return {}
+
+    const example: Record<string, unknown> = {
+        blockType: block.slug,
+    }
+
+    for (const field of block.fields || []) {
+        if (!field.name) continue
+
+        if (field.type === "array") {
+            example[field.name] = field.fields?.length
+                ? [
+                      Object.fromEntries(
+                          field.fields
+                              .filter((childField): childField is FieldConfig & { name: string } => Boolean(childField.name))
+                              .slice(0, 2)
+                              .map((childField) => [childField.name, childField.type === "checkbox" ? false : `<${childField.name}>`])
+                      ),
+                  ]
+                : []
+            continue
+        }
+
+        if (field.type === "blocks") {
+            example[field.name] = field.blocks?.length ? [getBlockExample(field.blocks[0])] : []
+            continue
+        }
+
+        if (field.type === "group") {
+            example[field.name] = Object.fromEntries(
+                (field.fields || [])
+                    .filter((childField): childField is FieldConfig & { name: string } => Boolean(childField.name))
+                    .slice(0, 2)
+                    .map((childField) => [childField.name, childField.type === "checkbox" ? false : `<${childField.name}>`])
+            )
+            continue
+        }
+
+        if (field.type === "checkbox") {
+            example[field.name] = false
+            continue
+        }
+
+        example[field.name] = `<${field.name}>`
+    }
+
+    return example
 }
 
 export const describeCollectionLikeConfig = ({

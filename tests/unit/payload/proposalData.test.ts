@@ -156,6 +156,28 @@ describe("prepareProposalWriteData", () => {
         )
     })
 
+    it("rejects unknown block types with a block-specific issue", () => {
+        const result = prepareProposalWriteData({
+            collectionConfig: pageCollection,
+            data: {
+                category: "news",
+                layout: [{ blockType: "heroBanner" }],
+                title: "Mars",
+            },
+            label: "Create a Mars page",
+            mode: "create",
+        })
+
+        expect(result.issues).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    code: "invalid_block_type",
+                    path: "layout.0.blockType",
+                }),
+            ])
+        )
+    })
+
     it("rejects free text in relationship fields", () => {
         const result = prepareProposalWriteData({
             collectionConfig: pageCollection,

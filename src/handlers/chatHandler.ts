@@ -21,6 +21,7 @@ import {
     type FieldConfig,
 } from "../payload/schemaContext.js"
 import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
+import { type ProposalValidationIssue } from "../payload/proposalData.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 
 type ChatBody = {
@@ -473,6 +474,30 @@ const getMentionSummary = (mentions?: ChatMention[]) =>
         type: mention.type,
     })) || []
 
+const formatProposalIssuesForRetry = (issues: ProposalValidationIssue[]) => {
+    return issues
+        .slice(0, 6)
+        .map((issue) => {
+            switch (issue.code) {
+                case "invalid_block_type":
+                    return `${issue.path}: use an exact blockType from the schema`
+                case "invalid_blocks":
+                    return `${issue.path}: blocks fields must be arrays of objects with blockType and exact field names`
+                case "invalid_array":
+                    return `${issue.path}: array fields must be arrays of complete objects`
+                case "missing_required_field":
+                    return `${issue.path}: required field missing`
+                case "unknown_field":
+                    return `${issue.path}: unknown field, use exact schema field names only`
+                case "invalid_relationship":
+                    return `${issue.path}: use relationship IDs or { relationTo, value }, not free text`
+                default:
+                    return `${issue.path}: ${issue.message}`
+            }
+        })
+        .join("; ")
+}
+
 export const createChatHandler =
     (options: ChatOptions = {}): PayloadHandler =>
     async (req) => {
@@ -845,7 +870,7 @@ export const createChatHandler =
                                 },
                                 message: missingTitleField
                                     ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
-                                    : `Create proposal for ${collection} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
+                                    : `Create proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
                                 tool: "proposeCreateDoc",
                             })
                         }
@@ -929,7 +954,7 @@ export const createChatHandler =
                                 details: {
                                     issues: preparedData.issues,
                                 },
-                                message: `Update proposal for ${collection} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
+                                message: `Update proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
                                 tool: "proposeUpdateDoc",
                             })
                         }
@@ -989,7 +1014,7 @@ export const createChatHandler =
                                 details: {
                                     issues: preparedData.issues,
                                 },
-                                message: `Update proposal for global ${slug} is invalid: ${preparedData.issues.map((issue) => `${issue.path} (${issue.code})`).join(", ")}`,
+                                message: `Update proposal for global ${slug} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
                                 slug,
                                 tool: "proposeUpdateGlobal",
                             })
@@ -1068,6 +1093,8 @@ export const createChatHandler =
                     "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
                     "Writes are proposals only. Never claim changes were applied before user confirmation.",
                     "For create/update/delete use proposal tools. Put concrete field values only in tool data, not visible text.",
+                    "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
+                    "For arrays: every item must be an object matching the child field schema, not free text.",
                     "If schema details are missing, call listCollections/listGlobals with a slug before proposing.",
                     `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
                     `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
