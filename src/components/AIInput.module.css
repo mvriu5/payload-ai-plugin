@@ -239,6 +239,11 @@
     white-space: pre-wrap;
 }
 
+.debugDetails {
+    margin: 8px 0 0;
+    white-space: pre-wrap;
+}
+
 .chatResponse {
     background: var(--theme-elevation-50);
     border: 1px solid var(--theme-elevation-100);
@@ -285,5 +290,4 @@
     .chatButton {
         align-self: stretch;
     }
-
 }

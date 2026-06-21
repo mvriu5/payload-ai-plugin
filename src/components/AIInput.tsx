@@ -59,6 +59,29 @@ type LocalizationConfig = {
 type ChatStreamEvent =
     | {
           data: {
+              activeLocale?: string
+              model?: string
+              proposalCount?: number
+              provider?: string
+              reason?: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed"
+              selectedLocales?: string[]
+              toolFailures?: Array<{
+                  collection?: string
+                  details?: Record<string, unknown>
+                  message: string
+                  slug?: string
+                  tool: string
+              }>
+              usage?: {
+                  inputTokens?: number
+                  outputTokens?: number
+                  totalTokens?: number
+              } | null
+          }
+          event: "debug"
+      }
+    | {
+          data: {
               delta?: string
           }
           event: "text"
@@ -84,6 +107,18 @@ type ChatStreamEvent =
           data: Record<string, never>
           event: "done"
       }
+
+type ChatDebugInfo = Extract<ChatStreamEvent, { event: "debug" }>["data"]
+
+type ApplyDebugInfo = {
+    action?: string
+    collection?: string
+    details?: Record<string, unknown>
+    id?: string
+    phase: "apply_validation" | "authorization" | "payload_operation"
+    reason: string
+    slug?: string
+}
 
 const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; parent: string }): MentionOption[] => {
     const options: MentionOption[] = []
@@ -163,7 +198,7 @@ const parseSSEEvent = (chunk: string): ChatStreamEvent | null => {
     try {
         const data = JSON.parse(dataLines.join("\n")) as ChatStreamEvent["data"]
 
-        if (eventName !== "text" && eventName !== "proposals" && eventName !== "error" && eventName !== "done") {
+        if (eventName !== "text" && eventName !== "proposals" && eventName !== "error" && eventName !== "done" && eventName !== "debug") {
             return null
         }
 
@@ -177,6 +212,49 @@ const parseSSEEvent = (chunk: string): ChatStreamEvent | null => {
 }
 
 const sanitizeResponseText = (value: string) => value.replace(/\*\*/g, "")
+
+const getDebugReasonLabel = (reason?: ChatDebugInfo["reason"]) => {
+    switch (reason) {
+        case "model_did_not_call_tool":
+            return "Model did not create a proposal tool call."
+        case "proposal_created":
+            return "Proposal created."
+        case "tool_validation_failed":
+            return "Tool validation failed before a proposal could be created."
+        default:
+            return "Unknown"
+    }
+}
+
+const getApplyDebugReasonLabel = (reason?: ApplyDebugInfo["reason"]) => {
+    switch (reason) {
+        case "unauthorized":
+            return "Request was not authorized."
+        case "missing_proposal":
+            return "No proposal was submitted to apply."
+        case "invalid_signature":
+            return "Proposal signature was invalid or expired."
+        case "invalid_proposal_shape":
+            return "Proposal shape was invalid."
+        case "sensitive_data_in_data":
+        case "sensitive_data_in_localized_data":
+            return "Proposal contained sensitive data."
+        case "unknown_global":
+            return "Target global was not found."
+        case "unknown_or_disallowed_collection":
+            return "Target collection is unknown or not allowed."
+        case "localized_create_without_locales":
+            return "Localized create proposal had no locale entries."
+        case "missing_auth_password":
+            return "Auth create proposal was missing a password."
+        case "missing_auth_email":
+            return "Auth create proposal was missing an email."
+        case "payload_operation_failed":
+            return "Payload rejected the write operation."
+        default:
+            return "Unknown"
+    }
+}
 
 const isMentionBoundary = (character: string | undefined) => {
     return character === undefined || /\s/.test(character)
@@ -307,6 +385,8 @@ const AIInput = () => {
         outputTokens?: number
         totalTokens?: number
     }>(null)
+    const [chatDebugInfo, setChatDebugInfo] = useState<ChatDebugInfo | null>(null)
+    const [applyDebugInfo, setApplyDebugInfo] = useState<ApplyDebugInfo | null>(null)
     const [error, setError] = useState("")
     const [proposals, setProposals] = useState<ActionProposal[]>([])
     const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
@@ -426,6 +506,8 @@ const AIInput = () => {
         mentionRange,
     })
     const mentionSuggestions = [...filteredMentionOptions, ...documentSuggestions]
+    const shouldShowChatDebugInfo = Boolean(chatDebugInfo) && (Boolean(error) || chatDebugInfo?.reason !== "proposal_created")
+    const shouldShowApplyDebugInfo = Boolean(applyDebugInfo) && Boolean(error)
 
     const getTextBeforeCaret = (element: HTMLElement) => {
         const selection = window.getSelection()
@@ -635,6 +717,8 @@ const AIInput = () => {
         setProposals([])
         setResponse("")
         setTokenUsage(null)
+        setChatDebugInfo(null)
+        setApplyDebugInfo(null)
 
         try {
             const res = await fetch(
@@ -697,6 +781,11 @@ const AIInput = () => {
                         continue
                     }
 
+                    if (event.event === "debug") {
+                        setChatDebugInfo(event.data)
+                        continue
+                    }
+
                     if (event.event === "error") {
                         throw new Error(event.data.error || "AI request failed")
                     }
@@ -709,6 +798,9 @@ const AIInput = () => {
                 setProposals(receivedProposals)
                 setTokenUsage(finalEvent.data.usage || null)
             }
+            if (finalEvent?.event === "debug") {
+                setChatDebugInfo(finalEvent.data)
+            }
             if (finalEvent?.event === "error") {
                 throw new Error(finalEvent.data.error || "AI request failed")
             }
@@ -720,6 +812,7 @@ const AIInput = () => {
             setProposals([])
             setResponse("")
             setTokenUsage(null)
+            setApplyDebugInfo(null)
             setError(err instanceof Error ? err.message : "AI request failed")
         } finally {
             setIsLoading(false)
@@ -750,6 +843,7 @@ const AIInput = () => {
 
             const result = (await res.json()) as {
                 change?: AppliedChange | null
+                debug?: ApplyDebugInfo
                 doc?: {
                     id?: unknown
                 }
@@ -758,6 +852,7 @@ const AIInput = () => {
             if (!res.ok) {
                 setProposals([])
                 setResponse("")
+                setApplyDebugInfo(result.debug || null)
                 throw new Error(result.error || "Could not apply proposal")
             }
 
@@ -766,6 +861,8 @@ const AIInput = () => {
             setProposals([])
             setResponse("")
             setTokenUsage(null)
+            setChatDebugInfo(null)
+            setApplyDebugInfo(null)
             if (result.change) {
                 setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 10))
             }
@@ -883,6 +980,8 @@ const AIInput = () => {
                         setProposals([])
                         setResponse("")
                         setTokenUsage(null)
+                        setChatDebugInfo(null)
+                        setApplyDebugInfo(null)
                         clearInput()
                     }}
                     onDismissError={() => {
@@ -892,6 +991,58 @@ const AIInput = () => {
                     proposals={proposals}
                     tokenUsage={tokenUsage}
                 />
+                {shouldShowChatDebugInfo && chatDebugInfo && (
+                    <div className={styles.debugInfo}>
+                        <strong>AI debug</strong>
+                        <br />
+                        Reason: {getDebugReasonLabel(chatDebugInfo.reason)}
+                        <br />
+                        Provider / model: {chatDebugInfo.provider || "unknown"} / {chatDebugInfo.model || "unknown"}
+                        <br />
+                        Proposals: {chatDebugInfo.proposalCount ?? 0}
+                        {chatDebugInfo.selectedLocales?.length ? (
+                            <>
+                                <br />
+                                Locales: {chatDebugInfo.selectedLocales.join(", ")}
+                            </>
+                        ) : null}
+                        {chatDebugInfo.toolFailures?.length ? (
+                            <>
+                                <br />
+                                Tool failures:
+                                {chatDebugInfo.toolFailures.map((failure, index) => (
+                                    <div key={`${failure.tool}-${index}`}>
+                                        - {failure.tool}: {failure.message}
+                                    </div>
+                                ))}
+                            </>
+                        ) : null}
+                    </div>
+                )}
+                {shouldShowApplyDebugInfo && applyDebugInfo && (
+                    <div className={styles.debugInfo}>
+                        <strong>Apply debug</strong>
+                        <br />
+                        Reason: {getApplyDebugReasonLabel(applyDebugInfo.reason)}
+                        <br />
+                        Phase: {applyDebugInfo.phase}
+                        <br />
+                        Target: {applyDebugInfo.collection || applyDebugInfo.slug || "unknown"}
+                        {applyDebugInfo.id ? (
+                            <>
+                                <br />
+                                ID: {applyDebugInfo.id}
+                            </>
+                        ) : null}
+                        {applyDebugInfo.details ? (
+                            <>
+                                <br />
+                                Details:
+                                <pre className={styles.debugDetails}>{JSON.stringify(applyDebugInfo.details, null, 2)}</pre>
+                            </>
+                        ) : null}
+                    </div>
+                )}
             </div>
             <RecentChangesList allChangesURL={allChangesURL} changes={appliedChanges} />
         </div>

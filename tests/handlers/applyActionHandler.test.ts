@@ -25,7 +25,13 @@ describe("applyActionHandler", () => {
         const response = await handler(createMockRequest({ user: null }))
 
         expect(response.status).toBe(401)
-        await expect(readJSON(response)).resolves.toEqual({ error: "Unauthorized" })
+        await expect(readJSON(response)).resolves.toMatchObject({
+            debug: {
+                phase: "authorization",
+                reason: "unauthorized",
+            },
+            error: "Unauthorized",
+        })
     })
 
     it("rejects unsigned proposals before writing anything", async () => {
@@ -47,7 +53,16 @@ describe("applyActionHandler", () => {
         expect(response.status).toBe(400)
         expect(create).not.toHaveBeenCalled()
         expect(update).not.toHaveBeenCalled()
-        await expect(readJSON(response)).resolves.toEqual({ error: "Proposal signature is invalid or expired." })
+        await expect(readJSON(response)).resolves.toMatchObject({
+            debug: {
+                action: "update",
+                collection: "posts",
+                id: "4",
+                phase: "apply_validation",
+                reason: "invalid_signature",
+            },
+            error: "Proposal signature is invalid or expired.",
+        })
     })
 
     it("applies signed collection updates and writes an audit log entry through mocks only", async () => {
@@ -179,6 +194,15 @@ describe("applyActionHandler", () => {
 
         expect(response.status).toBe(400)
         expect(update).not.toHaveBeenCalled()
-        await expect(readJSON(response)).resolves.toEqual({ error: "Proposal contains sensitive fields and cannot be applied." })
+        await expect(readJSON(response)).resolves.toMatchObject({
+            debug: {
+                action: "update",
+                collection: "posts",
+                id: "4",
+                phase: "apply_validation",
+                reason: "sensitive_data_in_data",
+            },
+            error: "Proposal contains sensitive fields and cannot be applied.",
+        })
     })
 })

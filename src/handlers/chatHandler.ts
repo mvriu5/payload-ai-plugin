@@ -18,6 +18,7 @@ import {
     type ChatMention,
     type FieldConfig,
 } from "../payload/schemaContext.js"
+import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 
 type ChatBody = {
@@ -36,6 +37,25 @@ type ChatDebug = {
     model: string
     provider: string
     tools: string[]
+}
+
+type ToolFailure = {
+    collection?: string
+    details?: Record<string, unknown>
+    message: string
+    slug?: string
+    tool: string
+}
+
+type ChatDebugPayload = {
+    activeLocale?: string
+    model: string
+    proposalCount: number
+    provider: string
+    reason: "model_did_not_call_tool" | "proposal_created" | "tool_validation_failed"
+    selectedLocales: string[]
+    toolFailures: ToolFailure[]
+    usage?: TokenUsage | null
 }
 
 type CollectionInput = {
@@ -145,6 +165,40 @@ const createSSEEventStream = (
     })
 }
 
+const getChatCompletionReason = ({ proposalCount, toolFailures }: { proposalCount: number; toolFailures: ToolFailure[] }) => {
+    if (proposalCount > 0) return "proposal_created" as const
+    if (toolFailures.length > 0) return "tool_validation_failed" as const
+    return "model_did_not_call_tool" as const
+}
+
+const createDebugPayload = ({
+    activeLocale,
+    debug,
+    proposalCount,
+    selectedLocales,
+    toolFailures,
+    usage,
+}: {
+    activeLocale?: string
+    debug: ChatDebug
+    proposalCount: number
+    selectedLocales: string[]
+    toolFailures: ToolFailure[]
+    usage?: TokenUsage | null
+}): ChatDebugPayload => ({
+    activeLocale,
+    model: debug.model,
+    proposalCount,
+    provider: debug.provider,
+    reason: getChatCompletionReason({
+        proposalCount,
+        toolFailures,
+    }),
+    selectedLocales,
+    toolFailures,
+    usage,
+})
+
 const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; selectedLocales: string[] }) => {
     const normalizedPrompt = prompt.toLowerCase()
     const wantsCreatePost = normalizedPrompt.includes("post") && (normalizedPrompt.includes("create") || normalizedPrompt.includes("erstell"))
@@ -198,6 +252,22 @@ const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; se
 
     const responseText = proposal ? "Prepared one draft post proposal." : "No content change was proposed."
 
+    const debugPayload = createDebugPayload({
+        debug: {
+            model: "e2e-model",
+            provider: "openai",
+            tools: [],
+        },
+        proposalCount: proposal ? 1 : 0,
+        selectedLocales,
+        toolFailures: [],
+        usage: {
+            inputTokens: 42,
+            outputTokens: 27,
+            totalTokens: 69,
+        },
+    })
+
     return new Response(
         createSSEEventStream([
             {
@@ -216,6 +286,10 @@ const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; se
                     },
                 },
                 event: "proposals",
+            },
+            {
+                data: debugPayload,
+                event: "debug",
             },
             {
                 data: {},
@@ -377,6 +451,26 @@ const getMissingCreateFields = ({
     return requiredFields.filter((field) => !hasValueAtPath(data, field.path)).map((field) => field.path)
 }
 
+const getProposalSummary = (proposal: ActionProposal) => ({
+    action: proposal.action,
+    collection: "collection" in proposal ? proposal.collection : undefined,
+    hasData: "data" in proposal && Boolean(proposal.data),
+    hasLocalizedData: "localizedData" in proposal && Boolean(proposal.localizedData),
+    id: "id" in proposal ? proposal.id : undefined,
+    label: proposal.label,
+    locale: proposal.locale,
+    locales: "localizedData" in proposal && proposal.localizedData ? Object.keys(proposal.localizedData) : undefined,
+    slug: "slug" in proposal ? proposal.slug : undefined,
+})
+
+const getMentionSummary = (mentions?: ChatMention[]) =>
+    mentions?.map((mention) => ({
+        collection: "collection" in mention ? mention.collection : undefined,
+        id: "id" in mention ? mention.id : undefined,
+        slug: mention.slug,
+        type: mention.type,
+    })) || []
+
 export const createChatHandler =
     (options: ChatOptions = {}): PayloadHandler =>
     async (req) => {
@@ -391,6 +485,7 @@ export const createChatHandler =
             body?.mentions?.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []
         ).filter((locale, index, array) => array.indexOf(locale) === index)
         const activeLocale = selectedLocales.at(-1)
+        const mentionSummary = getMentionSummary(body?.mentions)
 
         if (e2eModeEnabled()) {
             return createE2EChatResponse({
@@ -428,7 +523,24 @@ export const createChatHandler =
             ],
         }
 
+        logHandlerEvent(req, "info", {
+            activeLocale,
+            debug,
+            mentionCount: mentionSummary.length,
+            mentions: mentionSummary,
+            msg: "AI chat started",
+            promptPreview: getLogPreview(prompt),
+            selectedLocales,
+        })
+
         if (!providerConfig.apiKey) {
+            logHandlerEvent(req, "warn", {
+                activeLocale,
+                debug,
+                msg: "AI chat blocked: missing provider API key",
+                promptPreview: getLogPreview(prompt),
+                selectedLocales,
+            })
             return Response.json(
                 {
                     error:
@@ -442,11 +554,36 @@ export const createChatHandler =
 
         try {
             const proposals: ActionProposal[] = []
+            const toolFailures: ToolFailure[] = []
+            const registerToolFailure = (failure: ToolFailure) => {
+                toolFailures.push(failure)
+                logHandlerEvent(req, "warn", {
+                    debug,
+                    ...failure,
+                    msg: "AI tool validation failed",
+                    promptPreview: getLogPreview(prompt),
+                })
+            }
+            const createToolError = ({ collection, details, message, slug, tool }: ToolFailure) => {
+                registerToolFailure({
+                    collection,
+                    details,
+                    message,
+                    slug,
+                    tool,
+                })
+
+                return {
+                    error: message,
+                }
+            }
             const addSignedProposal = <Proposal extends ActionProposal>(proposal: Proposal) => {
                 if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
-                    return {
-                        error: "Proposal contains sensitive fields and cannot be created.",
-                    }
+                    return createToolError({
+                        details: getProposalSummary(proposal),
+                        message: "Proposal contains sensitive fields and cannot be created.",
+                        tool: `propose${proposal.action[0]?.toUpperCase()}${proposal.action.slice(1)}`,
+                    })
                 }
 
                 if (
@@ -454,14 +591,21 @@ export const createChatHandler =
                     hasLocalizedData(proposal.localizedData) &&
                     Object.values(proposal.localizedData).some((value) => containsSensitiveData(value))
                 ) {
-                    return {
-                        error: "Proposal contains sensitive fields and cannot be created.",
-                    }
+                    return createToolError({
+                        details: getProposalSummary(proposal),
+                        message: "Proposal contains sensitive fields and cannot be created.",
+                        tool: `propose${proposal.action[0]?.toUpperCase()}${proposal.action.slice(1)}`,
+                    })
                 }
 
                 const signedProposal = signAIActionProposal(proposal)
 
                 proposals.push(signedProposal)
+                logHandlerEvent(req, "info", {
+                    debug,
+                    msg: "AI proposal created",
+                    proposal: getProposalSummary(signedProposal),
+                })
                 return signedProposal
             }
             const collectionSlugs = getAllowedCollectionSlugs(req, options.collections)
@@ -469,6 +613,10 @@ export const createChatHandler =
             const allowedCollections = req.payload.config.collections.filter((collection) => collectionSlugs.includes(collection.slug))
 
             if (collectionSlugs.length === 0) {
+                logHandlerEvent(req, "warn", {
+                    debug,
+                    msg: "AI chat blocked: no AI-enabled collections configured",
+                })
                 return Response.json({ error: "No AI-enabled collections are configured." }, { status: 400 })
             }
 
@@ -518,6 +666,15 @@ export const createChatHandler =
             const focusedTitleFieldByCollection = Object.fromEntries(
                 mentionedCollectionSlugs.flatMap((slug) => (titleFieldByCollection[slug] ? [[slug, titleFieldByCollection[slug]]] : []))
             )
+            logHandlerEvent(req, "info", {
+                activeLocale,
+                allowedCollectionCount: allowedCollections.length,
+                collectionSlugs,
+                focusedCollections: mentionedCollectionSlugs,
+                globalSlugs,
+                msg: "AI chat context prepared",
+                selectedLocales,
+            })
             const collectionSlugSchema = z.enum(collectionSlugs as [string, ...string[]])
             const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
                 if (
@@ -530,9 +687,11 @@ export const createChatHandler =
                 )
                     return null
 
-                return {
-                    error: `${action} is not enabled for collection: ${collection}`,
-                }
+                return createToolError({
+                    collection,
+                    message: `${action} is not enabled for collection: ${collection}`,
+                    tool: "collectionPermissionCheck",
+                })
             }
             const tools = {
                 getDoc: {
@@ -560,7 +719,13 @@ export const createChatHandler =
                     execute: async ({ slug }: OptionalSlugInput) => {
                         if (slug) {
                             const collection = allowedCollections.find((item) => item.slug === slug)
-                            if (!collection) return { error: `Unknown collection: ${slug}` }
+                            if (!collection) {
+                                return createToolError({
+                                    message: `Unknown collection: ${slug}`,
+                                    slug,
+                                    tool: "listCollections",
+                                })
+                            }
 
                             return describeCollectionLikeConfig({
                                 config: collection as never,
@@ -585,7 +750,13 @@ export const createChatHandler =
                     }),
                     execute: async ({ slug }: SlugInput) => {
                         const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
-                        if (!globalConfig) return { error: `Unknown global: ${slug}` }
+                        if (!globalConfig) {
+                            return createToolError({
+                                message: `Unknown global: ${slug}`,
+                                slug,
+                                tool: "getGlobal",
+                            })
+                        }
 
                         return req.payload.findGlobal({
                             depth: 2,
@@ -606,7 +777,13 @@ export const createChatHandler =
 
                         if (slug) {
                             const global = globals.find((item) => item.slug === slug)
-                            if (!global) return { error: `Unknown global: ${slug}` }
+                            if (!global) {
+                                return createToolError({
+                                    message: `Unknown global: ${slug}`,
+                                    slug,
+                                    tool: "listGlobals",
+                                })
+                            }
 
                             return describeCollectionLikeConfig({
                                 config: global as never,
@@ -661,11 +838,17 @@ export const createChatHandler =
                                 ? missingFields.some((field) => field === titleFieldName || field.endsWith(`:${titleFieldName}`))
                                 : false
 
-                            return {
-                                error: missingTitleField
+                            return createToolError({
+                                collection,
+                                details: {
+                                    missingFields,
+                                    titleFieldName,
+                                },
+                                message: missingTitleField
                                     ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
                                     : `Create proposal is missing required fields for ${collection}: ${missingFields.join(", ")}`,
-                            }
+                                tool: "proposeCreateDoc",
+                            })
                         }
 
                         const proposal: ActionProposal = completedCreatePayload.localizedData
@@ -765,7 +948,13 @@ export const createChatHandler =
                         slug,
                     }: Partial<DataInput> & LabelInput & SlugInput & { localizedData?: LocalizedDataInput }) => {
                         const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
-                        if (!globalConfig) return { error: `Unknown global: ${slug}` }
+                        if (!globalConfig) {
+                            return createToolError({
+                                message: `Unknown global: ${slug}`,
+                                slug,
+                                tool: "proposeUpdateGlobal",
+                            })
+                        }
 
                         const proposal: ActionProposal = {
                             action: "updateGlobal",
@@ -875,14 +1064,66 @@ export const createChatHandler =
                                 }
 
                                 usage = finishPart.totalUsage || finishPart.usage || null
+                                const reason = getChatCompletionReason({
+                                    proposalCount: proposals.length,
+                                    toolFailures,
+                                })
+                                const debugPayload = createDebugPayload({
+                                    activeLocale,
+                                    debug,
+                                    proposalCount: proposals.length,
+                                    selectedLocales,
+                                    toolFailures,
+                                    usage,
+                                })
+                                logHandlerEvent(req, proposals.length > 0 ? "info" : "warn", {
+                                    activeLocale,
+                                    debug,
+                                    msg: proposals.length > 0 ? "AI chat completed with proposals" : "AI chat completed without proposals",
+                                    proposalCount: proposals.length,
+                                    proposals: proposals.map((proposal) => getProposalSummary(proposal)),
+                                    promptPreview: getLogPreview(prompt),
+                                    reason,
+                                    selectedLocales,
+                                    toolFailureCount: toolFailures.length,
+                                    toolFailures,
+                                    usage,
+                                })
                                 sendEvent(controller, "proposals", { proposals, usage })
+                                sendEvent(controller, "debug", debugPayload)
                                 sendEvent(controller, "done", {})
                                 didSendTerminalEvent = true
                             }
                         }
 
                         if (!didSendTerminalEvent) {
+                            const reason = getChatCompletionReason({
+                                proposalCount: proposals.length,
+                                toolFailures,
+                            })
+                            const debugPayload = createDebugPayload({
+                                activeLocale,
+                                debug,
+                                proposalCount: proposals.length,
+                                selectedLocales,
+                                toolFailures,
+                                usage,
+                            })
+                            logHandlerEvent(req, proposals.length > 0 ? "info" : "warn", {
+                                activeLocale,
+                                debug,
+                                msg: proposals.length > 0 ? "AI chat completed with proposals" : "AI chat completed without proposals",
+                                proposalCount: proposals.length,
+                                proposals: proposals.map((proposal) => getProposalSummary(proposal)),
+                                promptPreview: getLogPreview(prompt),
+                                reason,
+                                selectedLocales,
+                                toolFailureCount: toolFailures.length,
+                                toolFailures,
+                                usage,
+                            })
                             sendEvent(controller, "proposals", { proposals, usage })
+                            sendEvent(controller, "debug", debugPayload)
                             sendEvent(controller, "done", {})
                         }
                     } catch (err) {

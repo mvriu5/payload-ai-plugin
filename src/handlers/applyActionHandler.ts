@@ -24,6 +24,7 @@ import {
     isRecord,
     mergeData,
 } from "../payload/shared.js"
+import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
 
 type ApplyActionBody = {
     aiResponse?: string
@@ -68,6 +69,28 @@ type ChangeLogTarget = {
     documentID?: unknown
 }
 
+type ApplyDebugPayload = {
+    action?: unknown
+    collection?: unknown
+    details?: Record<string, unknown>
+    id?: unknown
+    phase: "apply_validation" | "authorization" | "payload_operation"
+    reason: string
+    slug?: unknown
+}
+
+const getProposalLogSummary = (proposal: ActionProposal) => ({
+    action: proposal.action,
+    collection: "collection" in proposal ? proposal.collection : undefined,
+    hasData: "data" in proposal && Boolean(proposal.data),
+    hasLocalizedData: "localizedData" in proposal && Boolean(proposal.localizedData),
+    id: "id" in proposal ? proposal.id : undefined,
+    label: proposal.label,
+    locale: proposal.locale,
+    locales: "localizedData" in proposal && proposal.localizedData ? Object.keys(proposal.localizedData) : undefined,
+    slug: "slug" in proposal ? proposal.slug : undefined,
+})
+
 const getProposalMeta = (proposal?: Partial<ActionProposal>): ProposalMeta => {
     if (!proposal) return {}
 
@@ -78,6 +101,23 @@ const getProposalMeta = (proposal?: Partial<ActionProposal>): ProposalMeta => {
         slug: "slug" in proposal ? proposal.slug : undefined,
     }
 }
+
+const createApplyDebugPayload = ({
+    details,
+    phase,
+    proposal,
+    reason,
+}: {
+    details?: Record<string, unknown>
+    phase: ApplyDebugPayload["phase"]
+    proposal?: Partial<ActionProposal>
+    reason: string
+}): ApplyDebugPayload => ({
+    ...getProposalMeta(proposal),
+    details,
+    phase,
+    reason,
+})
 
 const getAppliedDocReference = (doc: AppliedDoc | null | undefined) => {
     return doc?.id === undefined ? undefined : { id: doc.id }
@@ -295,18 +335,107 @@ const logAIChange = async ({
 export const createApplyActionHandler =
     (options: ApplyActionOptions = {}): PayloadHandler =>
     async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
+        const failApply = ({
+            debug,
+            error,
+            logMessage,
+            proposal,
+            status = 400,
+        }: {
+            debug: ApplyDebugPayload
+            error: string
+            logMessage: string
+            proposal?: Partial<ActionProposal>
+            status?: number
+        }) => {
+            logHandlerEvent(req, "warn", {
+                debug,
+                msg: logMessage,
+                proposal: getProposalMeta(proposal),
+            })
+
+            return Response.json(
+                {
+                    debug,
+                    error,
+                },
+                { status }
+            )
+        }
+
+        if (!req.user) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "authorization",
+                    reason: "unauthorized",
+                }),
+                error: "Unauthorized",
+                logMessage: "AI apply blocked: unauthorized request",
+                status: 401,
+            })
+        }
 
         const body = req.json ? ((await req.json().catch(() => null)) as ApplyActionBody | null) : null
 
         const proposal = body?.proposal
-        if (!proposal) return Response.json({ error: "Proposal is required" }, { status: 400 })
-        if (!verifyActionProposal(proposal)) return Response.json({ error: "Proposal signature is invalid or expired." }, { status: 400 })
-        if (!isActionProposal(proposal)) return Response.json({ error: "Proposal is invalid." }, { status: 400 })
-        if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data))
-            return Response.json({ error: "Proposal contains sensitive fields and cannot be applied." }, { status: 400 })
-        if (hasLocalizedData(proposal) && Object.values(proposal.localizedData).some((value) => containsSensitiveData(value)))
-            return Response.json({ error: "Proposal contains sensitive fields and cannot be applied." }, { status: 400 })
+        if (!proposal) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "apply_validation",
+                    reason: "missing_proposal",
+                }),
+                error: "Proposal is required",
+                logMessage: "AI apply blocked: missing proposal payload",
+            })
+        }
+        if (!verifyActionProposal(proposal)) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "apply_validation",
+                    proposal,
+                    reason: "invalid_signature",
+                }),
+                error: "Proposal signature is invalid or expired.",
+                logMessage: "AI apply blocked: invalid proposal signature",
+                proposal,
+            })
+        }
+        if (!isActionProposal(proposal)) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "apply_validation",
+                    proposal,
+                    reason: "invalid_proposal_shape",
+                }),
+                error: "Proposal is invalid.",
+                logMessage: "AI apply blocked: invalid proposal shape",
+                proposal,
+            })
+        }
+        if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "apply_validation",
+                    proposal,
+                    reason: "sensitive_data_in_data",
+                }),
+                error: "Proposal contains sensitive fields and cannot be applied.",
+                logMessage: "AI apply blocked: sensitive data detected in proposal data",
+                proposal,
+            })
+        }
+        if (hasLocalizedData(proposal) && Object.values(proposal.localizedData).some((value) => containsSensitiveData(value))) {
+            return failApply({
+                debug: createApplyDebugPayload({
+                    phase: "apply_validation",
+                    proposal,
+                    reason: "sensitive_data_in_localized_data",
+                }),
+                error: "Proposal contains sensitive fields and cannot be applied.",
+                logMessage: "AI apply blocked: sensitive data detected in localized proposal data",
+                proposal,
+            })
+        }
 
         let normalized: NormalizedData | undefined
         const logContext: ApplyActionLogContext = {
@@ -321,11 +450,29 @@ export const createApplyActionHandler =
                 : undefined,
         }
 
+        logHandlerEvent(req, "info", {
+            msg: "AI apply started",
+            promptPreview: getLogPreview(logContext.prompt),
+            proposal: getProposalLogSummary(proposal),
+            tokenUsage: logContext.tokenUsage,
+        })
+
         try {
             const defaultLocale = getDefaultLocale(req)
 
             if (proposal.action === "updateGlobal") {
-                if (!isKnownGlobal(req, proposal.slug)) return Response.json({ error: "Unknown global" }, { status: 400 })
+                if (!isKnownGlobal(req, proposal.slug)) {
+                    return failApply({
+                        debug: createApplyDebugPayload({
+                            phase: "apply_validation",
+                            proposal,
+                            reason: "unknown_global",
+                        }),
+                        error: "Unknown global",
+                        logMessage: "AI apply blocked: unknown global",
+                        proposal,
+                    })
+                }
 
                 const globalConfig = req.payload.config.globals?.find((global) => global.slug === proposal.slug)
                 if (hasLocalizedData(proposal)) {
@@ -380,6 +527,12 @@ export const createApplyActionHandler =
                         },
                     })
 
+                    logHandlerEvent(req, "info", {
+                        changeLogged: Boolean(change),
+                        locales: Object.keys(proposal.localizedData),
+                        msg: "AI apply succeeded",
+                        proposal: getProposalLogSummary(proposal),
+                    })
                     return Response.json({
                         change,
                         doc: undefined,
@@ -412,6 +565,12 @@ export const createApplyActionHandler =
                     },
                 })
 
+                logHandlerEvent(req, "info", {
+                    changeLogged: Boolean(change),
+                    locale: proposal.locale,
+                    msg: "AI apply succeeded",
+                    proposal: getProposalLogSummary(proposal),
+                })
                 return Response.json({
                     change,
                     doc: getAppliedDocReference(doc),
@@ -419,8 +578,18 @@ export const createApplyActionHandler =
                 })
             }
 
-            if (!isAllowedCollection(req, proposal.collection, options.collections, proposal.action))
-                return Response.json({ error: "Unknown collection" }, { status: 400 })
+            if (!isAllowedCollection(req, proposal.collection, options.collections, proposal.action)) {
+                return failApply({
+                    debug: createApplyDebugPayload({
+                        phase: "authorization",
+                        proposal,
+                        reason: "unknown_or_disallowed_collection",
+                    }),
+                    error: "Unknown collection",
+                    logMessage: "AI apply blocked: unknown or disallowed collection",
+                    proposal,
+                })
+            }
 
             if (proposal.action === "delete") {
                 const doc = await req.payload.delete({
@@ -441,6 +610,12 @@ export const createApplyActionHandler =
                     },
                 })
 
+                logHandlerEvent(req, "info", {
+                    changeLogged: Boolean(change),
+                    documentID: proposal.id,
+                    msg: "AI apply succeeded",
+                    proposal: getProposalLogSummary(proposal),
+                })
                 return Response.json({
                     change,
                     doc: getAppliedDocReference(doc),
@@ -460,26 +635,45 @@ export const createApplyActionHandler =
                     const localeEntries = Object.entries(proposal.localizedData)
                     const [firstLocale, firstLocaleData] = localeEntries[0] || []
 
-                    if (!firstLocale) return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                    if (!firstLocale) {
+                        return failApply({
+                            debug: createApplyDebugPayload({
+                                phase: "apply_validation",
+                                proposal,
+                                reason: "localized_create_without_locales",
+                            }),
+                            error: "Proposal is invalid.",
+                            logMessage: "AI apply blocked: localized create proposal has no locales",
+                            proposal,
+                        })
+                    }
 
                     const firstNormalized = normalizeCollectionData(firstLocaleData)
 
                     if (isAuthCollection(collectionConfig) && !firstNormalized.data.password) {
-                        return Response.json(
-                            {
-                                error: "Password is required when creating a user.",
-                            },
-                            { status: 400 }
-                        )
+                        return failApply({
+                            debug: createApplyDebugPayload({
+                                phase: "apply_validation",
+                                proposal,
+                                reason: "missing_auth_password",
+                            }),
+                            error: "Password is required when creating a user.",
+                            logMessage: "AI apply blocked: missing password for auth collection create",
+                            proposal,
+                        })
                     }
 
                     if (isAuthCollection(collectionConfig) && !firstNormalized.data.email) {
-                        return Response.json(
-                            {
-                                error: "Email is required when creating a user.",
-                            },
-                            { status: 400 }
-                        )
+                        return failApply({
+                            debug: createApplyDebugPayload({
+                                phase: "apply_validation",
+                                proposal,
+                                reason: "missing_auth_email",
+                            }),
+                            error: "Email is required when creating a user.",
+                            logMessage: "AI apply blocked: missing email for auth collection create",
+                            proposal,
+                        })
                     }
 
                     const doc = await req.payload.create({
@@ -529,6 +723,13 @@ export const createApplyActionHandler =
                         },
                     })
 
+                    logHandlerEvent(req, "info", {
+                        changeLogged: Boolean(change),
+                        documentID: doc.id,
+                        locales: localeEntries.map(([locale]) => locale),
+                        msg: "AI apply succeeded",
+                        proposal: getProposalLogSummary(proposal),
+                    })
                     return Response.json({
                         change,
                         doc: getAppliedDocReference(doc),
@@ -590,6 +791,13 @@ export const createApplyActionHandler =
                     },
                 })
 
+                logHandlerEvent(req, "info", {
+                    changeLogged: Boolean(change),
+                    documentID: proposal.id,
+                    locales: Object.keys(proposal.localizedData),
+                    msg: "AI apply succeeded",
+                    proposal: getProposalLogSummary(proposal),
+                })
                 return Response.json({
                     change,
                     doc: {
@@ -602,21 +810,29 @@ export const createApplyActionHandler =
             normalized = normalizeCollectionData(proposal.data)
 
             if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.password) {
-                return Response.json(
-                    {
-                        error: "Password is required when creating a user.",
-                    },
-                    { status: 400 }
-                )
+                return failApply({
+                    debug: createApplyDebugPayload({
+                        phase: "apply_validation",
+                        proposal,
+                        reason: "missing_auth_password",
+                    }),
+                    error: "Password is required when creating a user.",
+                    logMessage: "AI apply blocked: missing password for auth collection create",
+                    proposal,
+                })
             }
 
             if (proposal.action === "create" && isAuthCollection(collectionConfig) && !normalized.data.email) {
-                return Response.json(
-                    {
-                        error: "Email is required when creating a user.",
-                    },
-                    { status: 400 }
-                )
+                return failApply({
+                    debug: createApplyDebugPayload({
+                        phase: "apply_validation",
+                        proposal,
+                        reason: "missing_auth_email",
+                    }),
+                    error: "Email is required when creating a user.",
+                    logMessage: "AI apply blocked: missing email for auth collection create",
+                    proposal,
+                })
             }
 
             if (proposal.action === "create") {
@@ -639,6 +855,12 @@ export const createApplyActionHandler =
                     },
                 })
 
+                logHandlerEvent(req, "info", {
+                    changeLogged: Boolean(change),
+                    documentID: doc.id,
+                    msg: "AI apply succeeded",
+                    proposal: getProposalLogSummary(proposal),
+                })
                 return Response.json({
                     change,
                     doc: getAppliedDocReference(doc),
@@ -673,20 +895,39 @@ export const createApplyActionHandler =
                 },
             })
 
+            logHandlerEvent(req, "info", {
+                changeLogged: Boolean(change),
+                documentID: proposal.id,
+                msg: "AI apply succeeded",
+                proposal: getProposalLogSummary(proposal),
+            })
             return Response.json({
                 change,
                 doc: getAppliedDocReference(doc),
                 status: "applied",
             })
         } catch (err) {
+            const debug = createApplyDebugPayload({
+                details:
+                    err && typeof err === "object" && "data" in err && isRecord((err as { data?: unknown }).data)
+                        ? ({ payloadError: (err as { data: Record<string, unknown> }).data } as Record<string, unknown>)
+                        : undefined,
+                phase: "payload_operation",
+                proposal,
+                reason: "payload_operation_failed",
+            })
             req.payload.logger.error({
+                debug,
                 err,
                 msg: "AI apply action failed",
+                promptPreview: getLogPreview(logContext.prompt),
                 proposal: getProposalMeta(proposal),
+                tokenUsage: logContext.tokenUsage,
             })
 
             return Response.json(
                 {
+                    debug,
                     error: "Could not apply proposal.",
                 },
                 { status: 400 }
