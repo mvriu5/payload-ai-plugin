@@ -1,6 +1,6 @@
 {
     "name": "@mvriu5/payload-ai",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "AI assistant plugin for Payload CMS with provider selection, CMS mentions, and signed action proposals.",
     "keywords": [
         "payload",
