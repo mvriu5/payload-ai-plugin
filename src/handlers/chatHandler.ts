@@ -858,16 +858,18 @@ const getIntentToolChoice = (prompt: string): ToolChoice | undefined => {
         }
     }
 
-    if (/\b(create|build|generate|write|draft|make|add)\b/.test(normalizedPrompt)) {
+    // Update existing document (add block, modify content, etc.)
+    if (/\b(update|edit|change|modify|einfügen|hinzufügen|addieren)\b/.test(normalizedPrompt)) {
         return {
-            toolName: "proposeCreateDoc",
+            toolName: "proposeUpdateDoc",
             type: "tool",
         }
     }
 
-    if (/\b(update|edit|change|revise|refine|rewrite|translate)\b/.test(normalizedPrompt)) {
+    // Create a new document
+    if (/\b(create|build|generate|write|draft|make|add|füge|einfügen|hinzufügen|addieren)\b/.test(normalizedPrompt)) {
         return {
-            toolName: "proposeUpdateDoc",
+            toolName: "proposeCreateDoc",
             type: "tool",
         }
     }
@@ -1616,6 +1618,7 @@ export const createChatHandler =
                     "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
                     "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
                     "Writes are proposals only. Never claim changes were applied before user confirmation.",
+                    "If a collection has a required `slug` field and the user does not provide it, generate a URL‑friendly slug from the title or from the first meaningful word of the prompt.",
                     "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
                     "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",
                     "Put concrete field values only in tool data, not visible text.",
