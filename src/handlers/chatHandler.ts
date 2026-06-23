@@ -750,23 +750,24 @@ const validateRelationshipTargetsExist = async ({
         fields,
     })
 
-    const invalidTargets: RelationshipTargetReference[] = []
+    const targetResults = await Promise.all(
+        targets.map(async (target) => {
+            try {
+                await req.payload.findByID({
+                    collection: target.collection as never,
+                    depth: 0,
+                    id: String(target.id),
+                    overrideAccess: false,
+                    req,
+                })
+                return null
+            } catch {
+                return target
+            }
+        })
+    )
 
-    for (const target of targets) {
-        try {
-            await req.payload.findByID({
-                collection: target.collection as never,
-                depth: 0,
-                id: String(target.id),
-                overrideAccess: false,
-                req,
-            })
-        } catch {
-            invalidTargets.push(target)
-        }
-    }
-
-    return invalidTargets
+    return targetResults.filter((target): target is RelationshipTargetReference => Boolean(target))
 }
 
 const getMentionSummary = (mentions?: ChatMention[]) =>

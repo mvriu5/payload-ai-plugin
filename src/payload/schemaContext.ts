@@ -432,6 +432,55 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
         (locale, index, array) => array.indexOf(locale) === index
     )
     const activeLocale = selectedLocales.at(-1)
+    const mentionDocResults = await Promise.all(
+        mentions.slice(0, 8).map(async (mention) => {
+            if (mention.type === "global" && mention.slug) {
+                const slug = mention.slug
+                if (!globalSlugs.includes(slug)) return null
+
+                const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
+                if (!globalConfig) return null
+
+                return {
+                    doc: await req.payload
+                        .findGlobal({
+                            depth: 2,
+                            ...(activeLocale ? { locale: activeLocale } : {}),
+                            overrideAccess: false,
+                            req,
+                            slug: slug as never,
+                        })
+                        .catch(() => null),
+                    key: `global:${slug}`,
+                }
+            }
+
+            if (mention.type === "doc" && mention.collection && mention.id) {
+                const slug = mention.collection
+                if (isInternalCollection(slug) || !collectionSlugs.includes(slug)) return null
+
+                return {
+                    doc: await req.payload
+                        .findByID({
+                            collection: slug as never,
+                            depth: 2,
+                            id: mention.id,
+                            ...(activeLocale ? { locale: activeLocale } : {}),
+                            overrideAccess: false,
+                            req,
+                        })
+                        .catch(() => null),
+                    key: `doc:${slug}:${mention.id}`,
+                }
+            }
+
+            return null
+        })
+    )
+    const docsByMentionKey = new Map<string, unknown>()
+    for (const result of mentionDocResults) {
+        if (result) docsByMentionKey.set(result.key, result.doc)
+    }
 
     if (localeConfigs.length > 0) {
         context.push({
@@ -486,15 +535,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
             const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
             if (!globalConfig) continue
 
-            const globalDoc = await req.payload
-                .findGlobal({
-                    depth: 2,
-                    ...(activeLocale ? { locale: activeLocale } : {}),
-                    overrideAccess: false,
-                    req,
-                    slug: slug as never,
-                })
-                .catch(() => null)
+            const globalDoc = docsByMentionKey.get(key) ?? null
 
             seen.add(key)
             context.push({
@@ -528,16 +569,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
 
             if (seen.has(key) || isInternalCollection(slug) || !collectionSlugs.includes(slug)) continue
 
-            const doc = await req.payload
-                .findByID({
-                    collection: slug as never,
-                    depth: 2,
-                    id: mention.id,
-                    ...(activeLocale ? { locale: activeLocale } : {}),
-                    overrideAccess: false,
-                    req,
-                })
-                .catch(() => null)
+            const doc = docsByMentionKey.get(key)
 
             if (!doc) continue
 

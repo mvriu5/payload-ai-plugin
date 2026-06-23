@@ -773,10 +773,10 @@ const AIInput = () => {
             let receivedText = ""
             let receivedVisibleText = ""
 
-            while (true) {
+            const processStreamChunks = async (): Promise<void> => {
                 const { done, value } = await reader.read()
 
-                if (done) break
+                if (done) return
 
                 buffer += decoder.decode(value, { stream: true })
                 const chunks = buffer.split("\n\n")
@@ -825,7 +825,11 @@ const AIInput = () => {
                         throw new Error(event.data.error || "AI request failed")
                     }
                 }
+
+                await processStreamChunks()
             }
+
+            await processStreamChunks()
 
             const finalEvent = buffer.trim() ? parseSSEEvent(buffer.trim()) : null
             if (finalEvent?.event === "proposals") {
@@ -947,6 +951,8 @@ const AIInput = () => {
                         <div
                             className={styles.chatInput}
                             contentEditable
+                            tabIndex={0}
+                            aria-label="AIInput"
                             data-placeholder="Ask AI..."
                             onInput={(event) => {
                                 const value = event.currentTarget.innerText

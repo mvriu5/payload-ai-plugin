@@ -35,7 +35,11 @@ const getLocaleCodes = (req: Parameters<PayloadHandler>[0]) => {
 
 const hasLocalizedFields = (fields: SearchableField[]): boolean => {
     return fields.some((field) => {
-        return Boolean(field.localized) || Boolean(field.fields?.length && hasLocalizedFields(field.fields)) || Boolean(field.tabs?.some((tab) => hasLocalizedFields(tab.fields || [])))
+        return (
+            Boolean(field.localized) ||
+            Boolean(field.fields?.length && hasLocalizedFields(field.fields)) ||
+            Boolean(field.tabs?.some((tab) => hasLocalizedFields(tab.fields || [])))
+        )
     })
 }
 
@@ -102,35 +106,38 @@ export const createMentionSuggestionHandler =
             })
         }
 
-        for (const collection of collections) {
+        const searchResults = await Promise.all(
+            collections.flatMap((collection) => {
+                const collectionFields = collection.fields as SearchableField[]
+                const localeCodes = query && hasLocalizedFields(collectionFields) ? getLocaleCodes(req) : []
+                const localesToSearch = localeCodes.length > 0 ? localeCodes : [null]
+
+                return localesToSearch.map(async (locale) => ({
+                    collection,
+                    result: await req.payload.find({
+                        collection: collection.slug as never,
+                        depth: 0,
+                        limit: query ? 100 : 10,
+                        ...(locale ? { locale } : {}),
+                        overrideAccess: false,
+                        req,
+                    }),
+                }))
+            })
+        )
+
+        for (const { collection, result } of searchResults) {
             if (suggestions.length >= 5) break
 
-            const collectionFields = collection.fields as SearchableField[]
-            const localeCodes = query && hasLocalizedFields(collectionFields) ? getLocaleCodes(req) : []
-            const localesToSearch = localeCodes.length > 0 ? localeCodes : [null]
-
-            for (const locale of localesToSearch) {
+            for (const doc of result.docs as Record<string, unknown>[]) {
                 if (suggestions.length >= 5) break
 
-                const result = await req.payload.find({
-                    collection: collection.slug as never,
-                    depth: 0,
-                    limit: query ? 100 : 10,
-                    ...(locale ? { locale } : {}),
-                    overrideAccess: false,
-                    req,
+                addSuggestion({
+                    collectionSlug: collection.slug,
+                    doc,
+                    requireLabelMatch: Boolean(normalizedQuery),
+                    useAsTitle: collection.admin?.useAsTitle,
                 })
-
-                for (const doc of result.docs as Record<string, unknown>[]) {
-                    if (suggestions.length >= 5) break
-
-                    addSuggestion({
-                        collectionSlug: collection.slug,
-                        doc,
-                        requireLabelMatch: Boolean(normalizedQuery),
-                        useAsTitle: collection.admin?.useAsTitle,
-                    })
-                }
             }
         }
 

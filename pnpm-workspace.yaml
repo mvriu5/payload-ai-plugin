@@ -1,8 +1,14 @@
+packages:
+    - "src/**"
+    - "dev/**"
+    - "tests/**"
+minimumReleaseAge: 10080
+trustPolicy: "no-downgrade"
 allowBuilds:
-  "@swc/core": false
-  esbuild: false
-  sharp: false
+    "@swc/core": false
+    esbuild: false
+    sharp: false
 onlyBuiltDependencies:
-  - sharp
-  - esbuild
-  - unrs-resolver
+    - sharp
+    - esbuild
+    - unrs-resolver

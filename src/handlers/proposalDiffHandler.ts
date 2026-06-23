@@ -68,24 +68,30 @@ export const createProposalDiffHandler =
                           })) as Record<string, unknown>)
                         : null
 
-                    for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
-                        const doc = (await req.payload.findGlobal({
-                            depth: 2,
-                            fallbackLocale: false,
-                            locale,
-                            overrideAccess: false,
-                            req,
-                            slug: proposal.slug as never,
-                        })) as Record<string, unknown>
-                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                            fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || doc,
-                            fields: globalFields,
-                            preparedData: localeData,
-                        })
+                    const localizedResults = await Promise.all(
+                        Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
+                            const doc = (await req.payload.findGlobal({
+                                depth: 2,
+                                fallbackLocale: false,
+                                locale,
+                                overrideAccess: false,
+                                req,
+                                slug: proposal.slug as never,
+                            })) as Record<string, unknown>
+                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                                fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || doc,
+                                fields: globalFields,
+                                preparedData: localeData,
+                            })
 
+                            return { completedData, doc, locale }
+                        })
+                    )
+
+                    localizedResults.forEach(({ completedData, doc, locale }) => {
                         beforeByLocale[locale] = redactSensitiveData(doc)
                         afterByLocale[locale] = redactSensitiveData(mergeData(doc, completedData))
-                    }
+                    })
 
                     return Response.json({
                         after: afterByLocale,
@@ -178,46 +184,44 @@ export const createProposalDiffHandler =
                         : null
                 let createFallbackSource: Record<string, unknown> | null = null
 
-                for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
-                    const fallbackSource =
-                        proposal.action === "create"
-                            ? createFallbackSource || {}
-                            : locale === defaultLocale
-                              ? ((await req.payload.findByID({
-                                    collection: proposal.collection as never,
-                                    depth: 2,
-                                    fallbackLocale: false,
-                                    id: proposal.id,
-                                    locale,
-                                    overrideAccess: false,
-                                    req,
-                                })) as Record<string, unknown>)
-                              : defaultLocaleDoc || {}
-                    const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                        fallbackSource,
-                        fields: collectionFields,
-                        preparedData: localeData,
-                    })
+                if (proposal.action === "create") {
+                    for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
+                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                            fallbackSource: createFallbackSource || {},
+                            fields: collectionFields,
+                            preparedData: localeData,
+                        })
 
-                    if (proposal.action === "create") {
                         beforeByLocale[locale] = {}
                         afterByLocale[locale] = redactSensitiveData(completedData)
                         createFallbackSource = mergeData(createFallbackSource || {}, completedData)
-                        continue
                     }
+                } else {
+                    const localizedResults = await Promise.all(
+                        Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
+                            const doc = (await req.payload.findByID({
+                                collection: proposal.collection as never,
+                                depth: 2,
+                                fallbackLocale: false,
+                                id: proposal.id,
+                                locale,
+                                overrideAccess: false,
+                                req,
+                            })) as Record<string, unknown>
+                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                                fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || {},
+                                fields: collectionFields,
+                                preparedData: localeData,
+                            })
 
-                    const doc = (await req.payload.findByID({
-                        collection: proposal.collection as never,
-                        depth: 2,
-                        fallbackLocale: false,
-                        id: proposal.id,
-                        locale,
-                        overrideAccess: false,
-                        req,
-                    })) as Record<string, unknown>
+                            return { completedData, doc, locale }
+                        })
+                    )
 
-                    beforeByLocale[locale] = redactSensitiveData(doc)
-                    afterByLocale[locale] = redactSensitiveData(mergeData(doc, completedData))
+                    localizedResults.forEach(({ completedData, doc, locale }) => {
+                        beforeByLocale[locale] = redactSensitiveData(doc)
+                        afterByLocale[locale] = redactSensitiveData(mergeData(doc, completedData))
+                    })
                 }
 
                 return Response.json({

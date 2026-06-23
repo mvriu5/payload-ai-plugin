@@ -491,31 +491,37 @@ export const createApplyActionHandler =
                           })) as Record<string, unknown>)
                         : null
 
-                    for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
-                        const before = (await req.payload.findGlobal({
-                            depth: 2,
-                            fallbackLocale: false,
-                            locale,
-                            req,
-                            slug: proposal.slug as never,
-                        })) as Record<string, unknown>
-                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                            fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
-                            fields: globalFields,
-                            preparedData: localeData,
-                        })
+                    const localizedResults = await Promise.all(
+                        Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
+                            const before = (await req.payload.findGlobal({
+                                depth: 2,
+                                fallbackLocale: false,
+                                locale,
+                                req,
+                                slug: proposal.slug as never,
+                            })) as Record<string, unknown>
+                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                                fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
+                                fields: globalFields,
+                                preparedData: localeData,
+                            })
 
-                        await req.payload.updateGlobal({
-                            data: completedData,
-                            locale,
-                            overrideAccess: false,
-                            req,
-                            slug: proposal.slug as never,
-                        })
+                            await req.payload.updateGlobal({
+                                data: completedData,
+                                locale,
+                                overrideAccess: false,
+                                req,
+                                slug: proposal.slug as never,
+                            })
 
+                            return { before, completedData, locale }
+                        })
+                    )
+
+                    localizedResults.forEach(({ before, completedData, locale }) => {
                         beforeByLocale[locale] = before
                         afterByLocale[locale] = mergeData(before, completedData)
-                    }
+                    })
 
                     const change = await logAIChange({
                         changeLogCollection: options.changeLogCollection,
@@ -708,26 +714,31 @@ export const createApplyActionHandler =
                     const afterByLocale: Record<string, unknown> = {
                         [firstLocale]: doc,
                     }
-                    let fallbackSource = doc as Record<string, unknown>
+                    const fallbackSource = doc as Record<string, unknown>
+                    const localizedResults = await Promise.all(
+                        localeEntries.slice(1).map(async ([locale, localeData]) => {
+                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                                fallbackSource,
+                                fields: collectionFields,
+                                preparedData: localeData,
+                            })
+                            await req.payload.update({
+                                collection: proposal.collection as never,
+                                data: completedData,
+                                id: String(doc.id),
+                                locale,
+                                overrideAccess: false,
+                                req,
+                            })
 
-                    for (const [locale, localeData] of localeEntries.slice(1)) {
-                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                            fallbackSource,
-                            fields: collectionFields,
-                            preparedData: localeData,
+                            return { completedData, locale }
                         })
-                        await req.payload.update({
-                            collection: proposal.collection as never,
-                            data: completedData,
-                            id: String(doc.id),
-                            locale,
-                            overrideAccess: false,
-                            req,
-                        })
+                    )
 
+                    localizedResults.forEach(({ completedData, locale }) => {
                         beforeByLocale[locale] = {}
                         afterByLocale[locale] = completedData
-                    }
+                    })
 
                     const change = await logAIChange({
                         changeLogCollection: options.changeLogCollection,
@@ -768,33 +779,39 @@ export const createApplyActionHandler =
                       })) as Record<string, unknown>)
                     : null
 
-                for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
-                    const before = (await req.payload.findByID({
-                        collection: proposal.collection as never,
-                        depth: 2,
-                        fallbackLocale: false,
-                        id: proposal.id,
-                        locale,
-                        req,
-                    })) as Record<string, unknown>
-                    const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                        fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
-                        fields: collectionFields,
-                        preparedData: localeData,
-                    })
+                const localizedResults = await Promise.all(
+                    Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
+                        const before = (await req.payload.findByID({
+                            collection: proposal.collection as never,
+                            depth: 2,
+                            fallbackLocale: false,
+                            id: proposal.id,
+                            locale,
+                            req,
+                        })) as Record<string, unknown>
+                        const completedData = applyLocalizedRequiredFallbackToPreparedData({
+                            fallbackSource: locale === defaultLocale ? before : defaultLocaleDoc || before,
+                            fields: collectionFields,
+                            preparedData: localeData,
+                        })
 
-                    await req.payload.update({
-                        collection: proposal.collection as never,
-                        data: completedData,
-                        id: proposal.id,
-                        locale,
-                        overrideAccess: false,
-                        req,
-                    })
+                        await req.payload.update({
+                            collection: proposal.collection as never,
+                            data: completedData,
+                            id: proposal.id,
+                            locale,
+                            overrideAccess: false,
+                            req,
+                        })
 
+                        return { before, completedData, locale }
+                    })
+                )
+
+                localizedResults.forEach(({ before, completedData, locale }) => {
                     beforeByLocale[locale] = before
                     afterByLocale[locale] = mergeData(before, completedData)
-                }
+                })
 
                 const change = await logAIChange({
                     changeLogCollection: options.changeLogCollection,
