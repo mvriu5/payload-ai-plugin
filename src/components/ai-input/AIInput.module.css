@@ -26,13 +26,6 @@
     margin: 0;
 }
 
-.chatDescription {
-    color: var(--theme-elevation-600);
-    font-size: 13px;
-    line-height: 1.4;
-    margin: 4px 0 0;
-}
-
 .settings {
     align-items: flex-end;
     display: flex;

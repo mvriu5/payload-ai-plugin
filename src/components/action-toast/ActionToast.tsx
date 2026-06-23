@@ -1,10 +1,10 @@
 import styles from "./ActionToast.module.css"
-import { redactSensitiveData } from "../ai/sensitiveData.js"
+import { redactSensitiveData } from "../../ai/sensitiveData.js"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
-import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
-import { Apply, FileDiff, Reject } from "./Icons.js"
-import { ActiveDiff } from "./AuditLogList.js"
+import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
+import { Apply, FileDiff, Reject } from "../Icons.js"
+import { ActiveDiff } from "../audit-log-list/AuditLogList.js"
 
 export type ActionProposal = {
     _aiSignature?: {
@@ -20,7 +20,6 @@ export type ActionProposal = {
 
 type ActionToastProps = {
     apiRoute: string
-    appliedProposalIndexes: number[]
     description?: string
     error?: string
     getViewURL?: (proposal: ActionProposal) => string | null
@@ -59,7 +58,6 @@ const getSafeProposalDetails = (proposal: ActionProposal) => {
 
 export const ActionToast = ({
     apiRoute,
-    appliedProposalIndexes,
     description,
     error,
     getViewURL,
@@ -146,7 +144,6 @@ export const ActionToast = ({
                 </div>
             )}
             {proposals.map((proposal, index) => {
-                const isApplied = appliedProposalIndexes.includes(index)
                 const viewURL = getViewURL?.(proposal)
 
                 return (
@@ -196,7 +193,7 @@ export const ActionToast = ({
                                 <button
                                     aria-label={`Apply proposal: ${proposal.label}`}
                                     className={styles.button}
-                                    disabled={isApplying || isApplied}
+                                    disabled={isApplying}
                                     onClick={() => onApply(proposal, index)}
                                     type="button"
                                 >

@@ -1,0 +1,261 @@
+"use client"
+
+import { useConfig } from "@payloadcms/ui"
+import { formatAdminURL } from "payload/shared"
+import { useEffect, useRef, useState } from "react"
+import { type AIProvider } from "../../ai/providerOptions.js"
+import { ActionToast, type ActionProposal } from "../action-toast/ActionToast.js"
+import { type AppliedChange } from "../audit-log-list/AuditLogList.js"
+import { useAIChatStream } from "../hooks/useAIChatStream.js"
+import { useAISettings } from "../hooks/useAISettings.js"
+import { useAuditLog } from "../hooks/useAuditLog.js"
+import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
+import { usePluginConfig } from "../hooks/usePluginConfig.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, Send } from "../Icons.js"
+import { MentionPopover } from "../mention-popover/MentionPopover.js"
+import styles from "./AIInput.module.css"
+
+const getProviderIcon = (provider: AIProvider | null) => {
+    const iconProps = {
+        "aria-hidden": true,
+        className: styles.selectProviderIcon,
+    }
+
+    switch (provider) {
+        case "claude":
+            return <ClaudeIcon {...iconProps} />
+        case "google":
+            return <GoogleGeminiIcon {...iconProps} />
+        case "mistral":
+            return <MistralAiIcon {...iconProps} />
+        case "openai":
+            return <OpenaiIcon {...iconProps} />
+        case "openrouter":
+            return <OpenrouterIcon {...iconProps} />
+        default:
+            return null
+    }
+}
+
+const AIInput = () => {
+    const editorRef = useRef<HTMLDivElement>(null)
+    const [prompt, setPrompt] = useState("")
+    const [isApplying, setIsApplying] = useState(false)
+
+    const { config } = useConfig()
+    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale } = usePluginConfig(config)
+    const { loadRecentChanges, prependChange } = useAuditLog({
+        adminRoute: config.routes.admin,
+        apiRoute: config.routes.api,
+    })
+    const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
+        adminUserSlug: config.admin?.user,
+        apiRoute: config.routes.api,
+        defaultModels: aiModelConfig.defaults,
+    })
+    const { clearMentions, insertMention, mentionPopoverPosition, mentionRange, mentionSuggestions, mentionsRef, updateMentionState } = useMentions({
+        apiRoute: config.routes.api,
+        config,
+        defaultLocale,
+        editorRef,
+        isCollectionMentionEnabled,
+        locales,
+        setPrompt,
+        styles,
+    })
+
+    const clearInput = () => {
+        setPrompt("")
+        clearMentions()
+        if (editorRef.current) editorRef.current.textContent = ""
+    }
+
+    const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
+        apiRoute: config.routes.api,
+        clearInput,
+        mentionsRef,
+        prompt,
+        selectedModel,
+    })
+
+    useEffect(() => {
+        if (isLoading || error || proposals.length > 0 || !response) return
+
+        const timeout = window.setTimeout(() => {
+            setResponse("")
+            clearInput()
+        }, 10000)
+
+        return () => window.clearTimeout(timeout)
+    }, [error, isLoading, proposals.length, response])
+
+    const getProposalViewURL = (proposal: ActionProposal) => {
+        const adminRoute = config.routes.admin || "/admin"
+
+        if (proposal.action === "updateGlobal" && proposal.slug) {
+            return `${adminRoute}/globals/${proposal.slug}`
+        }
+
+        if (proposal.collection && proposal.id) {
+            return `${adminRoute}/collections/${proposal.collection}/${proposal.id}`
+        }
+
+        return null
+    }
+
+    const handleApplyProposal = async (proposal: ActionProposal) => {
+        setIsApplying(true)
+        setError("")
+
+        try {
+            const res = await fetch(
+                formatAdminURL({
+                    apiRoute: config.routes.api,
+                    path: "/ai-apply-action",
+                }),
+                {
+                    body: JSON.stringify({
+                        aiResponse: response,
+                        prompt,
+                        proposal,
+                        tokenUsage,
+                    }),
+                    headers: { "Content-Type": "application/json" },
+                    method: "POST",
+                }
+            )
+
+            const result = (await res.json()) as {
+                change?: AppliedChange | null
+                doc?: {
+                    id?: unknown
+                }
+                error?: string
+            }
+            if (!res.ok) {
+                setProposals([])
+                setResponse("")
+                throw new Error(result.error || "Could not apply proposal")
+            }
+
+            resetChatState()
+            if (result.change) {
+                prependChange(result.change)
+                window.dispatchEvent(new CustomEvent("payload-ai:audit-log-updated"))
+            }
+            void loadRecentChanges().catch(() => undefined)
+            clearInput()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not apply proposal")
+        } finally {
+            setIsApplying(false)
+        }
+    }
+
+    return (
+        <div className={styles.chatLayout}>
+            <div className={styles.chat}>
+                <div className={styles.chatHeader}>
+                    <h2 className={styles.chatTitle}>AI Assistant</h2>
+                </div>
+                <div className={styles.chatInputRow}>
+                    <div className={styles.chatInputSurface}>
+                        <div
+                            id="ai-input"
+                            className={styles.chatInput}
+                            ref={editorRef}
+                            role="textbox"
+                            aria-label="AIInput"
+                            contentEditable
+                            data-placeholder="Ask AI..."
+                            onInput={(event) => {
+                                const value = (event.target as HTMLElement).innerText
+                                setPrompt(value)
+                                if (!value.trim()) clearMentions()
+                                updateMentionState(getTextBeforeCaret(event.target as HTMLElement))
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
+                                    const firstOption = editorRef.current?.querySelector<HTMLButtonElement>("button")
+                                    if (firstOption) {
+                                        event.preventDefault()
+                                        firstOption.focus()
+                                        return
+                                    }
+                                }
+                                if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault()
+                                    void submit()
+                                }
+                            }}
+                        />
+                    </div>
+                    {mentionRange && (
+                        <MentionPopover
+                            onSelect={insertMention}
+                            style={
+                                mentionPopoverPosition
+                                    ? {
+                                          left: `${mentionPopoverPosition.left}px`,
+                                          top: `${mentionPopoverPosition.top}px`,
+                                      }
+                                    : undefined
+                            }
+                            suggestions={mentionSuggestions}
+                        />
+                    )}
+                </div>
+                <div className={styles.chatActionsRow}>
+                    <div className={styles.settings}>
+                        <label className={styles.setting}>
+                            <span className={styles.settingLabel}>Model</span>
+                            <div className={styles.selectWrapper}>
+                                {getProviderIcon(settingsProvider)}
+                                <select
+                                    className={styles.select}
+                                    disabled={!settingsProvider}
+                                    onChange={(event) => setSelectedModel(event.target.value)}
+                                    value={selectedModel}
+                                >
+                                    {!settingsProvider && <option value="">Select provider in account settings</option>}
+                                    {settingsProvider &&
+                                        aiModelConfig.providers[settingsProvider].map((model) => (
+                                            <option key={model.value} value={model.value}>
+                                                {model.label}
+                                            </option>
+                                        ))}
+                                </select>
+                            </div>
+                        </label>
+                    </div>
+                    <button
+                        className={styles.chatButton}
+                        disabled={
+                            !prompt.trim() || !settingsProvider || !selectedModel || isLoading || Boolean(error) || Boolean(response) || proposals.length > 0
+                        }
+                        onClick={() => void submit()}
+                        type="button"
+                    >
+                        <Send width={14} height={14} />
+                        {isLoading ? "Sending..." : "Send"}
+                    </button>
+                </div>
+                <ActionToast
+                    apiRoute={config.routes.api}
+                    description={response}
+                    error={error}
+                    getViewURL={getProposalViewURL}
+                    isApplying={isApplying}
+                    onDismiss={() => dismissChat()}
+                    onDismissError={() => setError("")}
+                    onApply={(proposal, _index) => void handleApplyProposal(proposal)}
+                    proposals={proposals}
+                    prompt={prompt}
+                    tokenUsage={tokenUsage}
+                />
+            </div>
+        </div>
+    )
+}
+
+export default AIInput

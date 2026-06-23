@@ -4,7 +4,7 @@ export const createJSONResponse = (value: unknown, ok = true) =>
     ({
         json: vi.fn().mockResolvedValue(value),
         ok,
-    }) as Response
+    }) as unknown as Response
 
 export const createStreamResponse = (body: string) =>
     ({

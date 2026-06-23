@@ -1,9 +1,11 @@
-import { useState } from "react"
+"use client"
 
-import { ExternalLinkIcon } from "@payloadcms/ui"
-import type { ActionProposal } from "./ActionToast.js"
-import { DiffDialog, type ProposalDiff } from "./DiffDialog.js"
+import { useEffect, useState } from "react"
+import { ExternalLinkIcon, useConfig } from "@payloadcms/ui"
+import type { ActionProposal } from "../action-toast/ActionToast.js"
+import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
 import styles from "./AuditLogList.module.css"
+import { useAuditLog } from "../hooks/useAuditLog.js"
 
 export type AppliedChange = {
     action?: ActionProposal["action"] | null
@@ -25,11 +27,6 @@ export type AppliedChange = {
     url?: string | null
 }
 
-type AuditLogListProps = {
-    allChangesURL?: string
-    changes: AppliedChange[]
-}
-
 export type ActiveDiff = {
     change: AppliedChange | null
     diff: ProposalDiff
@@ -44,8 +41,30 @@ const getChangeProposal = (change: AppliedChange): ActionProposal => ({
     slug: change.slug || undefined,
 })
 
-export const RecentChangesList = ({ allChangesURL, changes }: AuditLogListProps) => {
+const AuditLogList = () => {
+    const { config } = useConfig()
+    const {
+        loadRecentChanges,
+        allChangesURL,
+        appliedChanges: changes,
+    } = useAuditLog({
+        adminRoute: config.routes.admin,
+        apiRoute: config.routes.api,
+    })
+
     const [activeDiff, setActiveDiff] = useState<ActiveDiff | null>(null)
+
+    useEffect(() => {
+        const refresh = () => {
+            void loadRecentChanges().catch(() => undefined)
+        }
+
+        window.addEventListener("payload-ai:audit-log-updated", refresh)
+
+        return () => {
+            window.removeEventListener("payload-ai:audit-log-updated", refresh)
+        }
+    }, [loadRecentChanges])
 
     return (
         <aside className={styles.recentChanges}>
@@ -105,3 +124,5 @@ export const RecentChangesList = ({ allChangesURL, changes }: AuditLogListProps)
         </aside>
     )
 }
+
+export default AuditLogList

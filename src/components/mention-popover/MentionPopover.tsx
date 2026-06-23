@@ -13,7 +13,6 @@ export type MentionOption = {
 }
 
 type MentionPopoverProps = {
-    containerRef?: RefObject<HTMLDivElement | null>
     suggestions: MentionOption[]
     onSelect: (suggestion: MentionOption) => void
     style?: CSSProperties
@@ -58,7 +57,7 @@ const getSuggestionLabel = (suggestion: MentionOption) => {
     return `${suggestion.collection} item`
 }
 
-export const MentionPopover = ({ containerRef, onSelect, style, suggestions }: MentionPopoverProps) => {
+export const MentionPopover = ({ onSelect, style, suggestions }: MentionPopoverProps) => {
     if (suggestions.length === 0) return null
 
     const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, suggestion: MentionOption) => {
@@ -88,7 +87,7 @@ export const MentionPopover = ({ containerRef, onSelect, style, suggestions }: M
     }
 
     return (
-        <div className={styles.popover} ref={containerRef} style={style}>
+        <div className={styles.popover} style={style}>
             {suggestionGroups.map((group) => {
                 const groupSuggestions = suggestions.filter((s) => s.type === group.type)
                 if (groupSuggestions.length === 0) return null

@@ -2,10 +2,10 @@ import { XIcon } from "@payloadcms/ui/icons/X"
 import type { CSSProperties } from "react"
 import { useEffect, useRef, useState } from "react"
 
-import { getJSONLineKey } from "../payload/shared.js"
+import { getJSONLineKey } from "../../payload/shared.js"
 import styles from "./DiffDialog.module.css"
-import type { ActionProposal } from "./ActionToast.js"
-import type { AppliedChange } from "./AuditLogList.js"
+import type { ActionProposal } from "../action-toast/ActionToast.js"
+import type { AppliedChange } from "../audit-log-list/AuditLogList.js"
 
 export type ProposalDiff = {
     after: unknown

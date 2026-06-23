@@ -3,8 +3,7 @@
 import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
-import { DiffDialog } from "../../src/components/DiffDialog.js"
+import { DiffDialog } from "../../src/components/diff-dialog/DiffDialog.js"
 import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
 import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"

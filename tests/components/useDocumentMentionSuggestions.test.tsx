@@ -3,7 +3,6 @@
 import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
 import { useDocumentMentionSuggestions } from "../../src/components/hooks/useDocumentMentionSuggestions.js"
 import { mentionOptionJupiter } from "../fixtures/docs.js"
 import { createJSONResponse, installFetchMock } from "../fixtures/fetch.js"

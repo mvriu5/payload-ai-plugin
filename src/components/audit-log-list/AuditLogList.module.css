@@ -1,4 +1,6 @@
 .recentChanges {
+    max-width: 50vw;
+    width: 100%;
     border: 1px solid var(--theme-elevation-150);
     border-radius: 8px;
     display: flex;

@@ -17,10 +17,8 @@ export type PayloadAIPluginOptions = {
     models?: AIModelConfig
 }
 
-const auditLogCollectionSlug = "payload-ai-auditlog"
-
 const createAIChangesCollection = (): CollectionConfig => ({
-    slug: auditLogCollectionSlug,
+    slug: "payload-ai-auditlog",
     access: {
         create: () => false,
         delete: () => false,
@@ -167,7 +165,7 @@ export const payloadAiPlugin =
                 : undefined
 
         if (!config.collections) config.collections = []
-        if (!config.collections.some((collection) => collection.slug === auditLogCollectionSlug)) {
+        if (!config.collections.some((collection) => collection.slug === "payload-ai-auditlog")) {
             config.collections.push(createAIChangesCollection())
         }
 
@@ -196,6 +194,7 @@ export const payloadAiPlugin =
 
         if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = []
         config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#AIInput`)
+        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#AuditLogList`)
 
         config.endpoints.push({
             handler: createChatHandler({
@@ -209,7 +208,7 @@ export const payloadAiPlugin =
         })
         config.endpoints.push({
             handler: createApplyActionHandler({
-                changeLogCollection: auditLogCollectionSlug,
+                changeLogCollection: "payload-ai-auditlog",
                 collections: collectionPermissions,
             }),
             method: "post",
@@ -217,7 +216,7 @@ export const payloadAiPlugin =
         })
         config.endpoints.push({
             handler: createAuditLogHandler({
-                changeLogCollection: auditLogCollectionSlug,
+                changeLogCollection: "payload-ai-auditlog",
             }),
             method: "get",
             path: "/ai-audit-log",

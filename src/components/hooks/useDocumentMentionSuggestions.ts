@@ -2,7 +2,7 @@
 
 import { formatAdminURL } from "payload/shared"
 import { useEffect, useState } from "react"
-import type { MentionOption } from "../MentionPopover.js"
+import type { MentionOption } from "../mention-popover/MentionPopover.js"
 import { isAbortError } from "../../payload/shared.js"
 
 type MentionRange = {

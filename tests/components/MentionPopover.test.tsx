@@ -3,8 +3,7 @@
 import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
-import { MentionPopover } from "../../src/components/MentionPopover.js"
+import { MentionPopover } from "../../src/components/mention-popover/MentionPopover.js"
 import { mentionOptions } from "../fixtures/docs.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 

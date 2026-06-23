@@ -3,14 +3,13 @@
 import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-
-import { ActionToast, type ActionProposal } from "../../src/components/ActionToast.js"
+import { ActionToast, type ActionProposal } from "../../src/components/action-toast/ActionToast.js"
 import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
 import { createJSONResponse, installFetchMock } from "../fixtures/fetch.js"
 import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
-vi.mock("../../src/components/DiffDialog.js", () => ({
+vi.mock("../../src/components/diff-dialog/DiffDialog.js", () => ({
     DiffDialog: ({ proposal }: { proposal: ActionProposal }) => (
         <dialog aria-label={`Diff for ${proposal.label}`} open>
             Diff for {proposal.label}
@@ -27,7 +26,7 @@ describe("ActionToast", () => {
     })
 
     it("renders nothing without error, description or proposals", () => {
-        const { container } = render(<ActionToast apiRoute="/api" appliedProposalIndexes={[]} isApplying={false} onApply={vi.fn()} proposals={[]} />)
+        const { container } = render(<ActionToast apiRoute="/api" isApplying={false} onApply={vi.fn()} proposals={[]} />)
 
         expect(container.textContent).toBe("")
     })
@@ -35,15 +34,7 @@ describe("ActionToast", () => {
     it("renders errors and calls onDismissError", () => {
         const onDismissError = vi.fn()
         const { container } = render(
-            <ActionToast
-                apiRoute="/api"
-                appliedProposalIndexes={[]}
-                error="Provider failed"
-                isApplying={false}
-                onApply={vi.fn()}
-                onDismissError={onDismissError}
-                proposals={[]}
-            />
+            <ActionToast apiRoute="/api" error="Provider failed" isApplying={false} onApply={vi.fn()} onDismissError={onDismissError} proposals={[]} />
         )
         const dismissButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Dismiss")
 
@@ -63,7 +54,6 @@ describe("ActionToast", () => {
         const { container } = render(
             <ActionToast
                 apiRoute="/api"
-                appliedProposalIndexes={[]}
                 description="Prepared update"
                 getViewURL={() => "/admin/collections/posts/4"}
                 isApplying={false}
@@ -99,7 +89,7 @@ describe("ActionToast", () => {
                 })
             )
         )
-        const { container } = render(<ActionToast apiRoute="/api" appliedProposalIndexes={[]} isApplying={false} onApply={vi.fn()} proposals={[proposal]} />)
+        const { container } = render(<ActionToast apiRoute="/api" isApplying={false} onApply={vi.fn()} proposals={[proposal]} />)
         const reviewButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Review")
 
         await act(async () => {
