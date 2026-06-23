@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 
-import React from "react"
 import { act } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { RecentChangesList } from "../../src/components/AuditLogList.js"
+import { AppliedChange, RecentChangesList } from "../../src/components/AuditLogList.js"
 import { appliedChangeJupiter, createAppliedChangeJupiter } from "../fixtures/docs.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
@@ -13,7 +12,11 @@ vi.mock("@payloadcms/ui", () => ({
 }))
 
 vi.mock("../../src/components/DiffDialog.js", () => ({
-    DiffDialog: ({ proposal }: { proposal: { label: string } }) => <div role="dialog">Diff for {proposal.label}</div>,
+    DiffDialog: ({ proposal }: { proposal: { label: string } }) => (
+        <dialog aria-label={`Diff for ${proposal.label}`} open>
+            Diff for {proposal.label}
+        </dialog>
+    ),
 }))
 
 describe("RecentChangesList", () => {
@@ -35,7 +38,9 @@ describe("RecentChangesList", () => {
     })
 
     it("renders at most 10 changes", () => {
-        const { container } = render(<RecentChangesList changes={Array.from({ length: 12 }, (_, index) => createAppliedChangeJupiter(index + 1))} />)
+        const { container } = render(
+            <RecentChangesList changes={Array.from({ length: 12 }, (_, index) => createAppliedChangeJupiter(index + 1)) as AppliedChange[]} />
+        )
 
         expect(container.querySelectorAll("button")).toHaveLength(10)
         expect(container.textContent).toContain("Jupiter change 10")
@@ -43,13 +48,13 @@ describe("RecentChangesList", () => {
     })
 
     it("opens the diff dialog for reviewable changes", () => {
-        const { container } = render(<RecentChangesList changes={[appliedChangeJupiter]} />)
+        const { container } = render(<RecentChangesList changes={[appliedChangeJupiter] as AppliedChange[]} />)
         const reviewButton = container.querySelector("button")
 
         act(() => {
             reviewButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
         })
 
-        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Updated Jupiter")
+        expect(container.querySelector("dialog")?.textContent).toBe("Diff for Updated Jupiter")
     })
 })

@@ -44,7 +44,7 @@ export const isAuthCollection = (collectionConfig?: CollectionConfig | null) => 
     return Boolean(collectionConfig?.auth)
 }
 
-export const getCollectionFields = (collectionConfig?: CollectionConfig | null) => {
+const getCollectionFields = (collectionConfig?: CollectionConfig | null) => {
     const fields = [...(collectionConfig?.fields || [])]
 
     if (isAuthCollection(collectionConfig)) {
@@ -91,10 +91,10 @@ export const createLexicalText = (value: unknown) => {
     if (isRecord(value) && isRecord(value.root)) return value
 
     const text = Array.isArray(value) ? value.join("\n") : String(value || "")
-    const lines = text
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
+    const lines = text.split("\n").flatMap((line) => {
+        const trimmedLine = line.trim()
+        return trimmedLine ? [trimmedLine] : []
+    })
 
     return {
         root: {
@@ -145,7 +145,10 @@ const normalizeArrayValue = (field: FieldConfig, value: unknown) => {
 }
 
 const getOptionValues = (field: FieldConfig) => {
-    return (field.options || []).map((option) => (typeof option === "string" ? option : option.value)).filter((option): option is string => Boolean(option))
+    return (field.options || []).flatMap((option) => {
+        const value = typeof option === "string" ? option : option.value
+        return value ? [value] : []
+    })
 }
 
 const normalizeOptionValue = (field: FieldConfig, value: unknown) => {
@@ -161,30 +164,22 @@ const normalizeOptionValue = (field: FieldConfig, value: unknown) => {
 const normalizeBlocksValue = (field: FieldConfig, value: unknown) => {
     if (!Array.isArray(value)) return value
 
-    return value
-        .map((item) => {
-            if (!isRecord(item)) return null
+    return value.flatMap((item) => {
+        if (!isRecord(item)) return []
 
-            const blockType =
-                typeof item.blockType === "string"
-                    ? item.blockType
-                    : typeof item.type === "string"
-                      ? item.type
-                      : typeof item.slug === "string"
-                        ? item.slug
-                        : null
+        const blockType =
+            typeof item.blockType === "string" ? item.blockType : typeof item.type === "string" ? item.type : typeof item.slug === "string" ? item.slug : null
 
-            if (!blockType) return null
+        if (!blockType) return []
 
-            const block = field.blocks?.find((candidate) => candidate.slug === blockType)
-            if (!block) return null
+        const block = field.blocks?.find((candidate) => candidate.slug === blockType)
+        if (!block) return []
 
-            const { blockType: _blockType, type: _type, slug: _slug, ...data } = item
-            const normalizedBlock = normalizeDataForFields(block.fields || [], data).data
+        const { blockType: _blockType, type: _type, slug: _slug, ...data } = item
+        const normalizedBlock = normalizeDataForFields(block.fields || [], data).data
 
-            return { ...normalizedBlock, blockType }
-        })
-        .filter(Boolean)
+        return [{ ...normalizedBlock, blockType }]
+    })
 }
 
 const normalizeFieldValue = (field: FieldConfig, value: unknown): typeof SKIP_FIELD | unknown => {
@@ -293,7 +288,7 @@ export const normalizeDataForFields = (fields: readonly FieldConfig[], data: Rec
     }
 }
 
-export const getLocalizedRequiredFallbackData = ({
+const getLocalizedRequiredFallbackData = ({
     fields,
     source,
     target,

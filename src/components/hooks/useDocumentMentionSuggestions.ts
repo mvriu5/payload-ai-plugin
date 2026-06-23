@@ -17,47 +17,59 @@ interface DocumentMentionSuggestions {
     mentionRange: MentionRange | null
 }
 
+type FetchDocumentMentionSuggestionsOptions = {
+    apiRoute: string
+    collectionSlug?: null | string
+    query: string
+    signal: AbortSignal
+}
+
+const fetchDocumentMentionSuggestions = async ({ apiRoute, collectionSlug, query, signal }: FetchDocumentMentionSuggestionsOptions) => {
+    const res = await fetch(
+        formatAdminURL({
+            apiRoute,
+            path: "/ai-mention-suggestion",
+        }),
+        {
+            body: JSON.stringify({
+                collectionSlug,
+                query,
+            }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+            signal,
+        }
+    )
+
+    if (!res.ok) return []
+
+    const result = (await res.json()) as {
+        suggestions?: MentionOption[]
+    }
+
+    return result.suggestions || []
+}
+
 export const useDocumentMentionSuggestions = ({ apiRoute, documentSuggestionCollection, mentionQuery, mentionRange }: DocumentMentionSuggestions) => {
     const [documentSuggestions, setDocumentSuggestions] = useState<MentionOption[]>([])
+    const trimmedQuery = mentionQuery.trim()
+    const shouldLoadSuggestions = Boolean(mentionRange && (trimmedQuery || documentSuggestionCollection))
 
     useEffect(() => {
-        const trimmedQuery = mentionQuery.trim()
-
-        if (!mentionRange || (!trimmedQuery && !documentSuggestionCollection)) {
-            setDocumentSuggestions([])
-            return
-        }
+        if (!shouldLoadSuggestions) return
 
         const abortController = new AbortController()
 
-        const fetchDocumentSuggestions = async () => {
+        const loadDocumentSuggestions = async () => {
             try {
-                const res = await fetch(
-                    formatAdminURL({
-                        apiRoute,
-                        path: "/ai-mention-suggestion",
-                    }),
-                    {
-                        body: JSON.stringify({
-                            collectionSlug: documentSuggestionCollection,
-                            query: documentSuggestionCollection ? "" : trimmedQuery,
-                        }),
-                        headers: { "Content-Type": "application/json" },
-                        method: "POST",
-                        signal: abortController.signal,
-                    }
-                )
+                const suggestions = await fetchDocumentMentionSuggestions({
+                    apiRoute,
+                    collectionSlug: documentSuggestionCollection,
+                    query: documentSuggestionCollection ? "" : trimmedQuery,
+                    signal: abortController.signal,
+                })
 
-                if (!res.ok) {
-                    setDocumentSuggestions([])
-                    return
-                }
-
-                const result = (await res.json()) as {
-                    suggestions?: MentionOption[]
-                }
-
-                setDocumentSuggestions(result.suggestions || [])
+                setDocumentSuggestions(suggestions)
             } catch (err) {
                 if (isAbortError(err)) return
 
@@ -65,13 +77,13 @@ export const useDocumentMentionSuggestions = ({ apiRoute, documentSuggestionColl
             }
         }
 
-        void fetchDocumentSuggestions()
+        void loadDocumentSuggestions()
 
         return () => abortController.abort()
-    }, [apiRoute, documentSuggestionCollection, mentionQuery, mentionRange])
+    }, [apiRoute, documentSuggestionCollection, shouldLoadSuggestions, trimmedQuery])
 
     return {
-        documentSuggestions,
+        documentSuggestions: shouldLoadSuggestions ? documentSuggestions : [],
         resetDocumentSuggestions: () => setDocumentSuggestions([]),
     }
 }

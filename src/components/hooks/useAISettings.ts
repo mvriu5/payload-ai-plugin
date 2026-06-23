@@ -11,6 +11,12 @@ type CurrentUserResponse = {
     } | null
 }
 
+type FetchCurrentUserProviderOptions = {
+    adminUserSlug: string
+    apiRoute: string
+    signal: AbortSignal
+}
+
 interface UseAISettingsOptions {
     adminUserSlug?: string
     apiRoute: string
@@ -29,6 +35,16 @@ const storeModel = (provider: AIProvider, model: string) => {
     window.localStorage.setItem(getStoredModelKey(provider), model)
 }
 
+const fetchCurrentUserProvider = async ({ adminUserSlug, apiRoute, signal }: FetchCurrentUserProviderOptions) => {
+    const res = await fetch(formatAdminURL({ apiRoute, path: `/${adminUserSlug}/me` }), { signal })
+    if (!res.ok) return null
+
+    const result = (await res.json()) as CurrentUserResponse
+    const provider = result.user?.aiProvider
+
+    return provider && isAIProvider(provider) ? provider : null
+}
+
 export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAISettingsOptions) => {
     const [fetchedProvider, setFetchedProvider] = useState<AIProvider | null>(null)
 
@@ -41,27 +57,23 @@ export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAIS
     }
 
     useEffect(() => {
-        if (!adminUserSlug) {
-            setFetchedProvider(null)
-            setSelectedModel("")
-            return
-        }
+        if (!adminUserSlug) return
+
         const abortController = new AbortController()
-        const fetchCurrentUser = async () => {
+        const loadCurrentUserProvider = async () => {
             try {
-                const res = await fetch(formatAdminURL({ apiRoute, path: `/${adminUserSlug}/me` }), { signal: abortController.signal })
-                if (!res.ok) {
+                const provider = await fetchCurrentUserProvider({
+                    adminUserSlug,
+                    apiRoute,
+                    signal: abortController.signal,
+                })
+
+                if (!provider) {
                     setFetchedProvider(null)
                     setSelectedModel("")
                     return
                 }
-                const result = (await res.json()) as CurrentUserResponse
-                const provider = result.user?.aiProvider
-                if (!provider || !isAIProvider(provider)) {
-                    setFetchedProvider(null)
-                    setSelectedModel("")
-                    return
-                }
+
                 setFetchedProvider(provider)
                 setSelectedModel(getStoredModel(provider) || defaultModels[provider])
             } catch (err) {
@@ -70,11 +82,11 @@ export const useAISettings = ({ adminUserSlug, apiRoute, defaultModels }: UseAIS
                 setSelectedModel("")
             }
         }
-        void fetchCurrentUser()
+        void loadCurrentUserProvider()
         return () => abortController.abort()
     }, [adminUserSlug, apiRoute, defaultModels])
 
-    const settingsProvider = fetchedProvider
+    const settingsProvider = adminUserSlug ? fetchedProvider : null
 
-    return { selectedModel, setSelectedModel: setStoredSelectedModel, settingsProvider }
+    return { selectedModel: adminUserSlug ? selectedModel : "", setSelectedModel: setStoredSelectedModel, settingsProvider }
 }

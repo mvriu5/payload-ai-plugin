@@ -1,6 +1,6 @@
 import { XIcon } from "@payloadcms/ui/icons/X"
 import type { CSSProperties } from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { getJSONLineKey } from "../payload/shared.js"
 import styles from "./DiffDialog.module.css"
@@ -68,16 +68,18 @@ const formatDiffValue = (value: unknown) => {
     return JSON.stringify(value, null, 2)
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+})
+
 const formatDateTime = (value?: string | null) => {
     if (!value) return null
 
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
 
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    }).format(date)
+    return dateTimeFormatter.format(date)
 }
 
 const createLine = ({ changed, path, placeholder = false, text = "" }: CreateDiffLineInput): DiffLine => ({
@@ -292,26 +294,47 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
     const inputTokens = formatTokenUsage(change?.inputTokens) || formatTokenUsage(tokenUsage?.inputTokens)
     const outputTokens = formatTokenUsage(change?.outputTokens) || formatTokenUsage(tokenUsage?.outputTokens)
 
+    const dialogRef = useRef<HTMLDialogElement>(null)
+
     useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose()
+        const dialog = dialogRef.current
+        if (!dialog) return
+
+        if (!dialog.open) {
+            if (typeof dialog.showModal === "function") {
+                dialog.showModal()
+            } else {
+                dialog.setAttribute("open", "")
             }
         }
 
-        window.addEventListener("keydown", handleKeyDown)
-
         return () => {
-            window.removeEventListener("keydown", handleKeyDown)
+            if (!dialog.open) return
+
+            if (typeof dialog.close === "function") {
+                dialog.close()
+            } else {
+                dialog.removeAttribute("open")
+            }
         }
-    }, [onClose])
+    }, [])
 
     return (
-        <div aria-modal="true" className={styles.dialogOverlay} role="dialog">
+        <dialog
+            aria-labelledby="payload-ai-diff-dialog-title"
+            className={styles.dialogOverlay}
+            onCancel={(event) => {
+                event.preventDefault()
+                onClose()
+            }}
+            ref={dialogRef}
+        >
             <div className={styles.dialog}>
                 <div className={styles.dialogHeader}>
                     <div>
-                        <div className={styles.dialogTitle}>{proposal.label}</div>
+                        <div className={styles.dialogTitle} id="payload-ai-diff-dialog-title">
+                            {proposal.label}
+                        </div>
                         <div className={styles.meta}>
                             {proposal.action} in {proposal.collection || proposal.slug}
                             {proposal.id ? ` #${proposal.id}` : ""}
@@ -452,6 +475,6 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                     })}
                 </div>
             </div>
-        </div>
+        </dialog>
     )
 }

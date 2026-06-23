@@ -35,7 +35,7 @@ describe("DiffDialog", () => {
             />
         )
 
-        expect(container.querySelector('[role="dialog"]')).toBeTruthy()
+        expect(container.querySelector("dialog")).toBeTruthy()
         expect(container.textContent).toContain("Update Jupiter")
         expect(container.textContent).toContain("update in posts #4")
         expect(container.textContent).toContain("Tokens")
@@ -77,7 +77,7 @@ describe("DiffDialog", () => {
         expect(container.textContent).toContain("Locale: en")
     })
 
-    it("closes by button and Escape key", () => {
+    it("closes by button and cancel event", () => {
         const onClose = vi.fn()
         const { container } = render(
             <DiffDialog
@@ -92,7 +92,7 @@ describe("DiffDialog", () => {
 
         act(() => {
             container.querySelector('button[aria-label="Close"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-            window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+            container.querySelector("dialog")?.dispatchEvent(new Event("cancel", { bubbles: true, cancelable: true }))
         })
 
         expect(onClose).toHaveBeenCalledTimes(2)

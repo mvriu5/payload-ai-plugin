@@ -140,10 +140,10 @@ export function OpenrouterIcon(props: SVGProps<SVGSVGElement>) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="currentColor" stroke="currentColor" {...props}>
             <g clipPath="url(#clip0_205_3)">
-                <path d="M3 248.945C18 248.945 76 236 106 219C136 202 136 202 198 158C276.497 102.293 332 120.945 423 120.945" strokeWidth="90" />
-                <path d="M511 121.5L357.25 210.268L357.25 32.7324L511 121.5Z" />
-                <path d="M0 249C15 249 73 261.945 103 278.945C133 295.945 133 295.945 195 339.945C273.497 395.652 329 377 420 377" strokeWidth="90" />
-                <path d="M508 376.445L354.25 287.678L354.25 465.213L508 376.445Z" />
+                <path d="M3 248.95C18 248.95 76 236 106 219C136 202 136 202 198 158C276.5 102.29 332 120.95 423 120.95" strokeWidth="90" />
+                <path d="M511 121.5L357.25 210.27L357.25 32.73L511 121.5Z" />
+                <path d="M0 249C15 249 73 261.95 103 278.95C133 295.95 133 295.95 195 339.95C273.5 395.65 329 377 420 377" strokeWidth="90" />
+                <path d="M508 376.45L354.25 287.68L354.25 465.21L508 376.45Z" />
             </g>
         </svg>
     )
@@ -223,84 +223,6 @@ export function Reject(props: SVGProps<SVGSVGElement>) {
             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
             <path d="M18 6l-12 12" />
             <path d="M6 6l12 12" />
-        </svg>
-    )
-}
-
-export function Collection(props: SVGProps<SVGSVGElement>) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            {...props}
-        >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" />
-        </svg>
-    )
-}
-
-export function Document(props: SVGProps<SVGSVGElement>) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            {...props}
-        >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-            <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
-        </svg>
-    )
-}
-
-export function Global(props: SVGProps<SVGSVGElement>) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            {...props}
-        >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
-            <path d="M3.6 9h16.8" />
-            <path d="M3.6 15h16.8" />
-            <path d="M11.5 3a17 17 0 0 0 0 18" />
-            <path d="M12.5 3a17 17 0 0 1 0 18" />
-        </svg>
-    )
-}
-
-export function Block(props: SVGProps<SVGSVGElement>) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            {...props}
-        >
-            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M14 4a1 1 0 0 1 1 -1h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1l0 -5" />
-            <path d="M3 14h12a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h3a2 2 0 0 1 2 2v12" />
         </svg>
     )
 }

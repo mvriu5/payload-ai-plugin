@@ -50,6 +50,13 @@ const flushPromises = async () => {
     })
 }
 
+const setInputValue = (input: HTMLInputElement, value: string) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+
+    valueSetter?.call(input, value)
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+}
+
 describe("AIInput", () => {
     beforeEach(() => {
         mockUseConfig.mockReturnValue({ config: adminConfig })
@@ -108,12 +115,11 @@ describe("AIInput", () => {
         const { container } = render(<AIInput />)
         await flushPromises()
 
-        const input = container.querySelector<HTMLElement>('[role="textbox"]')
+        const input = container.querySelector<HTMLInputElement>('[aria-label="AIInput"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
 
         act(() => {
-            if (input) input.innerText = "Tell me about this"
-            input?.dispatchEvent(new InputEvent("input", { bubbles: true }))
+            if (input) setInputValue(input, "Tell me about this")
         })
 
         await act(async () => {
@@ -148,12 +154,11 @@ describe("AIInput", () => {
         const { container } = render(<AIInput />)
         await flushPromises()
 
-        const input = container.querySelector<HTMLElement>('[role="textbox"]')
+        const input = container.querySelector<HTMLInputElement>('[aria-label="AIInput"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
 
         act(() => {
-            if (input) input.innerText = "Hello"
-            input?.dispatchEvent(new InputEvent("input", { bubbles: true }))
+            if (input) setInputValue(input, "Hello")
         })
 
         await act(async () => {

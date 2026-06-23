@@ -11,7 +11,11 @@ import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 vi.mock("../../src/components/DiffDialog.js", () => ({
-    DiffDialog: ({ proposal }: { proposal: ActionProposal }) => <div role="dialog">Diff for {proposal.label}</div>,
+    DiffDialog: ({ proposal }: { proposal: ActionProposal }) => (
+        <dialog aria-label={`Diff for ${proposal.label}`} open>
+            Diff for {proposal.label}
+        </dialog>
+    ),
 }))
 
 const proposal: ActionProposal = mockSignedUpdatePostProposal
@@ -110,6 +114,6 @@ describe("ActionToast", () => {
                 method: "POST",
             })
         )
-        expect(container.querySelector('[role="dialog"]')?.textContent).toBe("Diff for Update Jupiter")
+        expect(container.querySelector("dialog")?.textContent).toBe("Diff for Update Jupiter")
     })
 })

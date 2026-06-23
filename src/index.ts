@@ -174,10 +174,12 @@ export const payloadAiPlugin =
         addAccountFields({ allowUserApiKeys, config })
 
         if (pluginOptions.disabled) return config
-        const mentionCollectionSlugs = config.collections
-            .filter((collection) => !isInternalCollection(collection.slug))
-            .filter((collection) => (collectionPermissions ? Boolean(collectionPermissions[collection.slug]?.read) : true))
-            .map((collection) => collection.slug)
+        const mentionCollectionSlugs = config.collections.flatMap((collection) => {
+            if (isInternalCollection(collection.slug)) return []
+            if (collectionPermissions && !collectionPermissions[collection.slug]?.read) return []
+
+            return [collection.slug]
+        })
 
         if (!config.endpoints) config.endpoints = []
         if (!config.admin) config.admin = {}

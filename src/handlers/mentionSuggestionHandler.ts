@@ -112,17 +112,18 @@ export const createMentionSuggestionHandler =
                 const localeCodes = query && hasLocalizedFields(collectionFields) ? getLocaleCodes(req) : []
                 const localesToSearch = localeCodes.length > 0 ? localeCodes : [null]
 
-                return localesToSearch.map(async (locale) => ({
-                    collection,
-                    result: await req.payload.find({
-                        collection: collection.slug as never,
-                        depth: 0,
-                        limit: query ? 100 : 10,
-                        ...(locale ? { locale } : {}),
-                        overrideAccess: false,
-                        req,
-                    }),
-                }))
+                return localesToSearch.map((locale) =>
+                    req.payload
+                        .find({
+                            collection: collection.slug as never,
+                            depth: 0,
+                            limit: query ? 100 : 10,
+                            ...(locale ? { locale } : {}),
+                            overrideAccess: false,
+                            req,
+                        })
+                        .then((result) => ({ collection, result }))
+                )
             })
         )
 

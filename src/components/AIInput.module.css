@@ -101,7 +101,7 @@
     background: transparent;
     border: 0;
     color: var(--theme-text);
-    display: block;
+    display: start;
     font: inherit;
     height: 84px;
     overflow-y: auto;
@@ -120,6 +120,7 @@
 }
 
 .chatInputSurface {
+    position: relative;
     background: var(--theme-input-bg);
     border: 1px solid var(--theme-elevation-150);
     box-sizing: border-box;

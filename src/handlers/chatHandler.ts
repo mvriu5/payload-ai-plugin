@@ -471,16 +471,26 @@ const getMissingCreateFields = ({
         }
 
         const missing: string[] = []
+        const localizedRequiredFields: typeof requiredFields = []
+        const sharedRequiredFields: typeof requiredFields = []
+
+        for (const field of requiredFields) {
+            if (field.localized) {
+                localizedRequiredFields.push(field)
+            } else {
+                sharedRequiredFields.push(field)
+            }
+        }
 
         for (const [locale, localeData] of locales) {
-            for (const field of requiredFields.filter((item) => item.localized)) {
+            for (const field of localizedRequiredFields) {
                 if (!hasValueAtPath(localeData, field.path)) {
                     missing.push(`${locale}:${field.path}`)
                 }
             }
         }
 
-        for (const field of requiredFields.filter((item) => !item.localized)) {
+        for (const field of sharedRequiredFields) {
             if (!hasValueAtPath(firstLocale[1], field.path)) {
                 missing.push(`${firstLocale[0]}:${field.path}`)
             }
@@ -491,7 +501,7 @@ const getMissingCreateFields = ({
 
     if (!data) return ["data is required"]
 
-    return requiredFields.filter((field) => !hasValueAtPath(data, field.path)).map((field) => field.path)
+    return requiredFields.flatMap((field) => (hasValueAtPath(data, field.path) ? [] : [field.path]))
 }
 
 const getProposalSummary = (proposal: ActionProposal) => ({
@@ -531,22 +541,29 @@ const getCollectionBlockTypes = (fields: readonly BlockFieldConfig[]): string[] 
     return [...blockTypes]
 }
 
+const regexSpecialCharactersPattern = /[.*+?^${}()|[\]\\]/g
+
 const getRequestedBlockTypes = ({ availableBlockTypes, mentions, prompt }: { availableBlockTypes: string[]; mentions?: ChatMention[]; prompt: string }) => {
     const requestedBlockTypes = new Set<string>()
     const normalizedPrompt = prompt.toLowerCase()
+    const availableBlockTypeSet = new Set(availableBlockTypes)
+    const blockTypesByNormalizedSlug = new Map(availableBlockTypes.map((blockType) => [blockType.toLowerCase(), blockType]))
+    const escapedBlockTypes = availableBlockTypes.map((blockType) => blockType.replace(regexSpecialCharactersPattern, "\\$&")).join("|")
+    const blockPattern = escapedBlockTypes ? new RegExp(`\\b(${escapedBlockTypes})\\b(?:\\s+block)?`, "gi") : null
 
     for (const mention of mentions || []) {
-        if (mention.type === "block" && mention.slug && availableBlockTypes.includes(mention.slug)) {
+        if (mention.type === "block" && mention.slug && availableBlockTypeSet.has(mention.slug)) {
             requestedBlockTypes.add(mention.slug)
         }
     }
 
-    for (const blockType of availableBlockTypes) {
-        const escapedBlockType = blockType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        const blockPattern = new RegExp(`\\b${escapedBlockType}\\b(?:\\s+block)?`, "i")
+    if (blockPattern) {
+        for (const match of normalizedPrompt.matchAll(blockPattern)) {
+            const blockType = match[1] ? blockTypesByNormalizedSlug.get(match[1].toLowerCase()) : null
 
-        if (blockPattern.test(normalizedPrompt)) {
-            requestedBlockTypes.add(blockType)
+            if (blockType) {
+                requestedBlockTypes.add(blockType)
+            }
         }
     }
 
@@ -564,6 +581,8 @@ const collectProposalBlockTypes = ({ data, fields }: { data: Record<string, unkn
             if (fieldValue === undefined || fieldValue === null) continue
 
             if (field.type === "blocks" && Array.isArray(fieldValue)) {
+                const blocksBySlug = new Map(field.blocks?.map((block) => [block.slug, block]))
+
                 for (const blockItem of fieldValue) {
                     if (!isRecord(blockItem)) continue
 
@@ -581,7 +600,7 @@ const collectProposalBlockTypes = ({ data, fields }: { data: Record<string, unkn
                     }
 
                     if (blockType) {
-                        const blockConfig = field.blocks?.find((candidate) => candidate.slug === blockType)
+                        const blockConfig = blocksBySlug.get(blockType)
                         if (blockConfig?.fields?.length) {
                             visitFields(blockConfig.fields as BlockFieldConfig[], blockItem)
                         }
@@ -705,6 +724,8 @@ const collectRelationshipTargets = ({
         }
 
         if (field.type === "blocks" && Array.isArray(fieldValue) && field.blocks?.length) {
+            const blocksBySlug = new Map(field.blocks.map((block) => [block.slug, block]))
+
             fieldValue.forEach((item, index) => {
                 if (!isRecord(item)) return
 
@@ -719,7 +740,7 @@ const collectRelationshipTargets = ({
 
                 if (!blockType) return
 
-                const blockConfig = field.blocks?.find((candidate) => candidate.slug === blockType)
+                const blockConfig = blocksBySlug.get(blockType)
                 if (!blockConfig?.fields?.length) return
 
                 targets.push(
@@ -837,11 +858,22 @@ const createCollectionAliasMap = (collections: Array<{ labels?: { plural?: unkno
 
 const getLikelyCollectionMatches = ({ aliasMap, prompt }: { aliasMap: Record<string, string>; prompt: string }) => {
     const normalizedPrompt = prompt.toLowerCase()
-    const matches = Object.entries(aliasMap)
-        .filter(([alias]) => normalizedPrompt.includes(alias))
-        .map(([, slug]) => slug)
+    const matches = new Set<string>()
+    const aliases = Object.keys(aliasMap).sort((a, b) => b.length - a.length)
+    const aliasPattern = aliases.length > 0 ? new RegExp(aliases.map((alias) => alias.replace(regexSpecialCharactersPattern, "\\$&")).join("|"), "g") : null
 
-    return [...new Set(matches)]
+    if (!aliasPattern) return []
+
+    for (const match of normalizedPrompt.matchAll(aliasPattern)) {
+        const alias = match[0]
+        const slug = aliasMap[alias]
+
+        if (slug) {
+            matches.add(slug)
+        }
+    }
+
+    return [...matches]
 }
 
 const hasWriteIntent = (prompt: string) => {
@@ -888,9 +920,14 @@ export const createChatHandler =
         const prompt = body?.prompt?.trim()
         if (!prompt) return Response.json({ error: "Prompt is required" }, { status: 400 })
 
-        const selectedLocales = (
-            body?.mentions?.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []
-        ).filter((locale, index, array) => array.indexOf(locale) === index)
+        const selectedLocales: string[] = []
+        const selectedLocaleSet = new Set<string>()
+        for (const mention of body?.mentions || []) {
+            if (mention.type !== "locale" || !mention.slug || selectedLocaleSet.has(mention.slug)) continue
+
+            selectedLocaleSet.add(mention.slug)
+            selectedLocales.push(mention.slug)
+        }
         const activeLocale = selectedLocales.at(-1)
         const mentionSummary = getMentionSummary(body?.mentions)
 
@@ -1016,8 +1053,12 @@ export const createChatHandler =
                 return signedProposal
             }
             const collectionSlugs = getAllowedCollectionSlugs(req, options.collections)
-            const globalSlugs = req.payload.config.globals?.map((global) => global.slug) || []
-            const allowedCollections = req.payload.config.collections.filter((collection) => collectionSlugs.includes(collection.slug))
+            const collectionSlugSet = new Set(collectionSlugs)
+            const globalConfigs = req.payload.config.globals || []
+            const globalSlugs = globalConfigs.map((global) => global.slug)
+            const globalConfigsBySlug = new Map(globalConfigs.map((global) => [global.slug, global]))
+            const allowedCollections = req.payload.config.collections.filter((collection) => collectionSlugSet.has(collection.slug))
+            const allowedCollectionsBySlug = new Map(allowedCollections.map((collection) => [collection.slug, collection]))
 
             if (collectionSlugs.length === 0) {
                 logHandlerEvent(req, "warn", {
@@ -1034,12 +1075,12 @@ export const createChatHandler =
                         parent: collection.slug,
                     })
                 ),
-                ...(req.payload.config.globals?.flatMap((global) =>
+                ...globalConfigs.flatMap((global) =>
                     collectBlocks({
                         fields: global.fields as FieldConfig[],
                         parent: global.slug,
                     })
-                ) || []),
+                ),
             ]
             const mentionContext = await getMentionContext({
                 blockContexts,
@@ -1049,15 +1090,17 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
-            const mentionedCollectionSlugs = (
-                body?.mentions
-                    ?.flatMap((mention) => {
-                        if (mention.type === "collection" && mention.slug) return [mention.slug]
-                        if (mention.type === "doc" && mention.collection) return [mention.collection]
-                        return []
-                    })
-                    .filter((slug) => collectionSlugs.includes(slug)) || []
-            ).filter((slug, index, array) => array.indexOf(slug) === index)
+            const mentionedCollectionSlugs: string[] = []
+            const mentionedCollectionSlugSet = new Set<string>()
+            for (const mention of body?.mentions || []) {
+                const slug =
+                    mention.type === "collection" && mention.slug ? mention.slug : mention.type === "doc" && mention.collection ? mention.collection : null
+
+                if (!slug || !collectionSlugSet.has(slug) || mentionedCollectionSlugSet.has(slug)) continue
+
+                mentionedCollectionSlugSet.add(slug)
+                mentionedCollectionSlugs.push(slug)
+            }
             const createRequiredFieldsByCollection = Object.fromEntries(
                 allowedCollections.map((collection) => [
                     collection.slug,
@@ -1085,9 +1128,7 @@ export const createChatHandler =
                     : mentionedCollectionSlugs.length === 0 && likelyCollectionMatches.length === 1
                       ? likelyCollectionMatches[0]
                       : undefined
-            const inferredCollectionConfig = inferredCollectionSlug
-                ? allowedCollections.find((collection) => collection.slug === inferredCollectionSlug)
-                : undefined
+            const inferredCollectionConfig = inferredCollectionSlug ? allowedCollectionsBySlug.get(inferredCollectionSlug) : undefined
             if (inferredCollectionConfig && !mentionContext.some((item) => item.type === "collection" && item.slug === inferredCollectionConfig.slug)) {
                 mentionContext.push({
                     ...describeCollectionLikeConfig({
@@ -1155,7 +1196,7 @@ export const createChatHandler =
                     }),
                     execute: async ({ slug }: OptionalSlugInput) => {
                         if (slug) {
-                            const collection = allowedCollections.find((item) => item.slug === slug)
+                            const collection = allowedCollectionsBySlug.get(slug)
                             if (!collection) {
                                 return createToolError({
                                     message: `Unknown collection: ${slug}`,
@@ -1186,7 +1227,7 @@ export const createChatHandler =
                         slug: z.string().min(1),
                     }),
                     execute: async ({ slug }: SlugInput) => {
-                        const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
+                        const globalConfig = globalConfigsBySlug.get(slug)
                         if (!globalConfig) {
                             return createToolError({
                                 message: `Unknown global: ${slug}`,
@@ -1210,10 +1251,8 @@ export const createChatHandler =
                         slug: z.string().optional(),
                     }),
                     execute: async ({ slug }: OptionalSlugInput) => {
-                        const globals = req.payload.config.globals || []
-
                         if (slug) {
-                            const global = globals.find((item) => item.slug === slug)
+                            const global = globalConfigsBySlug.get(slug)
                             if (!global) {
                                 return createToolError({
                                     message: `Unknown global: ${slug}`,
@@ -1228,7 +1267,7 @@ export const createChatHandler =
                             })
                         }
 
-                        return globals.map((global) =>
+                        return globalConfigs.map((global) =>
                             describeCollectionLikeSummary({
                                 config: global as never,
                                 type: "global",
@@ -1257,7 +1296,7 @@ export const createChatHandler =
                     }: CollectionInput & Partial<DataInput> & LabelInput & { localizedData?: LocalizedDataInput }) => {
                         const permissionError = getDisallowedCollectionActionError(collection, "create")
                         if (permissionError) return permissionError
-                        const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
@@ -1429,7 +1468,7 @@ export const createChatHandler =
                     }: CollectionInput & Partial<DataInput> & DocIDInput & LabelInput & { localizedData?: LocalizedDataInput }) => {
                         const permissionError = getDisallowedCollectionActionError(collection, "update")
                         if (permissionError) return permissionError
-                        const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: collectionConfig as ProposalCollectionConfig | undefined,
@@ -1516,7 +1555,7 @@ export const createChatHandler =
                         localizedData,
                         slug,
                     }: Partial<DataInput> & LabelInput & SlugInput & { localizedData?: LocalizedDataInput }) => {
-                        const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
+                        const globalConfig = globalConfigsBySlug.get(slug)
                         if (!globalConfig) {
                             return createToolError({
                                 message: `Unknown global: ${slug}`,
@@ -1566,12 +1605,13 @@ export const createChatHandler =
                         query: z.string().optional(),
                     }),
                     execute: async ({ collection, limit, query }: CollectionInput & { limit: number; query?: string }) => {
-                        const collectionConfig = allowedCollections.find((item) => item.slug === collection)
+                        const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const searchableFields =
-                            collectionConfig?.fields
-                                .filter((field) => "name" in field && ["email", "text", "textarea"].includes(field.type))
-                                .map((field) => ("name" in field ? field.name : null))
-                                .filter(Boolean) || []
+                            collectionConfig?.fields.flatMap((field) => {
+                                if (!("name" in field) || !["email", "text", "textarea"].includes(field.type) || !field.name) return []
+
+                                return [field.name]
+                            }) || []
 
                         const where =
                             query && searchableFields.length > 0

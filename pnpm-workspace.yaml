@@ -2,8 +2,6 @@ packages:
     - "src/**"
     - "dev/**"
     - "tests/**"
-minimumReleaseAge: 10080
-trustPolicy: "no-downgrade"
 allowBuilds:
     "@swc/core": false
     esbuild: false

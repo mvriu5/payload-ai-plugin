@@ -139,28 +139,30 @@ const getLocaleConfigs = (req: Parameters<PayloadHandler>[0]): LocaleConfig[] =>
 const getSerializableOptions = (options: unknown) => {
     if (!Array.isArray(options)) return undefined
 
-    const serializedOptions = options
-        .map((option) => {
-            if (typeof option === "string") {
-                return {
+    const serializedOptions = options.flatMap((option) => {
+        if (typeof option === "string") {
+            return [
+                {
                     label: option,
                     value: option,
-                }
-            }
+                },
+            ]
+        }
 
-            if (!isRecord(option)) return null
+        if (!isRecord(option)) return []
 
-            const label = "label" in option ? getSerializableLabel(option.label) : undefined
-            const value = "value" in option && typeof option.value === "string" ? option.value : undefined
+        const label = "label" in option ? getSerializableLabel(option.label) : undefined
+        const value = "value" in option && typeof option.value === "string" ? option.value : undefined
 
-            if (!label && !value) return null
+        if (!label && !value) return []
 
-            return {
+        return [
+            {
                 ...(label ? { label } : {}),
                 ...(value ? { value } : {}),
-            }
-        })
-        .filter(Boolean)
+            },
+        ]
+    })
 
     return serializedOptions.length > 0 ? serializedOptions : undefined
 }
@@ -428,17 +430,33 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
     const context: Record<string, unknown>[] = []
     const seen = new Set<string>()
     const localeConfigs = getLocaleConfigs(req)
-    const selectedLocales = (mentions.filter((mention) => mention.type === "locale" && mention.slug).map((mention) => mention.slug as string) || []).filter(
-        (locale, index, array) => array.indexOf(locale) === index
-    )
+    const localeConfigsByCode = new Map(localeConfigs.map((locale) => [locale.code, locale]))
+    const collectionSlugSet = new Set(collectionSlugs)
+    const globalSlugSet = new Set(globalSlugs)
+    const collectionConfigsBySlug = new Map(req.payload.config.collections.map((collection) => [collection.slug, collection]))
+    const globalConfigsBySlug = new Map(req.payload.config.globals?.map((global) => [global.slug, global]))
+    const blockContextsBySlug = new Map<string, typeof blockContexts>()
+    for (const block of blockContexts) {
+        const blocks = blockContextsBySlug.get(block.slug) || []
+        blocks.push(block)
+        blockContextsBySlug.set(block.slug, blocks)
+    }
+    const selectedLocales: string[] = []
+    const selectedLocaleSet = new Set<string>()
+    for (const mention of mentions) {
+        if (mention.type !== "locale" || !mention.slug || selectedLocaleSet.has(mention.slug)) continue
+
+        selectedLocaleSet.add(mention.slug)
+        selectedLocales.push(mention.slug)
+    }
     const activeLocale = selectedLocales.at(-1)
     const mentionDocResults = await Promise.all(
         mentions.slice(0, 8).map(async (mention) => {
             if (mention.type === "global" && mention.slug) {
                 const slug = mention.slug
-                if (!globalSlugs.includes(slug)) return null
+                if (!globalSlugSet.has(slug)) return null
 
-                const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
+                const globalConfig = globalConfigsBySlug.get(slug)
                 if (!globalConfig) return null
 
                 return {
@@ -457,7 +475,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
 
             if (mention.type === "doc" && mention.collection && mention.id) {
                 const slug = mention.collection
-                if (isInternalCollection(slug) || !collectionSlugs.includes(slug)) return null
+                if (isInternalCollection(slug) || !collectionSlugSet.has(slug)) return null
 
                 return {
                     doc: await req.payload
@@ -494,7 +512,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
 
     for (const mention of mentions.slice(0, 8)) {
         if (mention.type === "locale" && mention.slug) {
-            const locale = localeConfigs.find((item) => item.code === mention.slug)
+            const locale = localeConfigsByCode.get(mention.slug)
             if (!locale) continue
 
             const key = `locale:${locale.code}`
@@ -511,9 +529,9 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
             const slug = mention.slug
             const key = `collection:${slug}`
 
-            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugs.includes(slug)) continue
+            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugSet.has(slug)) continue
 
-            const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === slug)
+            const collectionConfig = collectionConfigsBySlug.get(slug)
             if (!collectionConfig) continue
 
             seen.add(key)
@@ -530,9 +548,9 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
             const slug = mention.slug
             const key = `global:${slug}`
 
-            if (seen.has(key) || !globalSlugs.includes(slug)) continue
+            if (seen.has(key) || !globalSlugSet.has(slug)) continue
 
-            const globalConfig = req.payload.config.globals?.find((global) => global.slug === slug)
+            const globalConfig = globalConfigsBySlug.get(slug)
             if (!globalConfig) continue
 
             const globalDoc = docsByMentionKey.get(key) ?? null
@@ -548,7 +566,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
         }
 
         if (mention.type === "block" && mention.slug) {
-            const matchingBlocks = blockContexts.filter((block) => block.slug === mention.slug && (!mention.parent || block.parent === mention.parent))
+            const matchingBlocks = (blockContextsBySlug.get(mention.slug) || []).filter((block) => !mention.parent || block.parent === mention.parent)
 
             for (const block of matchingBlocks) {
                 const key = `block:${block.parent}:${block.slug}`
@@ -567,7 +585,7 @@ export const getMentionContext = async ({ blockContexts, collectionSlugs, collec
             const slug = mention.collection
             const key = `doc:${slug}:${mention.id}`
 
-            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugs.includes(slug)) continue
+            if (seen.has(key) || isInternalCollection(slug) || !collectionSlugSet.has(slug)) continue
 
             const doc = docsByMentionKey.get(key)
 

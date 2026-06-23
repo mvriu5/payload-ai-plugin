@@ -2,7 +2,7 @@
 
 import { useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 
 import { getResolvedAIModelConfig, type AIProvider, type AIModelConfig } from "../ai/providerOptions.js"
 import { getSerializableLabel, isInternalCollection } from "../payload/shared.js"
@@ -371,10 +371,71 @@ const createBadgePrefix = (suggestion: MentionOption) => {
     return prefix
 }
 
+const getTextBeforeCaret = (element: HTMLElement) => {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return ""
+
+    const range = selection.getRangeAt(0)
+    const clonedRange = range.cloneRange()
+
+    clonedRange.selectNodeContents(element)
+    clonedRange.setEnd(range.endContainer, range.endOffset)
+
+    return clonedRange.toString()
+}
+
+const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    let currentOffset = 0
+    let node = walker.nextNode()
+
+    while (node) {
+        const nextOffset = currentOffset + (node.textContent?.length || 0)
+
+        if (offset <= nextOffset) {
+            return {
+                node,
+                offset: offset - currentOffset,
+            }
+        }
+
+        currentOffset = nextOffset
+        node = walker.nextNode()
+    }
+
+    const textNode = document.createTextNode("")
+    element.append(textNode)
+
+    return {
+        node: textNode,
+        offset: 0,
+    }
+}
+
+const replaceTextRangeWithBadge = ({ badge, editor, end, start }: { badge: HTMLSpanElement; editor: HTMLElement; end: number; start: number }) => {
+    const startPosition = getTextNodeAtOffset(editor, start)
+    const endPosition = getTextNodeAtOffset(editor, end)
+    const range = document.createRange()
+    const trailingSpace = document.createTextNode(" ")
+
+    range.setStart(startPosition.node, startPosition.offset)
+    range.setEnd(endPosition.node, endPosition.offset)
+    range.deleteContents()
+    range.insertNode(trailingSpace)
+    range.insertNode(badge)
+
+    const selection = window.getSelection()
+    const caretRange = document.createRange()
+
+    caretRange.setStartAfter(trailingSpace)
+    caretRange.collapse(true)
+    selection?.removeAllRanges()
+    selection?.addRange(caretRange)
+}
+
 const AIInput = () => {
     const { config } = useConfig()
     const editorRef = useRef<HTMLDivElement>(null)
-    const mentionPopoverRef = useRef<HTMLDivElement>(null)
     const [prompt, setPrompt] = useState("")
     const configuredModels = (config.admin?.custom as PayloadAIAdminCustom | undefined)?.payloadAiPlugin?.models
     const aiModelConfig = useMemo(() => getResolvedAIModelConfig(configuredModels), [configuredModels])
@@ -392,7 +453,7 @@ const AIInput = () => {
         left: number
         top: number
     }>(null)
-    const [mentions, setMentions] = useState<Mention[]>([])
+    const mentionsRef = useRef<Mention[]>([])
     const [appliedProposalIndexes, setAppliedProposalIndexes] = useState<number[]>([])
     const [response, setResponse] = useState("")
     const [tokenUsage, setTokenUsage] = useState<null | {
@@ -400,7 +461,6 @@ const AIInput = () => {
         outputTokens?: number
         totalTokens?: number
     }>(null)
-    const [chatDebugInfo, setChatDebugInfo] = useState<ChatDebugInfo | null>(null)
     const [applyDebugInfo, setApplyDebugInfo] = useState<ApplyDebugInfo | null>(null)
     const [error, setError] = useState("")
     const [proposals, setProposals] = useState<ActionProposal[]>([])
@@ -418,7 +478,7 @@ const AIInput = () => {
             }),
         [config.routes.api]
     )
-    const allChangesURL = useMemo(() => `${config.routes.admin || "/admin"}/collections/${auditLogCollectionSlug}`, [config.routes.admin])
+    const allChangesURL = `${config.routes.admin || "/admin"}/collections/${auditLogCollectionSlug}`
     const loadRecentChanges = useCallback(async () => {
         const res = await fetch(recentChangesEndpoint)
         const result = (await res.json().catch(() => null)) as {
@@ -445,14 +505,17 @@ const AIInput = () => {
         return () => window.clearTimeout(timeout)
     }, [error, isLoading, proposals.length, response])
 
-    const collections: MentionOption[] = config.collections
-        .filter((collection) => !isInternalCollection(collection.slug))
-        .filter((collection) => isCollectionMentionEnabled(collection.slug))
-        .map((collection) => ({
-            label: getSerializableLabel(collection.labels?.singular, collection.slug),
-            slug: collection.slug,
-            type: "collection",
-        }))
+    const collections: MentionOption[] = config.collections.flatMap((collection) => {
+        if (isInternalCollection(collection.slug) || !isCollectionMentionEnabled(collection.slug)) return []
+
+        return [
+            {
+                label: getSerializableLabel(collection.labels?.singular, collection.slug),
+                slug: collection.slug,
+                type: "collection" as const,
+            },
+        ]
+    })
     const globals: MentionOption[] =
         config.globals?.map((global) => ({
             label: getSerializableLabel(global.label, global.slug),
@@ -489,14 +552,14 @@ const AIInput = () => {
         ]
     })
     const blocks: MentionOption[] = [
-        ...config.collections
-            .filter((collection) => isCollectionMentionEnabled(collection.slug))
-            .flatMap((collection) =>
-                collectBlockOptions({
-                    fields: collection.fields as FieldWithBlocks[],
-                    parent: collection.slug,
-                })
-            ),
+        ...config.collections.flatMap((collection) => {
+            if (!isCollectionMentionEnabled(collection.slug)) return []
+
+            return collectBlockOptions({
+                fields: collection.fields as FieldWithBlocks[],
+                parent: collection.slug,
+            })
+        }),
         ...(config.globals?.flatMap((global) =>
             collectBlockOptions({
                 fields: global.fields as FieldWithBlocks[],
@@ -521,56 +584,13 @@ const AIInput = () => {
         mentionRange,
     })
     const mentionSuggestions = [...filteredMentionOptions, ...documentSuggestions]
-    const shouldShowChatDebugInfo = Boolean(chatDebugInfo) && (Boolean(error) || chatDebugInfo?.reason !== "proposal_created")
     const shouldShowApplyDebugInfo = Boolean(applyDebugInfo) && Boolean(error)
     const actionToastDescription = response
 
-    const getTextBeforeCaret = (element: HTMLElement) => {
-        const selection = window.getSelection()
-        if (!selection || selection.rangeCount === 0) return ""
-
-        const range = selection.getRangeAt(0)
-        const clonedRange = range.cloneRange()
-
-        clonedRange.selectNodeContents(element)
-        clonedRange.setEnd(range.endContainer, range.endOffset)
-
-        return clonedRange.toString()
-    }
-
-    const getTextNodeAtOffset = (element: HTMLElement, offset: number) => {
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
-        let currentOffset = 0
-        let node = walker.nextNode()
-
-        while (node) {
-            const nextOffset = currentOffset + (node.textContent?.length || 0)
-
-            if (offset <= nextOffset) {
-                return {
-                    node,
-                    offset: offset - currentOffset,
-                }
-            }
-
-            currentOffset = nextOffset
-            node = walker.nextNode()
-        }
-
-        const textNode = document.createTextNode("")
-        element.append(textNode)
-
-        return {
-            node: textNode,
-            offset: 0,
-        }
-    }
-
     const updateMentionPopoverPosition = useCallback((range: { end: number; start: number } | null) => {
         const editor = editorRef.current
-        const popover = mentionPopoverRef.current
 
-        if (!editor || !popover || !range) {
+        if (!editor || !range) {
             setMentionPopoverPosition(null)
             return
         }
@@ -585,7 +605,7 @@ const AIInput = () => {
         const anchorRect = anchorRange.getBoundingClientRect()
         const fallbackLeft = Math.max(0, anchorRect.left - editorRect.left + 12)
         const fallbackTop = Math.max(0, anchorRect.bottom - editorRect.top + 20)
-        const popoverWidth = popover.offsetWidth || 260
+        const popoverWidth = editorRef.current?.offsetWidth || 260
         const maxLeft = Math.max(0, editor.clientWidth - popoverWidth)
 
         setMentionPopoverPosition({
@@ -593,27 +613,6 @@ const AIInput = () => {
             top: fallbackTop,
         })
     }, [])
-
-    const replaceTextRangeWithBadge = ({ badge, editor, end, start }: { badge: HTMLSpanElement; editor: HTMLElement; end: number; start: number }) => {
-        const startPosition = getTextNodeAtOffset(editor, start)
-        const endPosition = getTextNodeAtOffset(editor, end)
-        const range = document.createRange()
-        const trailingSpace = document.createTextNode(" ")
-
-        range.setStart(startPosition.node, startPosition.offset)
-        range.setEnd(endPosition.node, endPosition.offset)
-        range.deleteContents()
-        range.insertNode(trailingSpace)
-        range.insertNode(badge)
-
-        const selection = window.getSelection()
-        const caretRange = document.createRange()
-
-        caretRange.setStartAfter(trailingSpace)
-        caretRange.collapse(true)
-        selection?.removeAllRanges()
-        selection?.addRange(caretRange)
-    }
 
     const updateMentionState = (valueBeforeCaret: string) => {
         const activeMention = getActiveMentionRange(valueBeforeCaret)
@@ -627,21 +626,17 @@ const AIInput = () => {
 
         setMentionQuery(activeMention.query)
         setMentionRange(activeMention.range)
+        updateMentionPopoverPosition(activeMention.range)
     }
 
-    useEffect(() => {
-        if (!mentionRange) {
-            setMentionPopoverPosition(null)
-            return
-        }
-
-        updateMentionPopoverPosition(mentionRange)
-    }, [mentionRange, mentionSuggestions.length, updateMentionPopoverPosition])
+    const updateMentionPopoverPositionEvent = useEffectEvent((range: { end: number; start: number }) => {
+        updateMentionPopoverPosition(range)
+    })
 
     useEffect(() => {
         if (!mentionRange) return
 
-        const updatePosition = () => updateMentionPopoverPosition(mentionRange)
+        const updatePosition = () => updateMentionPopoverPositionEvent(mentionRange)
 
         window.addEventListener("resize", updatePosition)
         window.addEventListener("scroll", updatePosition, true)
@@ -650,11 +645,11 @@ const AIInput = () => {
             window.removeEventListener("resize", updatePosition)
             window.removeEventListener("scroll", updatePosition, true)
         }
-    }, [mentionRange, updateMentionPopoverPosition])
+    }, [mentionRange])
 
     const clearInput = () => {
         setPrompt("")
-        setMentions([])
+        mentionsRef.current = []
         if (editorRef.current) editorRef.current.textContent = ""
     }
 
@@ -703,20 +698,18 @@ const AIInput = () => {
         editor.focus()
 
         setPrompt(`${beforeMention}${badgeText} ${afterMention}`)
-        setMentions((currentMentions) => {
-            const mentionExists = currentMentions.some(
-                (mention) =>
-                    mention.type === suggestion.type &&
-                    mention.slug === suggestion.slug &&
-                    mention.parent === suggestion.parent &&
-                    mention.collection === suggestion.collection &&
-                    mention.id === suggestion.id
-            )
+        const mentionExists = mentionsRef.current.some(
+            (mention) =>
+                mention.type === suggestion.type &&
+                mention.slug === suggestion.slug &&
+                mention.parent === suggestion.parent &&
+                mention.collection === suggestion.collection &&
+                mention.id === suggestion.id
+        )
 
-            if (mentionExists) return currentMentions
-
-            return [...currentMentions, suggestion]
-        })
+        if (!mentionExists) {
+            mentionsRef.current = [...mentionsRef.current, suggestion]
+        }
         setMentionQuery("")
         setMentionRange(null)
         setMentionPopoverPosition(null)
@@ -733,7 +726,6 @@ const AIInput = () => {
         setProposals([])
         setResponse("")
         setTokenUsage(null)
-        setChatDebugInfo(null)
         setApplyDebugInfo(null)
 
         try {
@@ -744,7 +736,7 @@ const AIInput = () => {
                 }),
                 {
                     body: JSON.stringify({
-                        mentions,
+                        mentions: mentionsRef.current,
                         model: selectedModel,
                         prompt: trimmedPrompt,
                     }),
@@ -805,7 +797,6 @@ const AIInput = () => {
 
                     if (event.event === "debug") {
                         finalDebugInfo = event.data
-                        setChatDebugInfo(event.data)
 
                         if ((event.data.proposalCount || 0) === 0 && !receivedVisibleText) {
                             // Show specific tool validation message if present, otherwise a generic no‑action message
@@ -839,7 +830,6 @@ const AIInput = () => {
             }
             if (finalEvent?.event === "debug") {
                 finalDebugInfo = finalEvent.data
-                setChatDebugInfo(finalEvent.data)
                 if ((finalEvent.data.proposalCount || 0) === 0 && !receivedVisibleText) {
                     // Same logic as above for the final event
                     if (finalEvent.data.reason === "tool_validation_failed") {
@@ -923,7 +913,6 @@ const AIInput = () => {
             setProposals([])
             setResponse("")
             setTokenUsage(null)
-            setChatDebugInfo(null)
             setApplyDebugInfo(null)
             if (result.change) {
                 setAppliedChanges((current) => [result.change as AppliedChange, ...current].slice(0, 10))
@@ -948,24 +937,28 @@ const AIInput = () => {
                 </div>
                 <div className={styles.chatInputRow}>
                     <div className={styles.chatInputSurface}>
+                        <label htmlFor="ai-input" className={styles.inputLabel}>
+                            Ask AI
+                        </label>
                         <div
+                            id="ai-input"
                             className={styles.chatInput}
-                            contentEditable
-                            tabIndex={0}
+                            role="textbox"
                             aria-label="AIInput"
+                            contentEditable
                             data-placeholder="Ask AI..."
                             onInput={(event) => {
-                                const value = event.currentTarget.innerText
-
+                                const value = (event.target as HTMLElement).innerText
                                 setPrompt(value)
                                 if (!value.trim()) {
-                                    setMentions([])
+                                    mentionsRef.current = []
                                 }
-                                updateMentionState(getTextBeforeCaret(event.currentTarget))
+                                // Update mention state using the element itself
+                                updateMentionState(getTextBeforeCaret(event.target as HTMLElement))
                             }}
                             onKeyDown={(event) => {
                                 if (event.key === "ArrowDown" && mentionRange && mentionSuggestions.length > 0) {
-                                    const firstOption = mentionPopoverRef.current?.querySelector<HTMLButtonElement>("button")
+                                    const firstOption = editorRef.current?.querySelector<HTMLButtonElement>("button")
                                     if (firstOption) {
                                         event.preventDefault()
                                         firstOption.focus()
@@ -977,14 +970,11 @@ const AIInput = () => {
                                     void handleSubmit()
                                 }
                             }}
-                            ref={editorRef}
-                            role="textbox"
-                            suppressContentEditableWarning
                         />
                     </div>
                     {mentionRange && (
                         <MentionPopover
-                            containerRef={mentionPopoverRef}
+                            containerRef={editorRef}
                             onSelect={insertMention}
                             style={
                                 mentionPopoverPosition
@@ -1052,7 +1042,6 @@ const AIInput = () => {
                         setProposals([])
                         setResponse("")
                         setTokenUsage(null)
-                        setChatDebugInfo(null)
                         setApplyDebugInfo(null)
                         clearInput()
                     }}

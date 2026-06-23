@@ -15,7 +15,7 @@ export type ResolvedCollectionPermissionMap = Partial<Record<string, Record<Coll
 const allActions: CollectionAction[] = ["create", "delete", "read", "update"]
 
 const getKnownCollectionSlugs = (req: Parameters<PayloadHandler>[0]) => {
-    return req.payload.config.collections.map((collection) => collection.slug).filter((slug) => !isInternalCollection(slug))
+    return req.payload.config.collections.flatMap((collection) => (isInternalCollection(collection.slug) ? [] : [collection.slug]))
 }
 
 export const resolveCollectionPermissions = (collections?: CollectionPermissionMap): ResolvedCollectionPermissionMap | undefined => {

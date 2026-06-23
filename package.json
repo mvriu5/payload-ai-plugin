@@ -63,7 +63,7 @@
         "test:e2e:headed": "playwright test --headed",
         "test:handlers": "vitest run tests/handlers",
         "test:unit": "vitest run tests/unit",
-        "setup:hooks": "git config core.hooksPath .githooks"
+        "knip": "knip"
     },
     "devDependencies": {
         "@ai-sdk/anthropic": "^3.0.81",
@@ -71,11 +71,11 @@
         "@ai-sdk/mistral": "^3.0.37",
         "@ai-sdk/openai": "^3.0.67",
         "@openrouter/ai-sdk-provider": "^2.9.1",
-        "@playwright/test": "^1.56.1",
         "@payloadcms/db-postgres": "3.84.1",
         "@payloadcms/next": "3.84.1",
         "@payloadcms/richtext-lexical": "3.84.1",
         "@payloadcms/ui": "3.84.1",
+        "@playwright/test": "^1.56.1",
         "@swc/cli": "0.8.1",
         "@types/node": "25.9.3",
         "@types/react": "19.2.17",
