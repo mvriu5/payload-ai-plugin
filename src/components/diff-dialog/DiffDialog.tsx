@@ -163,7 +163,6 @@ const buildDisplayRows = (rows: DiffRow[], expandedGroups: Set<string>, groupPre
             count: count - contextRows * 2,
             expanded: isExpanded,
             id: groupID,
-            path: getRowPath(rows[start + contextRows]),
             type: "collapsed",
         })
 
@@ -201,8 +200,8 @@ const getDiffRows = (before: string, after: string) => {
     while (beforeIndex < beforeLines.length && afterIndex < afterLines.length) {
         if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
             rows.push({
-                after: createLine({ changed: false, path: afterLinePaths[afterIndex], text: afterLines[afterIndex] }),
-                before: createLine({ changed: false, path: beforeLinePaths[beforeIndex], text: beforeLines[beforeIndex] }),
+                after: createLine({ changed: false, text: afterLines[afterIndex] }),
+                before: createLine({ changed: false, text: beforeLines[beforeIndex] }),
             })
             beforeIndex += 1
             afterIndex += 1
@@ -431,6 +430,10 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
 
                                                 const row = displayRow.row
 
+                                                const showBeforePath = row.before.changed && row.before.path && !row.after.placeholder
+
+                                                const showAfterPath = row.after.changed && row.after.path && !row.before.placeholder
+
                                                 return (
                                                     <div className={styles.diffRow} key={`${section.id}-row-${displayRow.index}`}>
                                                         <span
@@ -442,9 +445,7 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                                                                 .filter(Boolean)
                                                                 .join(" ")}
                                                         >
-                                                            {row.before.changed && row.before.path && (
-                                                                <span className={styles.diffPathBadge}>{row.before.path}</span>
-                                                            )}
+                                                            {showBeforePath && <span className={styles.diffPathBadge}>{row.before.path}</span>}
                                                             <span className={styles.diffLineContent}>{row.before.text || " "}</span>
                                                         </span>
                                                         <span
@@ -456,9 +457,7 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                                                                 .filter(Boolean)
                                                                 .join(" ")}
                                                         >
-                                                            {row.after.changed && row.after.path && (
-                                                                <span className={styles.diffPathBadge}>{row.after.path}</span>
-                                                            )}
+                                                            {showAfterPath && <span className={styles.diffPathBadge}>{row.after.path}</span>}
                                                             <span className={styles.diffLineContent}>{row.after.text || " "}</span>
                                                         </span>
                                                     </div>

@@ -9,7 +9,7 @@ export type MentionOption = {
     label: string
     parent?: string
     slug: string
-    type: "block" | "collection" | "doc" | "global" | "locale"
+    type: "collection" | "doc" | "global" | "locale"
 }
 
 type MentionPopoverProps = {
@@ -31,10 +31,7 @@ const suggestionGroups: { label: string; type: MentionOption["type"] }[] = [
         label: "Globals",
         type: "global",
     },
-    {
-        label: "Blocks",
-        type: "block",
-    },
+
     {
         label: "Locales",
         type: "locale",
@@ -44,7 +41,7 @@ const suggestionGroups: { label: string; type: MentionOption["type"] }[] = [
 const getSuggestionTitle = (suggestion: MentionOption) => {
     if (suggestion.type === "collection") return `@${suggestion.slug}`
     if (suggestion.type === "global") return `@${suggestion.slug}`
-    if (suggestion.type === "block") return `@${suggestion.slug}`
+
     if (suggestion.type === "locale") return `@${suggestion.slug}`
     return suggestion.label
 }
@@ -52,7 +49,7 @@ const getSuggestionTitle = (suggestion: MentionOption) => {
 const getSuggestionLabel = (suggestion: MentionOption) => {
     if (suggestion.type === "collection") return suggestion.label
     if (suggestion.type === "global") return "global"
-    if (suggestion.type === "block") return `${suggestion.parent} block`
+
     if (suggestion.type === "locale") return suggestion.isDefault ? "default locale" : "locale"
     return `${suggestion.collection} item`
 }

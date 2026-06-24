@@ -89,7 +89,7 @@
 
 .detailValue {
     color: var(--theme-text);
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.4;
     min-width: 0;
     overflow: hidden;

@@ -1,3 +1,5 @@
+import { MentionOption } from "../../src/components/mention-popover/MentionPopover"
+
 export const postJupiter = {
     id: "4",
     slug: "jupiter",
@@ -113,15 +115,9 @@ export const mentionOptions = [
     mentionOptionJupiter,
     mentionOptionSiteSettings,
     {
-        label: "Hero",
-        parent: "posts",
-        slug: "hero",
-        type: "block" as const,
-    },
-    {
         isDefault: true,
         label: "English",
         slug: "en",
         type: "locale" as const,
     },
-]
+] as MentionOption[]

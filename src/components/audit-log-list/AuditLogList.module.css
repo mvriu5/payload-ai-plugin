@@ -1,9 +1,8 @@
 .recentChanges {
-    max-width: 50vw;
-    width: 100%;
+    max-width: 1280px;
     border: 1px solid var(--theme-elevation-150);
     border-radius: 8px;
-    display: flex;
+    display: start;
     flex-direction: column;
     min-height: 0;
     padding: 16px;

@@ -14,7 +14,7 @@ export type Mention = {
     label: string
     parent?: string
     slug: string
-    type: "block" | "collection" | "doc" | "global" | "locale"
+    type: "collection" | "doc" | "global" | "locale"
 }
 
 type MentionRange = {
@@ -75,32 +75,13 @@ const collectBlockOptions = ({ fields, parent }: { fields: FieldWithBlocks[]; pa
     const options: MentionOption[] = []
 
     for (const field of fields) {
-        if (field.type === "blocks" && field.blocks) {
-            for (const block of field.blocks) {
-                options.push({
-                    label: getSerializableLabel(block.labels?.singular, block.slug),
-                    parent,
-                    slug: block.slug,
-                    type: "block",
-                })
-
-                options.push(
-                    ...collectBlockOptions({
-                        fields: block.fields || [],
-                        parent: `${parent}/${block.slug}`,
-                    })
-                )
-            }
-        }
-
-        if (field.fields) {
-            options.push(
-                ...collectBlockOptions({
-                    fields: field.fields,
-                    parent,
-                })
-            )
-        }
+        if (!field.fields) continue
+        options.push(
+            ...collectBlockOptions({
+                fields: field.fields,
+                parent,
+            })
+        )
     }
 
     return options
@@ -275,21 +256,28 @@ export const useMentions = ({ apiRoute, config, defaultLocale, editorRef, isColl
             }
 
             const startPosition = getTextNodeAtOffset(editor, range.start)
+
             const anchorRange = document.createRange()
-
             anchorRange.setStart(startPosition.node, startPosition.offset)
-            anchorRange.setEnd(startPosition.node, startPosition.offset)
+            anchorRange.collapse(true)
 
-            const editorRect = editor.getBoundingClientRect()
-            const anchorRect = anchorRange.getBoundingClientRect()
-            const fallbackLeft = Math.max(0, anchorRect.left - editorRect.left + 12)
-            const fallbackTop = Math.max(0, anchorRect.bottom - editorRect.top + 20)
-            const popoverWidth = editor.offsetWidth || 260
-            const maxLeft = Math.max(0, editor.clientWidth - popoverWidth)
+            const marker = document.createElement("span")
+            marker.textContent = "\u200b"
+
+            anchorRange.insertNode(marker)
+
+            const rect = anchorRange.getBoundingClientRect()
+
+            marker.remove()
+
+            if (rect.left === 0 && rect.top === 0) {
+                setMentionPopoverPosition(null)
+                return
+            }
 
             setMentionPopoverPosition({
-                left: Math.min(fallbackLeft, maxLeft),
-                top: fallbackTop,
+                left: rect.left,
+                top: rect.bottom + 4,
             })
         },
         [editorRef]

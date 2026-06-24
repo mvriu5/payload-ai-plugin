@@ -39,11 +39,6 @@ const createBadgeIcon = (type: Mention["type"], styles: { [key: string]: string 
         appendSvgPath(svg, "M12.5 3a17 17 0 0 1 0 18")
     }
 
-    if (type === "block") {
-        appendSvgPath(svg, "M14 4a1 1 0 0 1 1 -1h5a1 1 0 0 1 1 1v5a1 1 0 0 1 -1 1h-5a1 1 0 0 1 -1 -1l0 -5")
-        appendSvgPath(svg, "M3 14h12a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h3a2 2 0 0 1 2 2v12")
-    }
-
     return svg
 }
 
