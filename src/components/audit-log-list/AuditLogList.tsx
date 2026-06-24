@@ -80,7 +80,7 @@ const AuditLogList = () => {
                 {changes.length === 0 ? (
                     <div className={styles.empty}>No changes yet.</div>
                 ) : (
-                    changes.slice(0, 10).map((change, index) => (
+                    changes.slice(0, 8).map((change, index) => (
                         <div className={styles.item} key={`${change.title}-${index}`}>
                             <div className={styles.titleRow}>
                                 <div className={styles.itemTitle}>{change.title}</div>

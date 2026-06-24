@@ -24,7 +24,7 @@ export const useAuditLog = ({ adminRoute, apiRoute }: { adminRoute?: string; api
         } | null
 
         if (res.ok && result?.changes) {
-            setAppliedChanges(result.changes.slice(0, 10))
+            setAppliedChanges(result.changes.slice(0, 8))
         }
     }, [recentChangesEndpoint])
 
@@ -33,7 +33,7 @@ export const useAuditLog = ({ adminRoute, apiRoute }: { adminRoute?: string; api
     }, [loadRecentChanges])
 
     const prependChange = useCallback((change: AppliedChange) => {
-        setAppliedChanges((current) => [change, ...current].slice(0, 10))
+        setAppliedChanges((current) => [change, ...current].slice(0, 8))
     }, [])
 
     return {

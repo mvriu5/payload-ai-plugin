@@ -1,8 +1,9 @@
 .recentChanges {
-    max-width: 1280px;
+    width: 100%;
+    max-width: none;
     border: 1px solid var(--theme-elevation-150);
     border-radius: 8px;
-    display: start;
+    display: flex;
     flex-direction: column;
     min-height: 0;
     padding: 16px;
@@ -41,7 +42,7 @@
     flex: 1 1 auto;
     flex-direction: column;
     gap: 8px;
-    max-height: 260px;
+    max-height: 300px;
     min-height: 0;
     overflow: auto;
     padding-right: 2px;
@@ -55,12 +56,11 @@
 
 .item {
     align-items: center;
-    border: 1px solid var(--theme-elevation-100);
-    border-radius: 4px;
+    border-bottom: 1px solid var(--theme-elevation-100);
     display: grid;
     gap: 8px;
+    padding: 0px 0px 4px 0px;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    padding: 4px 4px 4px 8px;
 }
 
 .titleRow {
@@ -74,7 +74,7 @@
     color: var(--theme-text);
     flex: 0 1 auto;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
     line-height: 1.4;
     min-width: 0;
     overflow: hidden;
@@ -108,8 +108,8 @@
 
 .button {
     align-items: center;
-    background: var(--theme-elevation-0);
-    border: 1px solid var(--theme-elevation-150);
+    background: transparent;
+    border: none;
     border-radius: 4px;
     color: var(--theme-text);
     cursor: pointer;
@@ -122,6 +122,11 @@
     padding: 0 10px;
     text-align: center;
     text-decoration: none;
+    transition: background-color 0.2s ease;
+}
+
+.button:hover {
+    background: var(--theme-elevation-150);
 }
 
 .button:disabled {
