@@ -40,8 +40,6 @@ export const siteSettingsGlobal = {
     slug: "site-settings",
 }
 
-export const auditLogCollectionSlug = "payload-ai-auditlog"
-
 export const localizedConfig = {
     defaultLocale: "en",
     localeCodes: ["en", "de"],

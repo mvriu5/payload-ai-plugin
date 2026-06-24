@@ -45,7 +45,7 @@ describe("payloadAiPlugin options", () => {
             },
         })(createBaseConfig() as never)
 
-        expect(config.admin?.components?.beforeDashboard).toContain("@mvriu5/payload-ai/client#AIInput")
+        expect(config.admin?.components?.beforeDashboard).toContain("@mvriu5/payload-ai/client#Dashboard")
         expect(config.admin?.custom?.payloadAiPlugin).toMatchObject({
             allowUserApiKeys: true,
             collectionSlugs: ["posts"],

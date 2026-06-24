@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createApplyActionHandler } from "../../src/handlers/applyActionHandler.js"
 import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
-import { auditLogCollectionSlug, postsCollection } from "../fixtures/payloadConfig.js"
+import { postsCollection } from "../fixtures/payloadConfig.js"
 import { signedDeletePostProposal, signedSensitiveUpdatePostProposal, signedUpdatePostProposal, unsignedUpdatePostProposal } from "../fixtures/proposals.js"
 
 const originalPayloadSecret = process.env.PAYLOAD_SECRET
@@ -74,7 +74,7 @@ describe("applyActionHandler", () => {
         const create = vi.fn().mockResolvedValue({
             id: "audit-1",
         })
-        const handler = createApplyActionHandler({ changeLogCollection: auditLogCollectionSlug })
+        const handler = createApplyActionHandler({ changeLogCollection: "payload-ai-auditlog" })
         const req = createMockRequest({
             body: {
                 aiResponse: "Prepared update",
@@ -114,7 +114,7 @@ describe("applyActionHandler", () => {
         })
         expect(create).toHaveBeenCalledWith(
             expect.objectContaining({
-                collection: auditLogCollectionSlug,
+                collection: "payload-ai-auditlog",
                 data: expect.objectContaining({
                     action: "update",
                     after: {

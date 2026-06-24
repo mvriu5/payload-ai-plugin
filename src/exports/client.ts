@@ -1,7 +1,5 @@
-import AIInput from "../components/ai-input/AIInput.js"
-import AuditLogList from "../components/audit-log-list/AuditLogList.js"
+import Dashboard from "../components/dashboard/Dashboard.js"
 import APIKeyField from "../components/APIKeyField.js"
 
-export { AIInput }
-export { AuditLogList }
+export { Dashboard }
 export { APIKeyField as AIApiKeyField }

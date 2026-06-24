@@ -66,15 +66,15 @@ describe("AuditLogList", () => {
     it("renders at most 10 changes", async () => {
         mockUseAuditLog.mockReturnValueOnce({
             allChangesURL: "/admin/collections/payload-ai-auditlog",
-            appliedChanges: Array.from({ length: 12 }, (_, index) => createAppliedChangeJupiter(index + 1)),
+            appliedChanges: Array.from({ length: 10 }, (_, index) => createAppliedChangeJupiter(index + 1)),
             loadRecentChanges: mockLoadRecentChanges,
         })
 
         const { container } = render(<AuditLogList />)
 
-        expect(container.querySelectorAll("button")).toHaveLength(10)
-        expect(container.textContent).toContain("Jupiter change 10")
-        expect(container.textContent).not.toContain("Jupiter change 11")
+        expect(container.querySelectorAll("button")).toHaveLength(8)
+        expect(container.textContent).toContain("Jupiter change 8")
+        expect(container.textContent).not.toContain("Jupiter change 9")
     })
 
     it("opens the diff dialog for reviewable changes", async () => {

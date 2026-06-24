@@ -193,8 +193,7 @@ export const payloadAiPlugin =
         if (!config.admin.components) config.admin.components = {}
 
         if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = []
-        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#AIInput`)
-        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#AuditLogList`)
+        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#Dashboard`)
 
         config.endpoints.push({
             handler: createChatHandler({
