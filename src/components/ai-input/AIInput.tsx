@@ -240,19 +240,22 @@ const AIInput = () => {
                         {isLoading ? "Sending..." : "Send"}
                     </button>
                 </div>
-                <ActionToast
-                    apiRoute={config.routes.api}
-                    description={response}
-                    error={error}
-                    getViewURL={getProposalViewURL}
-                    isApplying={isApplying}
-                    onDismiss={() => dismissChat()}
-                    onDismissError={() => setError("")}
-                    onApply={(proposal, _index) => void handleApplyProposal(proposal)}
-                    proposals={proposals}
-                    prompt={prompt}
-                    tokenUsage={tokenUsage}
-                />
+                {/* Render the toast only when there is something to show */}
+                {(proposals.length > 0 || response) && (
+                    <ActionToast
+                        apiRoute={config.routes.api}
+                        description={response}
+                        error={error}
+                        getViewURL={getProposalViewURL}
+                        isApplying={isApplying}
+                        onDismiss={() => dismissChat()}
+                        onDismissError={() => setError("")}
+                        onApply={(proposal, _index) => void handleApplyProposal(proposal)}
+                        proposals={proposals}
+                        prompt={prompt}
+                        tokenUsage={tokenUsage}
+                    />
+                )}
             </div>
         </div>
     )

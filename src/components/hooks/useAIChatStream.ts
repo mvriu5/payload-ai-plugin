@@ -180,9 +180,22 @@ export const useAIChatStream = ({
                 }
 
                 if (event.event === "proposals") {
-                    receivedProposals = event.data.proposals || []
+                    const incoming = event.data.proposals || []
+
+                    const grouped = new Map<string, ActionProposal>()
+
+                    ;[...receivedProposals, ...incoming].forEach((p) => {
+                        const key = [p.action, p.collection ?? "", p.slug ?? "", p.id ?? "", p.label].join("|")
+
+                        if (!grouped.has(key)) {
+                            grouped.set(key, p)
+                        }
+                    })
+
+                    receivedProposals = Array.from(grouped.values())
+
                     setProposals(receivedProposals)
-                    setTokenUsage(event.data.usage || null)
+                    setTokenUsage(event.data.usage ?? null)
                     return
                 }
 
