@@ -54,6 +54,10 @@ import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai";
 const options: PayloadAiPluginOptions = {
   allowUserApiKeys: false,
   collections: {
+    media: {
+      read: true,
+      update: true,
+    },
     posts: {
       read: true,
       create: true,
@@ -61,6 +65,12 @@ const options: PayloadAiPluginOptions = {
       delete: false,
     },
     users: true,
+  },
+  media: {
+    enabled: true,
+    collectionSlug: "media",
+    acceptedMimeTypes: ["image/*"],
+    maxFileSize: 10 * 1024 * 1024,
   },
   models: {
     defaults: {
@@ -123,6 +133,38 @@ payloadAiPlugin({
 ```
 
 `read` controls schema/context access, document search, and mentions. `create`, `update`, and `delete` control AI action proposals and server-side apply permissions.
+
+### `media`
+
+Enables media uploads from the AI assistant. Uploaded files are created through the configured Payload upload collection and then passed to the chat endpoint as media attachments.
+
+```ts
+payloadAiPlugin({
+  collections: {
+    media: {
+      read: true,
+      update: true,
+    },
+    posts: true,
+  },
+  media: {
+    enabled: true,
+    collectionSlug: "media",
+    acceptedMimeTypes: ["image/*"],
+    maxFileSize: 10 * 1024 * 1024,
+  },
+})
+```
+
+`collectionSlug` defaults to `"media"`. The target collection must be configured with Payload `upload` support.
+
+`acceptedMimeTypes` accepts exact MIME types such as `"image/png"` and wildcard groups such as `"image/*"`. If omitted, all file types accepted by the upload collection can be sent to the endpoint.
+
+`maxFileSize` is checked before creating the upload document. The value is in bytes.
+
+If you want the AI to use uploaded files in other documents, enable `read` on the media collection so the chat endpoint can validate and inspect the uploaded media document. If the media collection has editable fields such as `alt`, `caption`, or `credit` and you want the AI to fill them, also enable `update` for that collection.
+
+Upload references in AI proposals are restricted to the uploaded attachments for the current request. This prevents the model from inventing arbitrary media IDs for upload fields.
 
 ### `models`
 

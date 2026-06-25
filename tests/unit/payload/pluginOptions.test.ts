@@ -103,4 +103,25 @@ describe("payloadAiPlugin options", () => {
 
         expect(userFieldNames).toContain("aiProvider")
     })
+
+    it("registers media upload support when enabled", () => {
+        const config = payloadAiPlugin({
+            media: {
+                acceptedMimeTypes: ["image/*"],
+                collectionSlug: "media",
+                enabled: true,
+                maxFileSize: 1024,
+            },
+        })(createBaseConfig() as never)
+
+        expect(config.endpoints?.map((endpoint) => endpoint.path)).toContain("/ai-upload-media")
+        expect(config.admin?.custom?.payloadAiPlugin).toMatchObject({
+            media: {
+                acceptedMimeTypes: ["image/*"],
+                collectionSlug: "media",
+                enabled: true,
+                maxFileSize: 1024,
+            },
+        })
+    })
 })

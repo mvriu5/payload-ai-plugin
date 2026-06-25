@@ -9,6 +9,16 @@ export type TokenUsage = {
     totalTokens?: number
 }
 
+export type MediaAttachment = {
+    collection: string
+    filename: string
+    filesize: number
+    id: string
+    mimeType: string
+    type: "media"
+    url?: string
+}
+
 type ChatStreamEvent =
     | {
           data: {
@@ -127,7 +137,7 @@ export const useAIChatStream = ({
         clearInput()
     }, [clearInput, resetChatState])
 
-    const submit = useCallback(async () => {
+    const submit = useCallback(async ({ attachments = [] }: { attachments?: MediaAttachment[] } = {}) => {
         const trimmedPrompt = prompt.trim()
         if (!trimmedPrompt) return
 
@@ -142,6 +152,7 @@ export const useAIChatStream = ({
                 }),
                 {
                     body: JSON.stringify({
+                        ...(attachments.length > 0 ? { attachments } : {}),
                         mentions: mentionsRef.current,
                         model: selectedModel,
                         prompt: trimmedPrompt,

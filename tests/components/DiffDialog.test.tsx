@@ -8,6 +8,20 @@ import { oldPostJupiter, postJupiter } from "../fixtures/docs.js"
 import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
+vi.mock("@payloadcms/ui", () => ({
+    Button: ({
+        children,
+        onClick,
+    }: {
+        children?: React.ReactNode
+        onClick?: () => void
+    }) => (
+        <button aria-label="Close" onClick={onClick} type="button">
+            {children}
+        </button>
+    ),
+}))
+
 vi.mock("@payloadcms/ui/icons/X", () => ({
     XIcon: () => <span aria-hidden="true">x</span>,
 }))

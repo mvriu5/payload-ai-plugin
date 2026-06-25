@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type React from "react"
 import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AuditLogList from "../../src/components/audit-log-list/AuditLogList.js"
@@ -10,6 +11,26 @@ const mockUseAuditLog = vi.hoisted(() => vi.fn())
 const mockLoadRecentChanges = vi.hoisted(() => vi.fn())
 
 vi.mock("@payloadcms/ui", () => ({
+    Button: ({
+        children,
+        disabled,
+        onClick,
+        url,
+    }: {
+        children: React.ReactNode
+        disabled?: boolean
+        onClick?: () => void
+        url?: string
+    }) =>
+        url ? (
+            <a aria-disabled={disabled} href={url}>
+                {children}
+            </a>
+        ) : (
+            <button disabled={disabled} onClick={onClick} type="button">
+                {children}
+            </button>
+        ),
     ExternalLinkIcon: () => <span data-testid="external-link-icon" />,
     useConfig: () => ({
         config: {

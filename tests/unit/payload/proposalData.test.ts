@@ -40,6 +40,11 @@ const pageCollection = {
                             required: true,
                             type: "text",
                         },
+                        {
+                            name: "image",
+                            relationTo: "media",
+                            type: "upload",
+                        },
                     ],
                     slug: "hero",
                 },
@@ -57,6 +62,11 @@ const pageCollection = {
             name: "author",
             relationTo: "users",
             type: "relationship",
+        },
+        {
+            name: "heroImage",
+            relationTo: "media",
+            type: "upload",
         },
         {
             hasMany: true,
@@ -319,6 +329,37 @@ describe("prepareProposalWriteData", () => {
                 }),
             ])
         )
+    })
+
+    it("normalizes numeric upload ids from strings for Payload relationship fields", () => {
+        const result = prepareProposalWriteData({
+            collectionConfig: pageCollection,
+            data: {
+                category: "news",
+                heroImage: "10",
+                layout: [
+                    {
+                        blockType: "hero",
+                        copy: "People story",
+                        image: "10",
+                    },
+                ],
+                title: "People",
+            },
+            label: "Create People page",
+            mode: "create",
+        })
+
+        expect(result.issues).toEqual([])
+        expect(result.data).toMatchObject({
+            heroImage: 10,
+            layout: [
+                {
+                    blockType: "hero",
+                    image: 10,
+                },
+            ],
+        })
     })
 
     it("rejects unknown fields on update proposals", () => {

@@ -29,6 +29,21 @@ export const usersCollection = {
     slug: "users",
 }
 
+export const mediaCollection = {
+    fields: [
+        {
+            name: "alt",
+            type: "text",
+        },
+        {
+            name: "caption",
+            type: "textarea",
+        },
+    ],
+    slug: "media",
+    upload: true,
+}
+
 export const siteSettingsGlobal = {
     fields: [
         {

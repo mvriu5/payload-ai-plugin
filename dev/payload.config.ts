@@ -325,11 +325,21 @@ export default buildConfig({
     plugins: [
         payloadAiPlugin({
             collections: {
+                media: {
+                    read: true,
+                    update: true,
+                },
                 posts: true,
                 users: {
                     read: true,
                     update: true,
                 },
+            },
+            media: {
+                acceptedMimeTypes: ["image/*"],
+                collectionSlug: "media",
+                enabled: true,
+                maxFileSize: 10 * 1024 * 1024,
             },
         }),
     ],

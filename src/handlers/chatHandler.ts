@@ -25,10 +25,21 @@ import { type ProposalValidationIssue } from "../payload/proposalData.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 
 type ChatBody = {
+    attachments?: ChatMediaAttachment[]
     mentions?: ChatMention[]
     model?: string
     prompt?: string
     provider?: string
+}
+
+type ChatMediaAttachment = {
+    collection?: string
+    filename?: string
+    filesize?: number
+    id?: string
+    mimeType?: string
+    type?: "media"
+    url?: string
 }
 
 type User = {
@@ -757,6 +768,133 @@ const collectRelationshipTargets = ({
     return targets
 }
 
+const collectUploadTargets = ({
+    data,
+    fields,
+    path = "",
+}: {
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+    path?: string
+}): RelationshipTargetReference[] => {
+    const targets: RelationshipTargetReference[] = []
+
+    for (const field of fields) {
+        if (!field.name) continue
+
+        const fieldPath = path ? `${path}.${field.name}` : field.name
+        const fieldValue = data[field.name]
+
+        if (fieldValue === undefined || fieldValue === null) continue
+
+        if (field.type === "upload") {
+            const relationTargets = Array.isArray(field.relationTo)
+                ? field.relationTo.filter((item): item is string => typeof item === "string")
+                : typeof field.relationTo === "string"
+                  ? [field.relationTo]
+                  : []
+
+            const collectSingle = (value: unknown, itemPath: string) => {
+                if (typeof value === "string" || typeof value === "number") {
+                    if (relationTargets.length === 1) {
+                        targets.push({
+                            collection: relationTargets[0],
+                            id: value,
+                            path: itemPath,
+                        })
+                    }
+
+                    return
+                }
+
+                if (!isRecord(value)) return
+
+                const relationTo = typeof value.relationTo === "string" ? value.relationTo : relationTargets[0]
+                const id =
+                    typeof value.id === "string" || typeof value.id === "number"
+                        ? value.id
+                        : typeof value.value === "string" || typeof value.value === "number"
+                          ? value.value
+                          : undefined
+
+                if (!relationTo || id === undefined) return
+
+                targets.push({
+                    collection: relationTo,
+                    id,
+                    path: itemPath,
+                })
+            }
+
+            if (field.hasMany && Array.isArray(fieldValue)) {
+                fieldValue.forEach((item, index) => collectSingle(item, `${fieldPath}.${index}`))
+            } else {
+                collectSingle(fieldValue, fieldPath)
+            }
+
+            continue
+        }
+
+        if (field.type === "group" && isRecord(fieldValue) && field.fields?.length) {
+            targets.push(
+                ...collectUploadTargets({
+                    data: fieldValue,
+                    fields: field.fields as BlockFieldConfig[],
+                    path: fieldPath,
+                })
+            )
+            continue
+        }
+
+        if (field.type === "array" && Array.isArray(fieldValue) && field.fields?.length) {
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                targets.push(
+                    ...collectUploadTargets({
+                        data: item,
+                        fields: field.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+            continue
+        }
+
+        if (field.type === "blocks" && Array.isArray(fieldValue) && field.blocks?.length) {
+            const blocksBySlug = new Map(field.blocks.map((block) => [block.slug, block]))
+
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                const blockType =
+                    typeof item.blockType === "string"
+                        ? item.blockType
+                        : typeof item.type === "string"
+                          ? item.type
+                          : typeof item.slug === "string"
+                            ? item.slug
+                            : null
+
+                if (!blockType) return
+
+                const blockConfig = blocksBySlug.get(blockType)
+                if (!blockConfig?.fields?.length) return
+
+                targets.push(
+                    ...collectUploadTargets({
+                        data: item,
+                        fields: blockConfig.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+        }
+    }
+
+    return targets
+}
+
 const validateRelationshipTargetsExist = async ({
     data,
     fields,
@@ -791,6 +929,23 @@ const validateRelationshipTargetsExist = async ({
     return targetResults.filter((target): target is RelationshipTargetReference => Boolean(target))
 }
 
+const getUploadTargetsOutsideAttachments = ({
+    allowedAttachmentKeys,
+    data,
+    fields,
+}: {
+    allowedAttachmentKeys: Set<string>
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+}) => {
+    if (allowedAttachmentKeys.size === 0) return []
+
+    return collectUploadTargets({
+        data,
+        fields,
+    }).filter((target) => !allowedAttachmentKeys.has(`${target.collection}:${String(target.id)}`))
+}
+
 const getMentionSummary = (mentions?: ChatMention[]) =>
     mentions?.map((mention) => ({
         collection: "collection" in mention ? mention.collection : undefined,
@@ -798,6 +953,60 @@ const getMentionSummary = (mentions?: ChatMention[]) =>
         slug: mention.slug,
         type: mention.type,
     })) || []
+
+const getMediaAttachmentContext = async ({
+    allowedCollectionsBySlug,
+    attachments,
+    collections,
+    req,
+}: {
+    allowedCollectionsBySlug: Map<string, Parameters<PayloadHandler>[0]["payload"]["config"]["collections"][number]>
+    attachments?: ChatMediaAttachment[]
+    collections?: ResolvedCollectionPermissionMap
+    req: Parameters<PayloadHandler>[0]
+}) => {
+    if (!attachments?.length) return []
+
+    const contexts: Record<string, unknown>[] = []
+    const seen = new Set<string>()
+
+    for (const attachment of attachments.slice(0, 8)) {
+        if (attachment.type !== "media" || !attachment.collection || !attachment.id) continue
+
+        const key = `${attachment.collection}:${attachment.id}`
+        if (seen.has(key)) continue
+
+        const collectionConfig = allowedCollectionsBySlug.get(attachment.collection)
+        if (!collectionConfig?.upload) continue
+
+        const doc = await req.payload
+            .findByID({
+                collection: attachment.collection as never,
+                depth: 1,
+                id: attachment.id,
+                overrideAccess: false,
+                req,
+            })
+            .catch(() => null)
+
+        if (!doc) continue
+
+        seen.add(key)
+        contexts.push({
+            attachment,
+            collection: attachment.collection,
+            doc,
+            schema: describeCollectionLikeConfig({
+                config: collectionConfig as never,
+                permissions: collections,
+                type: "collection",
+            }),
+            type: "mediaAttachment",
+        })
+    }
+
+    return contexts
+}
 
 const formatProposalIssuesForRetry = (issues: ProposalValidationIssue[]) => {
     return issues
@@ -1090,6 +1299,23 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
+            const mediaAttachmentContext = await getMediaAttachmentContext({
+                allowedCollectionsBySlug,
+                attachments: body?.attachments,
+                collections: options.collections,
+                req,
+            })
+            const allowedAttachmentKeys = new Set(
+                mediaAttachmentContext.flatMap((context) => {
+                    const attachment = context.attachment
+
+                    return isRecord(attachment) && typeof attachment.collection === "string" && typeof attachment.id === "string"
+                        ? [`${attachment.collection}:${attachment.id}`]
+                        : []
+                })
+            )
+
+            mentionContext.push(...mediaAttachmentContext)
             const mentionedCollectionSlugs: string[] = []
             const mentionedCollectionSlugSet = new Set<string>()
             for (const mention of body?.mentions || []) {
@@ -1173,7 +1399,7 @@ export const createChatHandler =
             }
             const tools = {
                 getDoc: {
-                    description: "Read one document by collection slug and document id.",
+                    description: "Read a document by collection and id.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         id: z.string().min(1),
@@ -1190,7 +1416,7 @@ export const createChatHandler =
                     },
                 },
                 listCollections: {
-                    description: "List AI-enabled Payload collections. Omit slug for compact summaries; pass slug to get full field schema for one collection.",
+                    description: "List collections; pass slug for one full schema.",
                     inputSchema: z.object({
                         slug: collectionSlugSchema.optional(),
                     }),
@@ -1222,7 +1448,7 @@ export const createChatHandler =
                     },
                 },
                 getGlobal: {
-                    description: "Read one Payload CMS global by slug.",
+                    description: "Read a global by slug.",
                     inputSchema: z.object({
                         slug: z.string().min(1),
                     }),
@@ -1246,7 +1472,7 @@ export const createChatHandler =
                     },
                 },
                 listGlobals: {
-                    description: "List Payload globals. Omit slug for compact summaries; pass slug to get full field schema for one global.",
+                    description: "List globals; pass slug for one full schema.",
                     inputSchema: z.object({
                         slug: z.string().optional(),
                     }),
@@ -1277,7 +1503,7 @@ export const createChatHandler =
                 },
                 proposeCreateDoc: {
                     description:
-                        "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. Include every required field for the target collection. For localizedData, include every localized required field in every locale entry, and include non-localized required fields in the first locale entry. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+                        "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
@@ -1370,6 +1596,37 @@ export const createChatHandler =
                             }
                         }
 
+                        const uploadTargetsOutsideAttachments = [
+                            ...(preparedData.data
+                                ? getUploadTargetsOutsideAttachments({
+                                      allowedAttachmentKeys,
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
+                                      getUploadTargetsOutsideAttachments({
+                                          allowedAttachmentKeys,
+                                          data: localeData,
+                                          fields: collectionFields,
+                                      })
+                                  )
+                                : []),
+                        ]
+
+                        if (uploadTargetsOutsideAttachments.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    allowedAttachments: [...allowedAttachmentKeys],
+                                    uploadTargetsOutsideAttachments,
+                                },
+                                message: `Create proposal for ${collection} uses upload references that are not in the uploaded attachments: ${uploadTargetsOutsideAttachments.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}. Use only uploaded media attachment IDs for upload fields.`,
+                                tool: "proposeCreateDoc",
+                            })
+                        }
+
                         const invalidRelationshipTargets = [
                             ...(preparedData.data
                                 ? await validateRelationshipTargetsExist({
@@ -1424,7 +1681,7 @@ export const createChatHandler =
                     },
                 },
                 proposeDeleteDoc: {
-                    description: "Prepare a CMS document deletion proposal. This does not write to the database.",
+                    description: "Propose document deletion.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         id: z.string().min(1),
@@ -1447,7 +1704,7 @@ export const createChatHandler =
                 },
                 proposeUpdateDoc: {
                     description:
-                        "Prepare a CMS document update proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+                        "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
@@ -1524,6 +1781,37 @@ export const createChatHandler =
                             })
                         }
 
+                        const uploadTargetsOutsideAttachments = [
+                            ...(preparedData.data
+                                ? getUploadTargetsOutsideAttachments({
+                                      allowedAttachmentKeys,
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
+                                      getUploadTargetsOutsideAttachments({
+                                          allowedAttachmentKeys,
+                                          data: localeData,
+                                          fields: collectionFields,
+                                      })
+                                  )
+                                : []),
+                        ]
+
+                        if (uploadTargetsOutsideAttachments.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    allowedAttachments: [...allowedAttachmentKeys],
+                                    uploadTargetsOutsideAttachments,
+                                },
+                                message: `Update proposal for ${collection} uses upload references that are not in the uploaded attachments: ${uploadTargetsOutsideAttachments.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}. Use only uploaded media attachment IDs for upload fields.`,
+                                tool: "proposeUpdateDoc",
+                            })
+                        }
+
                         const proposal: ActionProposal = {
                             action: "update",
                             collection,
@@ -1537,8 +1825,7 @@ export const createChatHandler =
                     },
                 },
                 proposeUpdateGlobal: {
-                    description:
-                        "Prepare a Payload global update proposal. This does not write to the database. Use localizedData when writing multiple locales in one proposal.",
+                    description: "Propose global update. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             data: z.record(z.string(), z.unknown()).optional(),
@@ -1598,7 +1885,7 @@ export const createChatHandler =
                     },
                 },
                 searchDocs: {
-                    description: "Search documents in one collection. Use query for a loose text search where possible.",
+                    description: "Search documents in one collection.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         limit: z.number().int().min(1).max(10).default(5),
@@ -1659,6 +1946,8 @@ export const createChatHandler =
                     "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
                     "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
                     "Writes are proposals only. Never claim changes were applied before user confirmation.",
+                    "Uploaded media attachments appear in context as mediaAttachment entries. Use their exact IDs for upload fields.",
+                    "If an uploaded media document has editable descriptive fields, propose an update to that media document with suitable values.",
                     "If a collection has a required `slug` field and the user does not provide it, generate a URL‑friendly slug from the title or from the first meaningful word of the prompt.",
                     "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
                     "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type React from "react"
 import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AIInput from "../../src/components/ai-input/AIInput.js"
@@ -13,6 +14,28 @@ const mockUseMentions = vi.hoisted(() => vi.fn())
 const mockUseAIChatStream = vi.hoisted(() => vi.fn())
 
 vi.mock("@payloadcms/ui", () => ({
+    Button: ({
+        children,
+        disabled,
+        onClick,
+        type = "button",
+        url,
+        ...props
+    }: {
+        children: React.ReactNode
+        disabled?: boolean
+        onClick?: () => void
+        type?: "button" | "submit"
+        url?: string
+    } & React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+        url ? (
+            <a href={url}>{children}</a>
+        ) : (
+            <button disabled={disabled} onClick={onClick} type={type} {...props}>
+                {children}
+            </button>
+        ),
+    PlusIcon: () => <span data-testid="plus-icon" />,
     useConfig: mockUseConfig,
 }))
 
@@ -52,6 +75,12 @@ const setEditorText = (editor: HTMLElement, value: string) => {
     editor.dispatchEvent(new Event("input", { bubbles: true }))
 }
 
+const flushPromises = async (ticks = 1) => {
+    for (let index = 0; index < ticks; index += 1) {
+        await Promise.resolve()
+    }
+}
+
 describe("AIInput", () => {
     const mockSubmit = vi.fn()
     const mockDismissChat = vi.fn()
@@ -64,6 +93,7 @@ describe("AIInput", () => {
     const mockMentionsRef = { current: [] }
 
     beforeEach(() => {
+        vi.clearAllMocks()
         mockUseConfig.mockReturnValue({ config: adminConfig })
 
         mockUsePluginConfig.mockReturnValue({
@@ -87,6 +117,12 @@ describe("AIInput", () => {
             defaultLocale: undefined,
             isCollectionMentionEnabled: vi.fn(() => true),
             locales: [],
+            media: {
+                acceptedMimeTypes: ["image/*"],
+                collectionSlug: "media",
+                enabled: true,
+                maxFileSize: 1024,
+            },
         })
 
         mockUseAISettings.mockReturnValue({
@@ -112,7 +148,7 @@ describe("AIInput", () => {
             proposals: [],
             resetChatState: vi.fn(),
             response: "",
-            setError: vi.fn(),
+            setError: mockSetError,
             setProposals: vi.fn(),
             setResponse: vi.fn(),
             setTokenUsage: vi.fn(),
@@ -123,6 +159,7 @@ describe("AIInput", () => {
 
     afterEach(() => {
         cleanupRoots()
+        vi.unstubAllGlobals()
         vi.restoreAllMocks()
     })
 
@@ -150,7 +187,7 @@ describe("AIInput", () => {
         expect(mockClearMentions).toHaveBeenCalled()
     })
 
-    it("submits through the chat stream hook", () => {
+    it("submits through the chat stream hook", async () => {
         const { container } = render(<AIInput />)
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
@@ -160,14 +197,209 @@ describe("AIInput", () => {
             if (editor) setEditorText(editor, "Tell me about this")
         })
 
-        act(() => {
+        await act(async () => {
             sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            await flushPromises(2)
         })
 
-        expect(mockSubmit).toHaveBeenCalled()
+        expect(mockSubmit).toHaveBeenCalledWith({ attachments: [] })
     })
 
-    it("submits on enter without shift", () => {
+    it("uploads selected media before submitting with attachments", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn().mockResolvedValue({
+                json: vi.fn().mockResolvedValue({
+                    attachment: {
+                        collection: "media",
+                        filename: "hero.png",
+                        filesize: 512,
+                        id: "media-1",
+                        mimeType: "image/png",
+                        type: "media",
+                        url: "/media/hero.png",
+                    },
+                }),
+                ok: true,
+            })
+        )
+
+        const { container } = render(<AIInput />)
+        const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
+        const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
+        const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
+        const file = new File(["test"], "hero.png", { type: "image/png" })
+
+        if (!fileInput) throw new Error("File input was not rendered")
+
+        act(() => {
+            if (editor) setEditorText(editor, "Use this image")
+        })
+
+        Object.defineProperty(fileInput, "files", {
+            configurable: true,
+            value: [file],
+        })
+
+        await act(async () => {
+            fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+            await flushPromises(2)
+        })
+
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            await flushPromises(6)
+        })
+
+        expect(fetch).toHaveBeenCalledWith(
+            "/api/ai-upload-media",
+            expect.objectContaining({
+                body: expect.any(FormData),
+                method: "POST",
+            })
+        )
+        expect(mockSubmit).toHaveBeenCalledWith({
+            attachments: [
+                {
+                    collection: "media",
+                    filename: "hero.png",
+                    filesize: 512,
+                    id: "media-1",
+                    mimeType: "image/png",
+                    type: "media",
+                    url: "/media/hero.png",
+                },
+            ],
+        })
+    })
+
+    it("does not submit when media upload fails", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn().mockResolvedValue({
+                json: vi.fn().mockResolvedValue({
+                    error: "File type is not accepted: application/pdf",
+                }),
+                ok: false,
+            })
+        )
+
+        const { container } = render(<AIInput />)
+        const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
+        const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
+        const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
+        const file = new File(["test"], "paper.pdf", { type: "application/pdf" })
+
+        if (!fileInput) throw new Error("File input was not rendered")
+
+        act(() => {
+            if (editor) setEditorText(editor, "Use this file")
+        })
+
+        Object.defineProperty(fileInput, "files", {
+            configurable: true,
+            value: [file],
+        })
+
+        await act(async () => {
+            fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+            await flushPromises(2)
+        })
+
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            await flushPromises(6)
+        })
+
+        expect(fetch).toHaveBeenCalledWith(
+            "/api/ai-upload-media",
+            expect.objectContaining({
+                body: expect.any(FormData),
+                method: "POST",
+            })
+        )
+        expect(mockSubmit).not.toHaveBeenCalled()
+        expect(mockSetError).toHaveBeenCalledWith("File type is not accepted: application/pdf")
+    })
+
+    it("reuses uploaded attachments when chat submission is retried", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn().mockResolvedValue({
+                json: vi.fn().mockResolvedValue({
+                    attachment: {
+                        collection: "media",
+                        filename: "hero.png",
+                        filesize: 512,
+                        id: "media-1",
+                        mimeType: "image/png",
+                        type: "media",
+                        url: "/media/hero.png",
+                    },
+                }),
+                ok: true,
+            })
+        )
+        mockSubmit.mockRejectedValueOnce(new Error("AI request failed")).mockResolvedValueOnce(undefined)
+
+        const { container } = render(<AIInput />)
+        const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
+        const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
+        const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
+        const file = new File(["test"], "hero.png", { type: "image/png" })
+
+        if (!fileInput) throw new Error("File input was not rendered")
+
+        act(() => {
+            if (editor) setEditorText(editor, "Use this image")
+        })
+
+        Object.defineProperty(fileInput, "files", {
+            configurable: true,
+            value: [file],
+        })
+
+        await act(async () => {
+            fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+            await flushPromises(2)
+        })
+
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            await flushPromises(6)
+        })
+
+        await act(async () => {
+            await new Promise((resolve) => window.setTimeout(resolve, 0))
+        })
+
+        const retrySendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
+
+        await act(async () => {
+            retrySendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            await flushPromises(6)
+        })
+
+        const uploadCalls = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter((call) => call[0] === "/api/ai-upload-media")
+
+        expect(uploadCalls).toHaveLength(1)
+        expect(mockSubmit).toHaveBeenCalledTimes(2)
+        expect(mockSubmit).toHaveBeenLastCalledWith({
+            attachments: [
+                {
+                    collection: "media",
+                    filename: "hero.png",
+                    filesize: 512,
+                    id: "media-1",
+                    mimeType: "image/png",
+                    type: "media",
+                    url: "/media/hero.png",
+                },
+            ],
+        })
+    })
+
+    it("submits on enter without shift", async () => {
         const { container } = render(<AIInput />)
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
@@ -176,16 +408,17 @@ describe("AIInput", () => {
             if (editor) setEditorText(editor, "Tell me about this")
         })
 
-        act(() => {
+        await act(async () => {
             editor?.dispatchEvent(
                 new KeyboardEvent("keydown", {
                     bubbles: true,
                     key: "Enter",
                 })
             )
+            await flushPromises(2)
         })
 
-        expect(mockSubmit).toHaveBeenCalled()
+        expect(mockSubmit).toHaveBeenCalledWith({ attachments: [] })
     })
 
     it("updates the selected model through settings", () => {

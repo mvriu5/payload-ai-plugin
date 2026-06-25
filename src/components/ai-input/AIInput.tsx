@@ -1,20 +1,19 @@
 "use client"
 
-import { ChevronIcon, Combobox, useConfig } from "@payloadcms/ui"
+import { Button, PlusIcon, useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
-import { useEffect, useRef, useState } from "react"
+import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
 import { ActionToast, type ActionProposal } from "../action-toast/ActionToast.js"
 import { type AppliedChange } from "../audit-log-list/AuditLogList.js"
-import { useAIChatStream } from "../hooks/useAIChatStream.js"
+import { type MediaAttachment, useAIChatStream } from "../hooks/useAIChatStream.js"
 import { useAISettings } from "../hooks/useAISettings.js"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
 import { usePluginConfig } from "../hooks/usePluginConfig.js"
-import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, Send } from "../Icons.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon } from "../Icons.js"
 import { MentionPopover } from "../mention-popover/MentionPopover.js"
 import styles from "./AIInput.module.css"
-import { Button } from "@payloadcms/ui"
 
 const getProviderIcon = (provider: AIProvider | null) => {
     const iconProps = {
@@ -38,13 +37,24 @@ const getProviderIcon = (provider: AIProvider | null) => {
     }
 }
 
+const getFileSignature = (file: File) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`
+
 const AIInput = () => {
     const editorRef = useRef<HTMLDivElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
     const [isApplying, setIsApplying] = useState(false)
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false)
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+    const [mediaAttachments, setMediaAttachments] = useState<MediaAttachment[]>([])
+    const selectedFilesRef = useRef<File[]>([])
+    const mediaAttachmentsRef = useRef<MediaAttachment[]>([])
+    const uploadedFileSignaturesRef = useRef<Set<string>>(new Set())
 
     const { config } = useConfig()
-    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale } = usePluginConfig(config)
+    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale, media } = usePluginConfig(config)
+    const acceptedMimeTypes = media?.acceptedMimeTypes?.join(",")
+    const mediaEnabled = Boolean(media?.enabled)
     const { loadRecentChanges, prependChange } = useAuditLog({
         adminRoute: config.routes.admin,
         apiRoute: config.routes.api,
@@ -65,10 +75,53 @@ const AIInput = () => {
         styles,
     })
 
+    const updateSelectedFiles = (updater: File[] | ((currentFiles: File[]) => File[])) => {
+        const nextFiles = typeof updater === "function" ? updater(selectedFilesRef.current) : updater
+        selectedFilesRef.current = nextFiles
+        setSelectedFiles(nextFiles)
+    }
+
+    const updateMediaAttachments = (updater: MediaAttachment[] | ((currentAttachments: MediaAttachment[]) => MediaAttachment[])) => {
+        const nextAttachments = typeof updater === "function" ? updater(mediaAttachmentsRef.current) : updater
+        mediaAttachmentsRef.current = nextAttachments
+        setMediaAttachments(nextAttachments)
+    }
+
     const clearInput = () => {
         setPrompt("")
+        updateSelectedFiles([])
+        updateMediaAttachments([])
+        uploadedFileSignaturesRef.current = new Set()
         clearMentions()
         if (editorRef.current) editorRef.current.textContent = ""
+    }
+
+    const handleSelectFile = (event: ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || [])
+        updateSelectedFiles((currentFiles) => {
+            const selectedFileSignatures = new Set(currentFiles.map(getFileSignature))
+            const nextFiles = [...currentFiles]
+
+            for (const file of files) {
+                const fileSignature = getFileSignature(file)
+
+                if (selectedFileSignatures.has(fileSignature)) continue
+
+                selectedFileSignatures.add(fileSignature)
+                nextFiles.push(file)
+            }
+
+            return nextFiles
+        })
+        event.target.value = ""
+    }
+
+    const removeSelectedFile = (fileIndex: number) => {
+        updateSelectedFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex))
+    }
+
+    const removeMediaAttachment = (attachmentIndex: number) => {
+        updateMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
     }
 
     const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
@@ -78,6 +131,71 @@ const AIInput = () => {
         prompt,
         selectedModel,
     })
+
+    const uploadSelectedFiles = async () => {
+        const filesToUpload = selectedFilesRef.current
+
+        if (filesToUpload.length === 0) return []
+
+        const uploadedAttachments: MediaAttachment[] = []
+
+        for (const file of filesToUpload) {
+            const fileSignature = getFileSignature(file)
+
+            if (uploadedFileSignaturesRef.current.has(fileSignature)) continue
+
+            uploadedFileSignaturesRef.current.add(fileSignature)
+
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const res = await fetch(
+                formatAdminURL({
+                    apiRoute: config.routes.api,
+                    path: "/ai-upload-media",
+                }),
+                {
+                    body: formData,
+                    method: "POST",
+                }
+            )
+            const result = (await res.json().catch(() => null)) as { attachment?: MediaAttachment; error?: string } | null
+
+            if (!res.ok || !result?.attachment) {
+                uploadedFileSignaturesRef.current.delete(fileSignature)
+                throw new Error(result?.error || `Could not upload ${file.name}`)
+            }
+
+            uploadedAttachments.push(result.attachment)
+        }
+
+        return uploadedAttachments
+    }
+
+    const handleSubmit = async () => {
+        if (isUploadingMedia) return
+
+        setError("")
+        setIsUploadingMedia(true)
+
+        try {
+            const uploadedAttachments = await uploadSelectedFiles()
+            const nextAttachments = [...mediaAttachmentsRef.current, ...uploadedAttachments]
+
+            if (uploadedAttachments.length > 0) {
+                updateMediaAttachments(nextAttachments)
+                updateSelectedFiles([])
+            }
+
+            await submit({
+                attachments: nextAttachments,
+            })
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Media upload failed")
+        } finally {
+            setIsUploadingMedia(false)
+        }
+    }
 
     useEffect(() => {
         if (isLoading || error || proposals.length > 0 || !response) return
@@ -186,10 +304,46 @@ const AIInput = () => {
                                 }
                                 if (event.key === "Enter" && !event.shiftKey) {
                                     event.preventDefault()
-                                    void submit()
+                                    void handleSubmit()
                                 }
                             }}
                         />
+                        {(selectedFiles.length > 0 || mediaAttachments.length > 0) && (
+                            <div className={styles.attachmentTray} aria-label="Attached media">
+                                {selectedFiles.map((file, index) => (
+                                    <span className={styles.attachmentPill} key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                                        <span className={styles.attachmentName} title={file.name}>
+                                            {file.name}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.attachmentRemove}
+                                            disabled={isUploadingMedia}
+                                            onClick={() => removeSelectedFile(index)}
+                                            aria-label={`Remove ${file.name}`}
+                                        >
+                                            X
+                                        </button>
+                                    </span>
+                                ))}
+                                {mediaAttachments.map((attachment, index) => (
+                                    <span className={styles.attachmentPill} key={`${attachment.collection}-${attachment.id}`}>
+                                        <span className={styles.attachmentName} title={attachment.filename}>
+                                            {attachment.filename}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.attachmentRemove}
+                                            disabled={isUploadingMedia}
+                                            onClick={() => removeMediaAttachment(index)}
+                                            aria-label={`Remove ${attachment.filename}`}
+                                        >
+                                            X
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     {mentionRange && (
                         <MentionPopover
@@ -230,17 +384,47 @@ const AIInput = () => {
                             </div>
                         </label>
                     </div>
-                    <Button
-                        buttonStyle="primary"
-                        aria-label="Send"
-                        margin={false}
-                        disabled={
-                            !prompt.trim() || !settingsProvider || !selectedModel || isLoading || Boolean(error) || Boolean(response) || proposals.length > 0
-                        }
-                        onClick={() => void submit()}
-                    >
-                        {isLoading ? "Sending..." : "Send"}
-                    </Button>
+                    <div className={styles.actions}>
+                        {mediaEnabled && (
+                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept={acceptedMimeTypes}
+                                    className={styles.fileInput}
+                                    multiple
+                                    onChange={handleSelectFile}
+                                />
+                                <Button
+                                    buttonStyle="tab"
+                                    aria-label="Attach media"
+                                    margin={false}
+                                    disabled={isLoading || isUploadingMedia || proposals.length > 0}
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <PlusIcon />
+                                </Button>
+                            </>
+                        )}
+                        <Button
+                            buttonStyle="primary"
+                            aria-label="Send"
+                            margin={false}
+                            disabled={
+                                !prompt.trim() ||
+                                !settingsProvider ||
+                                !selectedModel ||
+                                isLoading ||
+                                isUploadingMedia ||
+                                Boolean(error) ||
+                                Boolean(response) ||
+                                proposals.length > 0
+                            }
+                            onClick={() => void handleSubmit()}
+                        >
+                            {isUploadingMedia || isLoading ? "Sending..." : "Send"}
+                        </Button>
+                    </div>
                 </div>
                 {(proposals.length > 0 || response) && (
                     <ActionToast
