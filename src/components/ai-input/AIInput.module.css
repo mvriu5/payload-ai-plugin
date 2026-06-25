@@ -94,6 +94,16 @@
     margin-top: 12px;
 }
 
+.actions {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.fileInput {
+    display: none;
+}
+
 .chatInput {
     background: transparent;
     border: 0;
@@ -126,6 +136,8 @@
     border-radius: 4px;
     height: 100%;
     display: flex;
+    flex-direction: column;
+    gap: 8px;
     overflow: hidden;
     padding: 12px;
     width: 100%;
@@ -133,6 +145,66 @@
 
 .chatInputSurface:focus-within {
     border-color: var(--theme-success-500);
+}
+
+.attachmentTray {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 22px;
+}
+
+.attachmentPill {
+    align-items: center;
+    background: var(--theme-elevation-100);
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 999px;
+    color: var(--theme-text);
+    display: inline-flex;
+    font-size: 11px;
+    gap: 4px;
+    line-height: 1.2;
+    max-width: min(240px, 100%);
+    min-height: 24px;
+    min-width: 0;
+    padding: 2px 5px 3px 8px;
+}
+
+.attachmentName {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachmentRemove {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--theme-elevation-600);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 10px;
+    height: 14px;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+    width: 14px;
+}
+
+.attachmentRemove:hover,
+.attachmentRemove:focus-visible {
+    color: #fff;
+}
+
+.attachmentRemove:focus-visible {
+    outline: 1px solid currentColor;
+    outline-offset: 1px;
 }
 
 .inlineBadge {
@@ -254,6 +326,10 @@
         flex-direction: column;
     }
 
+    .actions {
+        justify-content: flex-end;
+    }
+
     .settings {
         align-items: stretch;
         width: 100%;
@@ -266,5 +342,9 @@
     .select {
         min-width: 0;
         width: 100%;
+    }
+
+    .attachmentPill {
+        max-width: 100%;
     }
 }

@@ -1,8 +1,8 @@
 "use client"
 
-import { ChevronIcon, Combobox, useConfig } from "@payloadcms/ui"
+import { Button, DocumentIcon, PlusIcon, useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
-import { useEffect, useRef, useState } from "react"
+import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
 import { ActionToast, type ActionProposal } from "../action-toast/ActionToast.js"
 import { type AppliedChange } from "../audit-log-list/AuditLogList.js"
@@ -11,10 +11,9 @@ import { useAISettings } from "../hooks/useAISettings.js"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
 import { usePluginConfig } from "../hooks/usePluginConfig.js"
-import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, Send } from "../Icons.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon } from "../Icons.js"
 import { MentionPopover } from "../mention-popover/MentionPopover.js"
 import styles from "./AIInput.module.css"
-import { Button } from "@payloadcms/ui"
 
 const getProviderIcon = (provider: AIProvider | null) => {
     const iconProps = {
@@ -40,11 +39,15 @@ const getProviderIcon = (provider: AIProvider | null) => {
 
 const AIInput = () => {
     const editorRef = useRef<HTMLDivElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
     const [isApplying, setIsApplying] = useState(false)
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([])
 
     const { config } = useConfig()
-    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale } = usePluginConfig(config)
+    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale, media } = usePluginConfig(config)
+    const acceptedMimeTypes = media?.acceptedMimeTypes?.join(",")
+    const mediaEnabled = Boolean(media?.enabled)
     const { loadRecentChanges, prependChange } = useAuditLog({
         adminRoute: config.routes.admin,
         apiRoute: config.routes.api,
@@ -67,8 +70,19 @@ const AIInput = () => {
 
     const clearInput = () => {
         setPrompt("")
+        setSelectedFiles([])
         clearMentions()
         if (editorRef.current) editorRef.current.textContent = ""
+    }
+
+    const handleSelectFile = (event: ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || [])
+        setSelectedFiles((currentFiles) => [...currentFiles, ...files])
+        event.target.value = ""
+    }
+
+    const removeSelectedFile = (fileIndex: number) => {
+        setSelectedFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex))
     }
 
     const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
@@ -190,6 +204,25 @@ const AIInput = () => {
                                 }
                             }}
                         />
+                        {selectedFiles.length > 0 && (
+                            <div className={styles.attachmentTray} aria-label="Attached media">
+                                {selectedFiles.map((file, index) => (
+                                    <span className={styles.attachmentPill} key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                                        <span className={styles.attachmentName} title={file.name}>
+                                            {file.name}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.attachmentRemove}
+                                            onClick={() => removeSelectedFile(index)}
+                                            aria-label={`Remove ${file.name}`}
+                                        >
+                                            X
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     {mentionRange && (
                         <MentionPopover
@@ -230,17 +263,46 @@ const AIInput = () => {
                             </div>
                         </label>
                     </div>
-                    <Button
-                        buttonStyle="primary"
-                        aria-label="Send"
-                        margin={false}
-                        disabled={
-                            !prompt.trim() || !settingsProvider || !selectedModel || isLoading || Boolean(error) || Boolean(response) || proposals.length > 0
-                        }
-                        onClick={() => void submit()}
-                    >
-                        {isLoading ? "Sending..." : "Send"}
-                    </Button>
+                    <div className={styles.actions}>
+                        {mediaEnabled && (
+                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept={acceptedMimeTypes}
+                                    className={styles.fileInput}
+                                    multiple
+                                    onChange={handleSelectFile}
+                                />
+                                <Button
+                                    buttonStyle="tab"
+                                    aria-label="Attach media"
+                                    margin={false}
+                                    disabled={isLoading || proposals.length > 0}
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <PlusIcon />
+                                </Button>
+                            </>
+                        )}
+                        <Button
+                            buttonStyle="primary"
+                            aria-label="Send"
+                            margin={false}
+                            disabled={
+                                !prompt.trim() ||
+                                !settingsProvider ||
+                                !selectedModel ||
+                                isLoading ||
+                                Boolean(error) ||
+                                Boolean(response) ||
+                                proposals.length > 0
+                            }
+                            onClick={() => void submit()}
+                        >
+                            {isLoading ? "Sending..." : "Send"}
+                        </Button>
+                    </div>
                 </div>
                 {(proposals.length > 0 || response) && (
                     <ActionToast
