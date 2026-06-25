@@ -153,7 +153,11 @@ const normalizeRelationshipScalar = (value: number | string) => {
 
     const trimmedValue = value.trim()
     if (!trimmedValue || /\s/.test(trimmedValue)) return undefined
-    if (/^\d+$/.test(trimmedValue) && Number(trimmedValue) <= 0) return undefined
+    if (/^\d+$/.test(trimmedValue)) {
+        const numericValue = Number(trimmedValue)
+
+        return numericValue > 0 ? numericValue : undefined
+    }
 
     return trimmedValue
 }

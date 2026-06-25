@@ -51,6 +51,26 @@ const HookTest = ({ prompt = " update post " }: { prompt?: string }) => {
             <button onClick={() => void submit()} type="button">
                 Submit
             </button>
+            <button
+                onClick={() =>
+                    void submit({
+                        attachments: [
+                            {
+                                collection: "media",
+                                filename: "hero.png",
+                                filesize: 512,
+                                id: "media-1",
+                                mimeType: "image/png",
+                                type: "media",
+                                url: "/media/hero.png",
+                            },
+                        ],
+                    })
+                }
+                type="button"
+            >
+                Submit with attachments
+            </button>
             <button onClick={dismissChat} type="button">
                 Dismiss
             </button>
@@ -155,6 +175,58 @@ describe("useAIChatStream", () => {
         expect(clearInput).toHaveBeenCalledTimes(1)
     })
 
+    it("includes media attachments in the chat body", async () => {
+        installFetchMock(
+            vi.fn().mockResolvedValue(
+                createStreamResponse(
+                    sse([
+                        { data: { proposals: [], usage: { totalTokens: 1 } }, event: "proposals" },
+                        { data: {}, event: "done" },
+                    ])
+                )
+            )
+        )
+
+        const { container } = render(<HookTest />)
+
+        act(() => {
+            container.querySelectorAll("button")[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+        })
+        await flushPromises(8)
+
+        expect(fetch).toHaveBeenCalledWith(
+            "/api/ai-chat",
+            expect.objectContaining({
+                body: JSON.stringify({
+                    attachments: [
+                        {
+                            collection: "media",
+                            filename: "hero.png",
+                            filesize: 512,
+                            id: "media-1",
+                            mimeType: "image/png",
+                            type: "media",
+                            url: "/media/hero.png",
+                        },
+                    ],
+                    mentions: [
+                        {
+                            collection: "posts",
+                            id: "post-1",
+                            label: "Jupiter",
+                            slug: "jupiter",
+                            type: "doc",
+                        },
+                    ],
+                    model: "gpt-test",
+                    prompt: "update post",
+                }),
+                headers: { "Content-Type": "application/json" },
+                method: "POST",
+            })
+        )
+    })
+
     it("stores errors from failed responses", async () => {
         installFetchMock(vi.fn().mockResolvedValue(createJSONResponse({ error: "No provider configured" }, false)))
 
@@ -193,7 +265,7 @@ describe("useAIChatStream", () => {
         expect(container.querySelector('[data-testid="response"]')?.textContent).toBe("Done")
 
         act(() => {
-            container.querySelectorAll("button")[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+            container.querySelectorAll("button")[2]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
         })
 
         expect(container.querySelector('[data-testid="response"]')?.textContent).toBe("")

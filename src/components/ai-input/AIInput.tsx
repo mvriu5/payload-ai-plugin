@@ -1,12 +1,12 @@
 "use client"
 
-import { Button, DocumentIcon, PlusIcon, useConfig } from "@payloadcms/ui"
+import { Button, PlusIcon, useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
 import { ActionToast, type ActionProposal } from "../action-toast/ActionToast.js"
 import { type AppliedChange } from "../audit-log-list/AuditLogList.js"
-import { useAIChatStream } from "../hooks/useAIChatStream.js"
+import { type MediaAttachment, useAIChatStream } from "../hooks/useAIChatStream.js"
 import { useAISettings } from "../hooks/useAISettings.js"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
@@ -42,7 +42,9 @@ const AIInput = () => {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
     const [isApplying, setIsApplying] = useState(false)
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false)
     const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+    const [mediaAttachments, setMediaAttachments] = useState<MediaAttachment[]>([])
 
     const { config } = useConfig()
     const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale, media } = usePluginConfig(config)
@@ -71,6 +73,7 @@ const AIInput = () => {
     const clearInput = () => {
         setPrompt("")
         setSelectedFiles([])
+        setMediaAttachments([])
         clearMentions()
         if (editorRef.current) editorRef.current.textContent = ""
     }
@@ -85,6 +88,10 @@ const AIInput = () => {
         setSelectedFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex))
     }
 
+    const removeMediaAttachment = (attachmentIndex: number) => {
+        setMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
+    }
+
     const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
         apiRoute: config.routes.api,
         clearInput,
@@ -92,6 +99,62 @@ const AIInput = () => {
         prompt,
         selectedModel,
     })
+
+    const uploadSelectedFiles = async () => {
+        if (selectedFiles.length === 0) return []
+
+        const uploadedAttachments: MediaAttachment[] = []
+
+        for (const file of selectedFiles) {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const res = await fetch(
+                formatAdminURL({
+                    apiRoute: config.routes.api,
+                    path: "/ai-upload-media",
+                }),
+                {
+                    body: formData,
+                    method: "POST",
+                }
+            )
+            const result = (await res.json().catch(() => null)) as { attachment?: MediaAttachment; error?: string } | null
+
+            if (!res.ok || !result?.attachment) {
+                throw new Error(result?.error || `Could not upload ${file.name}`)
+            }
+
+            uploadedAttachments.push(result.attachment)
+        }
+
+        return uploadedAttachments
+    }
+
+    const handleSubmit = async () => {
+        if (isUploadingMedia) return
+
+        setError("")
+        setIsUploadingMedia(true)
+
+        try {
+            const uploadedAttachments = await uploadSelectedFiles()
+            const nextAttachments = [...mediaAttachments, ...uploadedAttachments]
+
+            if (uploadedAttachments.length > 0) {
+                setMediaAttachments(nextAttachments)
+                setSelectedFiles([])
+            }
+
+            await submit({
+                attachments: nextAttachments,
+            })
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Media upload failed")
+        } finally {
+            setIsUploadingMedia(false)
+        }
+    }
 
     useEffect(() => {
         if (isLoading || error || proposals.length > 0 || !response) return
@@ -200,11 +263,11 @@ const AIInput = () => {
                                 }
                                 if (event.key === "Enter" && !event.shiftKey) {
                                     event.preventDefault()
-                                    void submit()
+                                    void handleSubmit()
                                 }
                             }}
                         />
-                        {selectedFiles.length > 0 && (
+                        {(selectedFiles.length > 0 || mediaAttachments.length > 0) && (
                             <div className={styles.attachmentTray} aria-label="Attached media">
                                 {selectedFiles.map((file, index) => (
                                     <span className={styles.attachmentPill} key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
@@ -214,8 +277,25 @@ const AIInput = () => {
                                         <button
                                             type="button"
                                             className={styles.attachmentRemove}
+                                            disabled={isUploadingMedia}
                                             onClick={() => removeSelectedFile(index)}
                                             aria-label={`Remove ${file.name}`}
+                                        >
+                                            X
+                                        </button>
+                                    </span>
+                                ))}
+                                {mediaAttachments.map((attachment, index) => (
+                                    <span className={styles.attachmentPill} key={`${attachment.collection}-${attachment.id}`}>
+                                        <span className={styles.attachmentName} title={attachment.filename}>
+                                            {attachment.filename}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.attachmentRemove}
+                                            disabled={isUploadingMedia}
+                                            onClick={() => removeMediaAttachment(index)}
+                                            aria-label={`Remove ${attachment.filename}`}
                                         >
                                             X
                                         </button>
@@ -278,7 +358,7 @@ const AIInput = () => {
                                     buttonStyle="tab"
                                     aria-label="Attach media"
                                     margin={false}
-                                    disabled={isLoading || proposals.length > 0}
+                                    disabled={isLoading || isUploadingMedia || proposals.length > 0}
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     <PlusIcon />
@@ -294,13 +374,14 @@ const AIInput = () => {
                                 !settingsProvider ||
                                 !selectedModel ||
                                 isLoading ||
+                                isUploadingMedia ||
                                 Boolean(error) ||
                                 Boolean(response) ||
                                 proposals.length > 0
                             }
-                            onClick={() => void submit()}
+                            onClick={() => void handleSubmit()}
                         >
-                            {isLoading ? "Sending..." : "Send"}
+                            {isUploadingMedia || isLoading ? "Sending..." : "Send"}
                         </Button>
                     </div>
                 </div>

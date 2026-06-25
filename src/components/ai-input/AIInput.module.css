@@ -202,6 +202,15 @@
     color: #fff;
 }
 
+.attachmentRemove:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.attachmentRemove:disabled:hover {
+    color: var(--theme-elevation-600);
+}
+
 .attachmentRemove:focus-visible {
     outline: 1px solid currentColor;
     outline-offset: 1px;

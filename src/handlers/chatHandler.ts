@@ -25,10 +25,21 @@ import { type ProposalValidationIssue } from "../payload/proposalData.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 
 type ChatBody = {
+    attachments?: ChatMediaAttachment[]
     mentions?: ChatMention[]
     model?: string
     prompt?: string
     provider?: string
+}
+
+type ChatMediaAttachment = {
+    collection?: string
+    filename?: string
+    filesize?: number
+    id?: string
+    mimeType?: string
+    type?: "media"
+    url?: string
 }
 
 type User = {
@@ -799,6 +810,60 @@ const getMentionSummary = (mentions?: ChatMention[]) =>
         type: mention.type,
     })) || []
 
+const getMediaAttachmentContext = async ({
+    allowedCollectionsBySlug,
+    attachments,
+    collections,
+    req,
+}: {
+    allowedCollectionsBySlug: Map<string, Parameters<PayloadHandler>[0]["payload"]["config"]["collections"][number]>
+    attachments?: ChatMediaAttachment[]
+    collections?: ResolvedCollectionPermissionMap
+    req: Parameters<PayloadHandler>[0]
+}) => {
+    if (!attachments?.length) return []
+
+    const contexts: Record<string, unknown>[] = []
+    const seen = new Set<string>()
+
+    for (const attachment of attachments.slice(0, 8)) {
+        if (attachment.type !== "media" || !attachment.collection || !attachment.id) continue
+
+        const key = `${attachment.collection}:${attachment.id}`
+        if (seen.has(key)) continue
+
+        const collectionConfig = allowedCollectionsBySlug.get(attachment.collection)
+        if (!collectionConfig?.upload) continue
+
+        const doc = await req.payload
+            .findByID({
+                collection: attachment.collection as never,
+                depth: 1,
+                id: attachment.id,
+                overrideAccess: false,
+                req,
+            })
+            .catch(() => null)
+
+        if (!doc) continue
+
+        seen.add(key)
+        contexts.push({
+            attachment,
+            collection: attachment.collection,
+            doc,
+            schema: describeCollectionLikeConfig({
+                config: collectionConfig as never,
+                permissions: collections,
+                type: "collection",
+            }),
+            type: "mediaAttachment",
+        })
+    }
+
+    return contexts
+}
+
 const formatProposalIssuesForRetry = (issues: ProposalValidationIssue[]) => {
     return issues
         .slice(0, 6)
@@ -1090,6 +1155,14 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
+            mentionContext.push(
+                ...(await getMediaAttachmentContext({
+                    allowedCollectionsBySlug,
+                    attachments: body?.attachments,
+                    collections: options.collections,
+                    req,
+                }))
+            )
             const mentionedCollectionSlugs: string[] = []
             const mentionedCollectionSlugSet = new Set<string>()
             for (const mention of body?.mentions || []) {
@@ -1658,6 +1731,8 @@ export const createChatHandler =
                     "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
                     "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
                     "Writes are proposals only. Never claim changes were applied before user confirmation.",
+                    "Uploaded media attachments appear in context as mediaAttachment entries. Use their exact IDs for upload fields.",
+                    "If an uploaded media document has editable descriptive fields, propose an update to that media document with suitable values.",
                     "If a collection has a required `slug` field and the user does not provide it, generate a URL‑friendly slug from the title or from the first meaningful word of the prompt.",
                     "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
                     "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",

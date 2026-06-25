@@ -325,6 +325,10 @@ export default buildConfig({
     plugins: [
         payloadAiPlugin({
             collections: {
+                media: {
+                    read: true,
+                    update: true,
+                },
                 posts: true,
                 users: {
                     read: true,
