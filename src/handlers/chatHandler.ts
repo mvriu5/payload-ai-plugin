@@ -1173,7 +1173,7 @@ export const createChatHandler =
             }
             const tools = {
                 getDoc: {
-                    description: "Read one document by collection slug and document id.",
+                    description: "Read a document by collection and id.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         id: z.string().min(1),
@@ -1190,7 +1190,7 @@ export const createChatHandler =
                     },
                 },
                 listCollections: {
-                    description: "List AI-enabled Payload collections. Omit slug for compact summaries; pass slug to get full field schema for one collection.",
+                    description: "List collections; pass slug for one full schema.",
                     inputSchema: z.object({
                         slug: collectionSlugSchema.optional(),
                     }),
@@ -1222,7 +1222,7 @@ export const createChatHandler =
                     },
                 },
                 getGlobal: {
-                    description: "Read one Payload CMS global by slug.",
+                    description: "Read a global by slug.",
                     inputSchema: z.object({
                         slug: z.string().min(1),
                     }),
@@ -1246,7 +1246,7 @@ export const createChatHandler =
                     },
                 },
                 listGlobals: {
-                    description: "List Payload globals. Omit slug for compact summaries; pass slug to get full field schema for one global.",
+                    description: "List globals; pass slug for one full schema.",
                     inputSchema: z.object({
                         slug: z.string().optional(),
                     }),
@@ -1277,7 +1277,7 @@ export const createChatHandler =
                 },
                 proposeCreateDoc: {
                     description:
-                        "Prepare a CMS document creation proposal. This does not write to the database. Use exact field names from listCollections. Include every required field for the target collection. For localizedData, include every localized required field in every locale entry, and include non-localized required fields in the first locale entry. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+                        "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
@@ -1424,7 +1424,7 @@ export const createChatHandler =
                     },
                 },
                 proposeDeleteDoc: {
-                    description: "Prepare a CMS document deletion proposal. This does not write to the database.",
+                    description: "Propose document deletion.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         id: z.string().min(1),
@@ -1447,7 +1447,7 @@ export const createChatHandler =
                 },
                 proposeUpdateDoc: {
                     description:
-                        "Prepare a CMS document update proposal. This does not write to the database. Use exact field names from listCollections. For array fields, provide arrays of objects matching their child fields. For richText fields, prefer plain text or omit if unsure. Use localizedData when writing multiple locales in one proposal.",
+                        "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
@@ -1537,8 +1537,7 @@ export const createChatHandler =
                     },
                 },
                 proposeUpdateGlobal: {
-                    description:
-                        "Prepare a Payload global update proposal. This does not write to the database. Use localizedData when writing multiple locales in one proposal.",
+                    description: "Propose global update. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             data: z.record(z.string(), z.unknown()).optional(),
@@ -1598,7 +1597,7 @@ export const createChatHandler =
                     },
                 },
                 searchDocs: {
-                    description: "Search documents in one collection. Use query for a loose text search where possible.",
+                    description: "Search documents in one collection.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         limit: z.number().int().min(1).max(10).default(5),
