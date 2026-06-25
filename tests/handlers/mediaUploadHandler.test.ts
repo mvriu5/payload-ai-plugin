@@ -42,6 +42,7 @@ describe("createMediaUploadHandler", () => {
         mockAddDataAndFileToRequest.mockImplementation(async (incomingReq) => {
             incomingReq.data = {
                 alt: "Hero image",
+                caption: "Homepage hero",
                 collection: "posts",
                 file: "ignored",
             }
@@ -69,6 +70,7 @@ describe("createMediaUploadHandler", () => {
             collection: "media",
             data: {
                 alt: "Hero image",
+                caption: "Homepage hero",
             },
             file,
             overrideAccess: false,

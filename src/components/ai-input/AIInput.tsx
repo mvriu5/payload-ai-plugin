@@ -37,6 +37,8 @@ const getProviderIcon = (provider: AIProvider | null) => {
     }
 }
 
+const getFileSignature = (file: File) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`
+
 const AIInput = () => {
     const editorRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -45,6 +47,9 @@ const AIInput = () => {
     const [isUploadingMedia, setIsUploadingMedia] = useState(false)
     const [selectedFiles, setSelectedFiles] = useState<File[]>([])
     const [mediaAttachments, setMediaAttachments] = useState<MediaAttachment[]>([])
+    const selectedFilesRef = useRef<File[]>([])
+    const mediaAttachmentsRef = useRef<MediaAttachment[]>([])
+    const uploadedFileSignaturesRef = useRef<Set<string>>(new Set())
 
     const { config } = useConfig()
     const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale, media } = usePluginConfig(config)
@@ -70,26 +75,53 @@ const AIInput = () => {
         styles,
     })
 
+    const updateSelectedFiles = (updater: File[] | ((currentFiles: File[]) => File[])) => {
+        const nextFiles = typeof updater === "function" ? updater(selectedFilesRef.current) : updater
+        selectedFilesRef.current = nextFiles
+        setSelectedFiles(nextFiles)
+    }
+
+    const updateMediaAttachments = (updater: MediaAttachment[] | ((currentAttachments: MediaAttachment[]) => MediaAttachment[])) => {
+        const nextAttachments = typeof updater === "function" ? updater(mediaAttachmentsRef.current) : updater
+        mediaAttachmentsRef.current = nextAttachments
+        setMediaAttachments(nextAttachments)
+    }
+
     const clearInput = () => {
         setPrompt("")
-        setSelectedFiles([])
-        setMediaAttachments([])
+        updateSelectedFiles([])
+        updateMediaAttachments([])
+        uploadedFileSignaturesRef.current = new Set()
         clearMentions()
         if (editorRef.current) editorRef.current.textContent = ""
     }
 
     const handleSelectFile = (event: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || [])
-        setSelectedFiles((currentFiles) => [...currentFiles, ...files])
+        updateSelectedFiles((currentFiles) => {
+            const selectedFileSignatures = new Set(currentFiles.map(getFileSignature))
+            const nextFiles = [...currentFiles]
+
+            for (const file of files) {
+                const fileSignature = getFileSignature(file)
+
+                if (selectedFileSignatures.has(fileSignature)) continue
+
+                selectedFileSignatures.add(fileSignature)
+                nextFiles.push(file)
+            }
+
+            return nextFiles
+        })
         event.target.value = ""
     }
 
     const removeSelectedFile = (fileIndex: number) => {
-        setSelectedFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex))
+        updateSelectedFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex))
     }
 
     const removeMediaAttachment = (attachmentIndex: number) => {
-        setMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
+        updateMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
     }
 
     const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
@@ -101,11 +133,19 @@ const AIInput = () => {
     })
 
     const uploadSelectedFiles = async () => {
-        if (selectedFiles.length === 0) return []
+        const filesToUpload = selectedFilesRef.current
+
+        if (filesToUpload.length === 0) return []
 
         const uploadedAttachments: MediaAttachment[] = []
 
-        for (const file of selectedFiles) {
+        for (const file of filesToUpload) {
+            const fileSignature = getFileSignature(file)
+
+            if (uploadedFileSignaturesRef.current.has(fileSignature)) continue
+
+            uploadedFileSignaturesRef.current.add(fileSignature)
+
             const formData = new FormData()
             formData.append("file", file)
 
@@ -122,6 +162,7 @@ const AIInput = () => {
             const result = (await res.json().catch(() => null)) as { attachment?: MediaAttachment; error?: string } | null
 
             if (!res.ok || !result?.attachment) {
+                uploadedFileSignaturesRef.current.delete(fileSignature)
                 throw new Error(result?.error || `Could not upload ${file.name}`)
             }
 
@@ -139,11 +180,11 @@ const AIInput = () => {
 
         try {
             const uploadedAttachments = await uploadSelectedFiles()
-            const nextAttachments = [...mediaAttachments, ...uploadedAttachments]
+            const nextAttachments = [...mediaAttachmentsRef.current, ...uploadedAttachments]
 
             if (uploadedAttachments.length > 0) {
-                setMediaAttachments(nextAttachments)
-                setSelectedFiles([])
+                updateMediaAttachments(nextAttachments)
+                updateSelectedFiles([])
             }
 
             await submit({
