@@ -197,4 +197,85 @@ describe("chatHandler", () => {
             })
         )
     })
+
+    it("rejects upload field references outside the uploaded attachments", async () => {
+        const uploadPostCollection = {
+            fields: [
+                {
+                    name: "title",
+                    required: true,
+                    type: "text",
+                },
+                {
+                    name: "heroImage",
+                    relationTo: "media",
+                    type: "upload",
+                },
+            ],
+            slug: "posts",
+        }
+        const findByID = vi.fn().mockResolvedValue({
+            filename: "hero.png",
+            id: 10,
+            mimeType: "image/png",
+            url: "/media/hero.png",
+        })
+
+        streamText.mockImplementationOnce((args: {
+            tools: {
+                proposeCreateDoc: {
+                    execute: (input: unknown) => Promise<unknown>
+                }
+            }
+        }) => ({
+            fullStream: (async function* () {
+                await args.tools.proposeCreateDoc.execute({
+                    collection: "posts",
+                    data: {
+                        heroImage: "999",
+                        title: "People",
+                    },
+                    label: "Create People post",
+                })
+                yield {
+                    totalUsage: {
+                        totalTokens: 1,
+                    },
+                    type: "finish",
+                }
+            })(),
+        }))
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    attachments: [
+                        {
+                            collection: "media",
+                            filename: "hero.png",
+                            filesize: 512,
+                            id: "10",
+                            mimeType: "image/png",
+                            type: "media",
+                            url: "/media/hero.png",
+                        },
+                    ],
+                    model: "gpt-test",
+                    prompt: "Create a post and use the uploaded image as heroImage",
+                },
+                collections: [uploadPostCollection, mediaCollection],
+                findByID,
+                user: {
+                    aiProvider: "openai",
+                    id: "user-1",
+                },
+            })
+        )
+        const text = await readText(response)
+
+        expect(text).toContain("event: proposals")
+        expect(text).toContain('"proposals":[]')
+        expect(text).toContain("uses upload references that are not in the uploaded attachments")
+    })
 })

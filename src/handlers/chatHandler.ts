@@ -768,6 +768,133 @@ const collectRelationshipTargets = ({
     return targets
 }
 
+const collectUploadTargets = ({
+    data,
+    fields,
+    path = "",
+}: {
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+    path?: string
+}): RelationshipTargetReference[] => {
+    const targets: RelationshipTargetReference[] = []
+
+    for (const field of fields) {
+        if (!field.name) continue
+
+        const fieldPath = path ? `${path}.${field.name}` : field.name
+        const fieldValue = data[field.name]
+
+        if (fieldValue === undefined || fieldValue === null) continue
+
+        if (field.type === "upload") {
+            const relationTargets = Array.isArray(field.relationTo)
+                ? field.relationTo.filter((item): item is string => typeof item === "string")
+                : typeof field.relationTo === "string"
+                  ? [field.relationTo]
+                  : []
+
+            const collectSingle = (value: unknown, itemPath: string) => {
+                if (typeof value === "string" || typeof value === "number") {
+                    if (relationTargets.length === 1) {
+                        targets.push({
+                            collection: relationTargets[0],
+                            id: value,
+                            path: itemPath,
+                        })
+                    }
+
+                    return
+                }
+
+                if (!isRecord(value)) return
+
+                const relationTo = typeof value.relationTo === "string" ? value.relationTo : relationTargets[0]
+                const id =
+                    typeof value.id === "string" || typeof value.id === "number"
+                        ? value.id
+                        : typeof value.value === "string" || typeof value.value === "number"
+                          ? value.value
+                          : undefined
+
+                if (!relationTo || id === undefined) return
+
+                targets.push({
+                    collection: relationTo,
+                    id,
+                    path: itemPath,
+                })
+            }
+
+            if (field.hasMany && Array.isArray(fieldValue)) {
+                fieldValue.forEach((item, index) => collectSingle(item, `${fieldPath}.${index}`))
+            } else {
+                collectSingle(fieldValue, fieldPath)
+            }
+
+            continue
+        }
+
+        if (field.type === "group" && isRecord(fieldValue) && field.fields?.length) {
+            targets.push(
+                ...collectUploadTargets({
+                    data: fieldValue,
+                    fields: field.fields as BlockFieldConfig[],
+                    path: fieldPath,
+                })
+            )
+            continue
+        }
+
+        if (field.type === "array" && Array.isArray(fieldValue) && field.fields?.length) {
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                targets.push(
+                    ...collectUploadTargets({
+                        data: item,
+                        fields: field.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+            continue
+        }
+
+        if (field.type === "blocks" && Array.isArray(fieldValue) && field.blocks?.length) {
+            const blocksBySlug = new Map(field.blocks.map((block) => [block.slug, block]))
+
+            fieldValue.forEach((item, index) => {
+                if (!isRecord(item)) return
+
+                const blockType =
+                    typeof item.blockType === "string"
+                        ? item.blockType
+                        : typeof item.type === "string"
+                          ? item.type
+                          : typeof item.slug === "string"
+                            ? item.slug
+                            : null
+
+                if (!blockType) return
+
+                const blockConfig = blocksBySlug.get(blockType)
+                if (!blockConfig?.fields?.length) return
+
+                targets.push(
+                    ...collectUploadTargets({
+                        data: item,
+                        fields: blockConfig.fields as BlockFieldConfig[],
+                        path: `${fieldPath}.${index}`,
+                    })
+                )
+            })
+        }
+    }
+
+    return targets
+}
+
 const validateRelationshipTargetsExist = async ({
     data,
     fields,
@@ -800,6 +927,23 @@ const validateRelationshipTargetsExist = async ({
     )
 
     return targetResults.filter((target): target is RelationshipTargetReference => Boolean(target))
+}
+
+const getUploadTargetsOutsideAttachments = ({
+    allowedAttachmentKeys,
+    data,
+    fields,
+}: {
+    allowedAttachmentKeys: Set<string>
+    data: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+}) => {
+    if (allowedAttachmentKeys.size === 0) return []
+
+    return collectUploadTargets({
+        data,
+        fields,
+    }).filter((target) => !allowedAttachmentKeys.has(`${target.collection}:${String(target.id)}`))
 }
 
 const getMentionSummary = (mentions?: ChatMention[]) =>
@@ -1155,14 +1299,23 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
-            mentionContext.push(
-                ...(await getMediaAttachmentContext({
-                    allowedCollectionsBySlug,
-                    attachments: body?.attachments,
-                    collections: options.collections,
-                    req,
-                }))
+            const mediaAttachmentContext = await getMediaAttachmentContext({
+                allowedCollectionsBySlug,
+                attachments: body?.attachments,
+                collections: options.collections,
+                req,
+            })
+            const allowedAttachmentKeys = new Set(
+                mediaAttachmentContext.flatMap((context) => {
+                    const attachment = context.attachment
+
+                    return isRecord(attachment) && typeof attachment.collection === "string" && typeof attachment.id === "string"
+                        ? [`${attachment.collection}:${attachment.id}`]
+                        : []
+                })
             )
+
+            mentionContext.push(...mediaAttachmentContext)
             const mentionedCollectionSlugs: string[] = []
             const mentionedCollectionSlugSet = new Set<string>()
             for (const mention of body?.mentions || []) {
@@ -1443,6 +1596,37 @@ export const createChatHandler =
                             }
                         }
 
+                        const uploadTargetsOutsideAttachments = [
+                            ...(preparedData.data
+                                ? getUploadTargetsOutsideAttachments({
+                                      allowedAttachmentKeys,
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
+                                      getUploadTargetsOutsideAttachments({
+                                          allowedAttachmentKeys,
+                                          data: localeData,
+                                          fields: collectionFields,
+                                      })
+                                  )
+                                : []),
+                        ]
+
+                        if (uploadTargetsOutsideAttachments.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    allowedAttachments: [...allowedAttachmentKeys],
+                                    uploadTargetsOutsideAttachments,
+                                },
+                                message: `Create proposal for ${collection} uses upload references that are not in the uploaded attachments: ${uploadTargetsOutsideAttachments.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}. Use only uploaded media attachment IDs for upload fields.`,
+                                tool: "proposeCreateDoc",
+                            })
+                        }
+
                         const invalidRelationshipTargets = [
                             ...(preparedData.data
                                 ? await validateRelationshipTargetsExist({
@@ -1593,6 +1777,37 @@ export const createChatHandler =
                                     invalidRelationshipTargets,
                                 },
                                 message: `Update proposal for ${collection} contains relationship or upload references that do not exist: ${invalidRelationshipTargets.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}.`,
+                                tool: "proposeUpdateDoc",
+                            })
+                        }
+
+                        const uploadTargetsOutsideAttachments = [
+                            ...(preparedData.data
+                                ? getUploadTargetsOutsideAttachments({
+                                      allowedAttachmentKeys,
+                                      data: preparedData.data,
+                                      fields: collectionFields,
+                                  })
+                                : []),
+                            ...(preparedData.localizedData
+                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
+                                      getUploadTargetsOutsideAttachments({
+                                          allowedAttachmentKeys,
+                                          data: localeData,
+                                          fields: collectionFields,
+                                      })
+                                  )
+                                : []),
+                        ]
+
+                        if (uploadTargetsOutsideAttachments.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    allowedAttachments: [...allowedAttachmentKeys],
+                                    uploadTargetsOutsideAttachments,
+                                },
+                                message: `Update proposal for ${collection} uses upload references that are not in the uploaded attachments: ${uploadTargetsOutsideAttachments.map((target) => `${target.path} -> ${target.collection}:${target.id}`).join(", ")}. Use only uploaded media attachment IDs for upload fields.`,
                                 tool: "proposeUpdateDoc",
                             })
                         }
