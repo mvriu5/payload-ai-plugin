@@ -1,6 +1,6 @@
 "use client"
 
-import { useConfig } from "@payloadcms/ui"
+import { ChevronIcon, Combobox, useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
@@ -14,6 +14,7 @@ import { usePluginConfig } from "../hooks/usePluginConfig.js"
 import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, Send } from "../Icons.js"
 import { MentionPopover } from "../mention-popover/MentionPopover.js"
 import styles from "./AIInput.module.css"
+import { Button } from "@payloadcms/ui"
 
 const getProviderIcon = (provider: AIProvider | null) => {
     const iconProps = {
@@ -166,8 +167,8 @@ const AIInput = () => {
                             ref={editorRef}
                             role="textbox"
                             aria-label="AIInput"
-                            contentEditable
                             data-placeholder="Ask AI..."
+                            contentEditable={proposals.length === 0 && !isLoading && Boolean(settingsProvider)}
                             onInput={(event) => {
                                 const value = (event.target as HTMLElement).innerText
                                 setPrompt(value)
@@ -210,14 +211,15 @@ const AIInput = () => {
                         <label className={styles.setting}>
                             <span className={styles.settingLabel}>Model</span>
                             <div className={styles.selectWrapper}>
-                                {getProviderIcon(settingsProvider)}
+                                {settingsProvider && getProviderIcon(settingsProvider)}
                                 <select
                                     className={styles.select}
+                                    style={{ paddingLeft: settingsProvider ? "34px" : "12px" }}
                                     disabled={!settingsProvider}
                                     onChange={(event) => setSelectedModel(event.target.value)}
                                     value={selectedModel}
                                 >
-                                    {!settingsProvider && <option value="">Select provider in account settings</option>}
+                                    {!settingsProvider && <option value="">No provider selected</option>}
                                     {settingsProvider &&
                                         aiModelConfig.providers[settingsProvider].map((model) => (
                                             <option key={model.value} value={model.value}>
@@ -228,19 +230,18 @@ const AIInput = () => {
                             </div>
                         </label>
                     </div>
-                    <button
-                        className={styles.chatButton}
+                    <Button
+                        buttonStyle="primary"
+                        aria-label="Send"
+                        margin={false}
                         disabled={
                             !prompt.trim() || !settingsProvider || !selectedModel || isLoading || Boolean(error) || Boolean(response) || proposals.length > 0
                         }
                         onClick={() => void submit()}
-                        type="button"
                     >
-                        <Send width={14} height={14} />
                         {isLoading ? "Sending..." : "Send"}
-                    </button>
+                    </Button>
                 </div>
-                {/* Render the toast only when there is something to show */}
                 {(proposals.length > 0 || response) && (
                     <ActionToast
                         apiRoute={config.routes.api}

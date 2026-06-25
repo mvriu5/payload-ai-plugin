@@ -6,6 +6,7 @@ import { getJSONLineKey } from "../../payload/shared.js"
 import styles from "./DiffDialog.module.css"
 import type { ActionProposal } from "../action-toast/ActionToast.js"
 import type { AppliedChange } from "../audit-log-list/AuditLogList.js"
+import { Button } from "@payloadcms/ui"
 
 export type ProposalDiff = {
     after: unknown
@@ -339,44 +340,42 @@ export const DiffDialog = ({ change, diff, onClose, proposal, tokenUsage }: Diff
                             {proposal.id ? ` #${proposal.id}` : ""}
                         </div>
                     </div>
-                    <button aria-label="Close" className={styles.closeButton} onClick={onClose} type="button">
-                        <XIcon />
-                    </button>
+                    <Button aria-labelabel="Close" margin={false} size="small" buttonStyle="tab" onClick={onClose} icon="x" />
                 </div>
-                <div className={styles.dialogContent}>
-                    {change ? (
-                        <div className={styles.detailSection}>
-                            <div className={styles.detailGrid}>
-                                <span className={styles.detailLabel}>User</span>
-                                <span className={styles.detailValue}>{change.userLabel || change.userID || "Unknown"}</span>
+                {change ? (
+                    <div className={styles.detailSection}>
+                        <div className={styles.detailGrid}>
+                            <span className={styles.detailLabel}>User</span>
+                            <span className={styles.detailValue}>{change.userLabel || change.userID || "Unknown"}</span>
 
-                                <span className={styles.detailLabel}>Date</span>
-                                <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
+                            <span className={styles.detailLabel}>Date</span>
+                            <span className={styles.detailValue}>{formatDateTime(change.createdAt) || "Unknown"}</span>
 
-                                {totalTokens && (
-                                    <>
-                                        <span className={styles.detailLabel}>Tokens</span>
-                                        <span className={styles.detailValue}>
-                                            {totalTokens}
-                                            {inputTokens && outputTokens ? ` (${inputTokens} in / ${outputTokens} out)` : ""}
-                                        </span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        totalTokens && (
-                            <div className={styles.detailSection}>
-                                <div className={styles.detailGrid}>
+                            {totalTokens && (
+                                <>
                                     <span className={styles.detailLabel}>Tokens</span>
                                     <span className={styles.detailValue}>
                                         {totalTokens}
                                         {inputTokens && outputTokens ? ` (${inputTokens} in / ${outputTokens} out)` : ""}
                                     </span>
-                                </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    totalTokens && (
+                        <div className={styles.detailSection}>
+                            <div className={styles.detailGrid}>
+                                <span className={styles.detailLabel}>Tokens</span>
+                                <span className={styles.detailValue}>
+                                    {totalTokens}
+                                    {inputTokens && outputTokens ? ` (${inputTokens} in / ${outputTokens} out)` : ""}
+                                </span>
                             </div>
-                        )
-                    )}
+                        </div>
+                    )
+                )}
+                <div className={styles.dialogContent}>
                     {diffSections.map((section) => {
                         const diffRows = getDiffRows(section.beforeValue, section.afterValue)
                         const displayRows = buildDisplayRows(diffRows, expandedGroups, section.id)

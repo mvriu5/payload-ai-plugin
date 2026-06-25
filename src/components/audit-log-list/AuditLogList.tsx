@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ExternalLinkIcon, useConfig } from "@payloadcms/ui"
+import { Button, ExternalLinkIcon, useConfig } from "@payloadcms/ui"
 import type { ActionProposal } from "../action-toast/ActionToast.js"
 import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
 import styles from "./AuditLogList.module.css"
@@ -71,9 +71,16 @@ const AuditLogList = () => {
             <div className={styles.header}>
                 <h3 className={styles.title}>Recent changes</h3>
                 {allChangesURL && (
-                    <a className={styles.headerGhostButton} href={allChangesURL}>
+                    <Button
+                        url={allChangesURL}
+                        aria-labelabel="View all"
+                        margin={false}
+                        buttonStyle="tab"
+                        size="small"
+                        disabled={!changes || changes.length <= 0}
+                    >
                         View all
-                    </a>
+                    </Button>
                 )}
             </div>
             <div className={styles.list}>
@@ -83,23 +90,24 @@ const AuditLogList = () => {
                     changes.slice(0, 8).map((change, index) => (
                         <div className={styles.item} key={`${change.title}-${index}`}>
                             <div className={styles.titleRow}>
-                                <div className={styles.itemTitle}>{change.title}</div>
                                 {change.url && (
-                                    <a className={styles.ghostButton} href={change.url} rel="noreferrer noopener" target="_blank">
+                                    <Button url={change.url} buttonStyle="tab" size="small" aria-label="Open change" newTab margin={false}>
                                         <ExternalLinkIcon />
-                                    </a>
+                                    </Button>
                                 )}
+                                <div className={styles.itemTitle}>{change.title}</div>
                             </div>
                             <div className={styles.stats}>
                                 <code className={styles.additions}>+{change.additions}</code>
                                 <code className={styles.removals}>-{change.removals}</code>
                             </div>
-                            <button
-                                className={styles.button}
+                            <Button
+                                buttonStyle="tab"
+                                size="small"
+                                aria-label="Open review"
+                                margin={false}
                                 onClick={() => {
-                                    if (change.before === undefined || change.after === undefined) {
-                                        return
-                                    }
+                                    if (change.before === undefined || change.after === undefined) return
 
                                     setActiveDiff({
                                         change,
@@ -110,10 +118,9 @@ const AuditLogList = () => {
                                         proposal: getChangeProposal(change),
                                     })
                                 }}
-                                type="button"
                             >
                                 Review
-                            </button>
+                            </Button>
                         </div>
                     ))
                 )}

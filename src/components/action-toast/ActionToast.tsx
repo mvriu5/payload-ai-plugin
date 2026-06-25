@@ -1,10 +1,10 @@
-import styles from "./ActionToast.module.css"
-import { redactSensitiveData } from "../../ai/sensitiveData.js"
+import { Button, CheckIcon, SwapIcon, XIcon } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
-import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
-import { Apply, FileDiff, Reject } from "../Icons.js"
+import { redactSensitiveData } from "../../ai/sensitiveData.js"
 import { ActiveDiff } from "../audit-log-list/AuditLogList.js"
+import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
+import styles from "./ActionToast.module.css"
 
 export type ActionProposal = {
     _aiSignature?: {
@@ -168,37 +168,33 @@ export const ActionToast = ({
                         </div>
                         <div className={styles.footer}>
                             <div className={styles.viewAction}>
-                                <button
+                                <Button
                                     aria-label={`Review proposal: ${proposal.label}`}
-                                    className={styles.secondaryButton}
+                                    margin={false}
+                                    buttonStyle="subtle"
                                     disabled={loadingDiffIndex === index}
                                     onClick={() => void openDiff(proposal, index)}
-                                    type="button"
                                 >
-                                    <FileDiff height={16} width={16} />
+                                    <SwapIcon />
                                     {loadingDiffIndex === index ? "Loading" : "Review"}
-                                </button>
+                                </Button>
                                 {viewURL && (
-                                    <a className={styles.ghostButton} href={viewURL} rel="noreferrer noopener" target="_blank">
+                                    <Button el="anchor" buttonStyle="tab" url={viewURL} newTab margin={false}>
                                         Go to source
-                                    </a>
+                                    </Button>
                                 )}
                             </div>
                             <div className={styles.actions}>
-                                {onDismiss && (
-                                    <button aria-label="Dismiss proposals" className={styles.secondaryButton} onClick={onDismiss} type="button">
-                                        <Reject height={16} width={16} />
-                                    </button>
-                                )}
-                                <button
-                                    aria-label={`Apply proposal: ${proposal.label}`}
-                                    className={styles.button}
+                                {onDismiss && <Button icon="x" aria-label="Dismiss proposals" buttonStyle="subtle" margin={false} onClick={onDismiss} />}
+                                <Button
+                                    aria-labelabel={`Apply proposal: ${proposal.label}`}
+                                    margin={false}
+                                    buttonStyle="primary"
                                     disabled={isApplying}
                                     onClick={() => onApply(proposal, index)}
-                                    type="button"
                                 >
-                                    <Apply height={16} width={16} />
-                                </button>
+                                    <CheckIcon />
+                                </Button>
                             </div>
                         </div>
                     </div>

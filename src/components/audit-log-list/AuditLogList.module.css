@@ -18,19 +18,6 @@
     margin-bottom: 10px;
 }
 
-.headerGhostButton {
-    color: var(--theme-elevation-500);
-    flex: 0 0 auto;
-    font-size: 12px;
-    line-height: 24px;
-    min-height: 24px;
-    text-decoration: none;
-}
-
-.headerGhostButton:hover {
-    text-decoration: underline;
-}
-
 .title {
     font-size: 14px;
     line-height: 1.3;
@@ -41,7 +28,7 @@
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     max-height: 300px;
     min-height: 0;
     overflow: auto;
@@ -108,49 +95,4 @@
 .removals {
     background: rgba(160, 26, 26, 0.16);
     color: #a01a1a;
-}
-
-.button {
-    align-items: center;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: var(--theme-text);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: 12px;
-    gap: 6px;
-    justify-content: center;
-    line-height: 24px;
-    min-height: 24px;
-    padding: 0 10px;
-    text-align: center;
-    text-decoration: none;
-    transition: background-color 0.2s ease;
-}
-
-.button:hover {
-    background: var(--theme-elevation-150);
-}
-
-.button:disabled {
-    color: var(--theme-elevation-400);
-    cursor: not-allowed;
-}
-
-.button svg {
-    color: var(--theme-elevation-500);
-    flex: 0 0 auto;
-}
-
-.ghostButton {
-    color: var(--theme-elevation-500);
-    flex: 0 0 auto;
-    font-size: 12px;
-    line-height: 18px;
-    text-decoration: none;
-}
-
-.ghostButton:hover {
-    text-decoration: underline;
 }
