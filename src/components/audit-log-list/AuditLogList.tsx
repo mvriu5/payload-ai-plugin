@@ -73,11 +73,13 @@ const AuditLogList = () => {
                 {allChangesURL && (
                     <Button
                         url={allChangesURL}
+                        el="anchor"
                         aria-labelabel="View all"
                         margin={false}
                         buttonStyle="tab"
                         size="small"
                         disabled={!changes || changes.length <= 0}
+                        newTab
                     >
                         View all
                     </Button>
@@ -91,7 +93,7 @@ const AuditLogList = () => {
                         <div className={styles.item} key={`${change.title}-${index}`}>
                             <div className={styles.titleRow}>
                                 {change.url && (
-                                    <Button url={change.url} buttonStyle="tab" size="small" aria-label="Open change" newTab margin={false}>
+                                    <Button url={change.url} el="anchor" buttonStyle="tab" size="small" aria-label="Open change" newTab margin={false}>
                                         <ExternalLinkIcon />
                                     </Button>
                                 )}
