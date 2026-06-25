@@ -9,6 +9,30 @@ import { createJSONResponse, installFetchMock } from "../fixtures/fetch.js"
 import { mockSignedUpdatePostProposal } from "../fixtures/proposals.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
+vi.mock("@payloadcms/ui", () => ({
+    Button: ({
+        children,
+        disabled,
+        onClick,
+        url,
+    }: {
+        children?: React.ReactNode
+        disabled?: boolean
+        onClick?: () => void
+        url?: string
+    }) =>
+        url ? (
+            <a href={url}>{children}</a>
+        ) : (
+            <button disabled={disabled} onClick={onClick} type="button">
+                {children}
+            </button>
+        ),
+    CheckIcon: () => <span aria-hidden="true" />,
+    SwapIcon: () => <span aria-hidden="true" />,
+    XIcon: () => <span aria-hidden="true" />,
+}))
+
 vi.mock("../../src/components/diff-dialog/DiffDialog.js", () => ({
     DiffDialog: ({ proposal }: { proposal: ActionProposal }) => (
         <dialog aria-label={`Diff for ${proposal.label}`} open>

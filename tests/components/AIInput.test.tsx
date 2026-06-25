@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type React from "react"
 import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AIInput from "../../src/components/ai-input/AIInput.js"
@@ -13,6 +14,26 @@ const mockUseMentions = vi.hoisted(() => vi.fn())
 const mockUseAIChatStream = vi.hoisted(() => vi.fn())
 
 vi.mock("@payloadcms/ui", () => ({
+    Button: ({
+        children,
+        disabled,
+        onClick,
+        type = "button",
+        url,
+    }: {
+        children: React.ReactNode
+        disabled?: boolean
+        onClick?: () => void
+        type?: "button" | "submit"
+        url?: string
+    }) =>
+        url ? (
+            <a href={url}>{children}</a>
+        ) : (
+            <button disabled={disabled} onClick={onClick} type={type}>
+                {children}
+            </button>
+        ),
     useConfig: mockUseConfig,
 }))
 
