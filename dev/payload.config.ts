@@ -331,6 +331,12 @@ export default buildConfig({
                     update: true,
                 },
             },
+            media: {
+                acceptedMimeTypes: ["image/*"],
+                collectionSlug: "media",
+                enabled: true,
+                maxFileSize: 10 * 1024 * 1024,
+            },
         }),
     ],
     secret: process.env.PAYLOAD_SECRET!,

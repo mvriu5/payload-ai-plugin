@@ -4,8 +4,16 @@ import { getResolvedAIModelConfig, type AIModelConfig } from "../../ai/providerO
 type PayloadAIAdminCustom = {
     payloadAiPlugin?: {
         collectionSlugs?: string[]
+        media?: MediaConfig
         models?: AIModelConfig
     }
+}
+
+type MediaConfig = {
+    acceptedMimeTypes?: string[]
+    collectionSlug: string
+    enabled: boolean
+    maxFileSize?: number
 }
 
 type LocaleConfig =
@@ -45,5 +53,6 @@ export const usePluginConfig = (config: {
         enabledCollectionSlugSet,
         isCollectionMentionEnabled: (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug),
         locales: localization?.locales ?? [],
+        media: pluginConfig?.media,
     }
 }

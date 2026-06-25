@@ -7,7 +7,7 @@ import { usePluginConfig } from "../../src/components/hooks/usePluginConfig.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const HookTest = ({ config }: { config: Parameters<typeof usePluginConfig>[0] }) => {
-    const { aiModelConfig, defaultLocale, enabledCollectionSlugSet, isCollectionMentionEnabled, locales } = usePluginConfig(config)
+    const { aiModelConfig, defaultLocale, enabledCollectionSlugSet, isCollectionMentionEnabled, locales, media } = usePluginConfig(config)
 
     return (
         <div>
@@ -16,6 +16,9 @@ const HookTest = ({ config }: { config: Parameters<typeof usePluginConfig>[0] })
             <span data-testid="posts-enabled">{String(isCollectionMentionEnabled("posts"))}</span>
             <span data-testid="pages-enabled">{String(isCollectionMentionEnabled("pages"))}</span>
             <span data-testid="has-slug-filter">{String(Boolean(enabledCollectionSlugSet))}</span>
+            <span data-testid="media-enabled">{String(Boolean(media?.enabled))}</span>
+            <span data-testid="media-collection">{media?.collectionSlug || ""}</span>
+            <span data-testid="media-mime-types">{media?.acceptedMimeTypes?.join(",") || ""}</span>
             <span data-testid="openai-default">{aiModelConfig.defaults.openai}</span>
             <span data-testid="openai-models">{aiModelConfig.providers.openai.map((model) => model.value).join(",")}</span>
         </div>
@@ -35,6 +38,12 @@ describe("usePluginConfig", () => {
                         custom: {
                             payloadAiPlugin: {
                                 collectionSlugs: ["posts"],
+                                media: {
+                                    acceptedMimeTypes: ["image/*"],
+                                    collectionSlug: "media",
+                                    enabled: true,
+                                    maxFileSize: 1024,
+                                },
                                 models: {
                                     defaults: {
                                         openai: "custom-openai",
@@ -62,6 +71,9 @@ describe("usePluginConfig", () => {
         expect(container.querySelector('[data-testid="posts-enabled"]')?.textContent).toBe("true")
         expect(container.querySelector('[data-testid="pages-enabled"]')?.textContent).toBe("false")
         expect(container.querySelector('[data-testid="has-slug-filter"]')?.textContent).toBe("true")
+        expect(container.querySelector('[data-testid="media-enabled"]')?.textContent).toBe("true")
+        expect(container.querySelector('[data-testid="media-collection"]')?.textContent).toBe("media")
+        expect(container.querySelector('[data-testid="media-mime-types"]')?.textContent).toBe("image/*")
         expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("custom-openai")
         expect(container.querySelector('[data-testid="openai-models"]')?.textContent).toBe("custom-openai")
     })
@@ -74,6 +86,7 @@ describe("usePluginConfig", () => {
         expect(container.querySelector('[data-testid="posts-enabled"]')?.textContent).toBe("true")
         expect(container.querySelector('[data-testid="pages-enabled"]')?.textContent).toBe("true")
         expect(container.querySelector('[data-testid="has-slug-filter"]')?.textContent).toBe("false")
+        expect(container.querySelector('[data-testid="media-enabled"]')?.textContent).toBe("false")
         expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("gpt-4.1-mini")
     })
 })
