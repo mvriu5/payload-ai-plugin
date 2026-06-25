@@ -4,6 +4,7 @@ import { aiProviders, getResolvedAIModelConfig, type AIModelConfig } from "./ai/
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
+import { createMediaUploadHandler, type MediaUploadOptions } from "./handlers/mediaUploadHandler.js"
 import { createProposalDiffHandler } from "./handlers/proposalDiffHandler.js"
 import { createAuditLogHandler } from "./handlers/auditLogHandler.js"
 import { resolveCollectionPermissions, type CollectionPermissionMap } from "./payload/collectionPermissions.js"
@@ -14,7 +15,25 @@ export type PayloadAIPluginOptions = {
     collections?: CollectionPermissionMap
     disabled?: boolean
     maxOutputTokens?: number
+    media?: {
+        acceptedMimeTypes?: string[]
+        collectionSlug?: string
+        enabled?: boolean
+        maxFileSize?: number
+    }
     models?: AIModelConfig
+}
+
+const resolveMediaUploadOptions = (media?: PayloadAIPluginOptions["media"]): MediaUploadOptions | null => {
+    if (!media || media.enabled === false) return null
+
+    return {
+        ...(media.acceptedMimeTypes ? { acceptedMimeTypes: media.acceptedMimeTypes } : {}),
+        collectionSlug: media.collectionSlug || "media",
+        ...(typeof media.maxFileSize === "number" && Number.isFinite(media.maxFileSize) && media.maxFileSize > 0
+            ? { maxFileSize: Math.floor(media.maxFileSize) }
+            : {}),
+    }
 }
 
 const createAIChangesCollection = (): CollectionConfig => ({
@@ -159,6 +178,7 @@ export const payloadAiPlugin =
         const collectionPermissions = resolveCollectionPermissions(pluginOptions.collections)
         const allowUserApiKeys = pluginOptions.allowUserApiKeys !== false
         const modelConfig = getResolvedAIModelConfig(pluginOptions.models)
+        const mediaUploadOptions = resolveMediaUploadOptions(pluginOptions.media)
         const maxOutputTokens =
             typeof pluginOptions.maxOutputTokens === "number" && Number.isFinite(pluginOptions.maxOutputTokens) && pluginOptions.maxOutputTokens > 0
                 ? Math.floor(pluginOptions.maxOutputTokens)
@@ -187,6 +207,14 @@ export const payloadAiPlugin =
                 ...((config.admin.custom?.payloadAiPlugin as Record<string, unknown> | undefined) || {}),
                 collectionSlugs: mentionCollectionSlugs,
                 allowUserApiKeys,
+                ...(mediaUploadOptions
+                    ? {
+                          media: {
+                              ...mediaUploadOptions,
+                              enabled: true,
+                          },
+                      }
+                    : {}),
                 models: modelConfig,
             },
         }
@@ -234,6 +262,13 @@ export const payloadAiPlugin =
             method: "post",
             path: "/ai-mention-suggestion",
         })
+        if (mediaUploadOptions) {
+            config.endpoints.push({
+                handler: createMediaUploadHandler(mediaUploadOptions),
+                method: "post",
+                path: "/ai-upload-media",
+            })
+        }
 
         if (incomingOnInit) {
             config.onInit = async (payload) => {
