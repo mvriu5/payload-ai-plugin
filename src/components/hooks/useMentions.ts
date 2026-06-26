@@ -323,13 +323,6 @@ export const useMentions = ({ apiRoute, config, defaultLocale, editorRef, isColl
 
     const insertMention = useCallback(
         (suggestion: MentionOption) => {
-            console.log("insertMention", {
-                suggestion,
-                mentionRange,
-                editor: editorRef.current,
-                text: editorRef.current?.textContent,
-            })
-
             const editor = editorRef.current
             if (!mentionRange || !editor) return
 

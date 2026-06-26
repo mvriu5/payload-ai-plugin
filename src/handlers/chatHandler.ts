@@ -254,7 +254,13 @@ const createDebugPayload = ({
 
 const createE2EChatResponse = ({ prompt, selectedLocales }: { prompt: string; selectedLocales: string[] }) => {
     const normalizedPrompt = prompt.toLowerCase()
-    const wantsCreatePost = normalizedPrompt.includes("post") && (normalizedPrompt.includes("create") || normalizedPrompt.includes("erstell"))
+    const wantsCreatePost =
+        normalizedPrompt.includes("post") &&
+        (normalizedPrompt.includes("create") ||
+            normalizedPrompt.includes("erstell") ||
+            normalizedPrompt.includes("apply flow") ||
+            normalizedPrompt.includes("locale review") ||
+            normalizedPrompt.includes("proposal review"))
     const mentionsMars = normalizedPrompt.includes("mars")
     const multipleLocales = selectedLocales.length > 1
     const activeLocale = selectedLocales.at(-1)

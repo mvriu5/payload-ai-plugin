@@ -278,7 +278,7 @@ const AIInput = () => {
                     <h2 className={styles.chatTitle}>AI Assistant</h2>
                 </div>
                 <div className={styles.chatInputRow}>
-                    <div className={styles.chatInputSurface}>
+                    <div className={styles.chatInputSurface} onClick={() => editorRef.current?.focus()}>
                         <div
                             id="ai-input"
                             className={styles.chatInput}
@@ -286,6 +286,7 @@ const AIInput = () => {
                             role="textbox"
                             aria-label="AIInput"
                             data-placeholder="Ask AI..."
+                            tabIndex={0}
                             contentEditable={proposals.length === 0 && !isLoading && Boolean(settingsProvider)}
                             onInput={(event) => {
                                 const value = (event.target as HTMLElement).innerText

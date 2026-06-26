@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createChatHandler } from "../../src/handlers/chatHandler.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
@@ -6,6 +6,7 @@ import { mediaCollection, postsCollection } from "../fixtures/payloadConfig.js"
 
 const streamText = vi.hoisted(() => vi.fn())
 const getModel = vi.hoisted(() => vi.fn())
+const originalPayloadSecret = process.env.PAYLOAD_SECRET
 
 vi.mock("ai", async () => {
     const actual = await vi.importActual<typeof import("ai")>("ai")
@@ -39,6 +40,7 @@ describe("chatHandler", () => {
     beforeEach(() => {
         vi.clearAllMocks()
         process.env.OPENAI_API_KEY = "test-openai-key"
+        process.env.PAYLOAD_SECRET = "test-secret"
         getModel.mockResolvedValue({ model: "mock" })
         streamText.mockReturnValue({
             fullStream: (async function* () {
@@ -56,6 +58,10 @@ describe("chatHandler", () => {
                 }
             })(),
         })
+    })
+
+    afterEach(() => {
+        process.env.PAYLOAD_SECRET = originalPayloadSecret
     })
 
     it("rejects anonymous users", async () => {

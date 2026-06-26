@@ -187,7 +187,7 @@ export const ActionToast = ({
                             <div className={styles.actions}>
                                 {onDismiss && <Button icon="x" aria-label="Dismiss proposals" buttonStyle="subtle" margin={false} onClick={onDismiss} />}
                                 <Button
-                                    aria-labelabel={`Apply proposal: ${proposal.label}`}
+                                    aria-label={`Apply proposal: ${proposal.label}`}
                                     margin={false}
                                     buttonStyle="primary"
                                     disabled={isApplying}
