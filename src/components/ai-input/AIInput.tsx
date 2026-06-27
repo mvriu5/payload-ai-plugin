@@ -1,6 +1,6 @@
 "use client"
 
-import { Button, PlusIcon, useConfig } from "@payloadcms/ui"
+import { Button, useConfig } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
@@ -11,7 +11,7 @@ import { useAISettings } from "../hooks/useAISettings.js"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
 import { usePluginConfig } from "../hooks/usePluginConfig.js"
-import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon } from "../Icons.js"
+import { ClaudeIcon, GoogleGeminiIcon, MistralAiIcon, OpenaiIcon, OpenrouterIcon, PaperclipIcon } from "../Icons.js"
 import { MentionPopover } from "../mention-popover/MentionPopover.js"
 import styles from "./AIInput.module.css"
 
@@ -345,6 +345,31 @@ const AIInput = () => {
                                 ))}
                             </div>
                         )}
+                        {mediaEnabled && (
+                            <>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept={acceptedMimeTypes}
+                                    className={styles.fileInput}
+                                    multiple
+                                    onChange={handleSelectFile}
+                                />
+                                <button
+                                    type="button"
+                                    className={styles.mediaButton}
+                                    aria-label="Attach media"
+                                    title="Attach media"
+                                    disabled={isLoading || isUploadingMedia || proposals.length > 0}
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        fileInputRef.current?.click()
+                                    }}
+                                >
+                                    <PaperclipIcon width={16} height={16} />
+                                </button>
+                            </>
+                        )}
                     </div>
                     {mentionRange && (
                         <MentionPopover
@@ -386,27 +411,6 @@ const AIInput = () => {
                         </label>
                     </div>
                     <div className={styles.actions}>
-                        {mediaEnabled && (
-                            <>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept={acceptedMimeTypes}
-                                    className={styles.fileInput}
-                                    multiple
-                                    onChange={handleSelectFile}
-                                />
-                                <Button
-                                    buttonStyle="tab"
-                                    aria-label="Attach media"
-                                    margin={false}
-                                    disabled={isLoading || isUploadingMedia || proposals.length > 0}
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    <PlusIcon />
-                                </Button>
-                            </>
-                        )}
                         <Button
                             buttonStyle="primary"
                             aria-label="Send"

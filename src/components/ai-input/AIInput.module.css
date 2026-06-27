@@ -108,9 +108,47 @@
     display: none;
 }
 
+.mediaButton {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    bottom: 8px;
+    color: var(--theme-elevation-600);
+    cursor: pointer;
+    display: inline-flex;
+    height: 28px;
+    justify-content: center;
+    padding: 0;
+    position: absolute;
+    right: 8px;
+    width: 28px;
+    z-index: 1;
+}
+
+.mediaButton:hover,
+.mediaButton:focus-visible {
+    color: var(--theme-text);
+}
+
+.mediaButton:focus-visible {
+    outline: 1px solid currentColor;
+    outline-offset: 1px;
+}
+
+.mediaButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.mediaButton svg {
+    height: 16px;
+    width: 16px;
+}
+
 .chatInput {
     background: transparent;
     border: 0;
+    box-sizing: border-box;
     color: var(--theme-text);
     font: inherit;
     flex: 1 1 0;
@@ -118,7 +156,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0;
+    padding: 0 32px 32px 0;
     white-space: pre-wrap;
     word-break: break-word;
     width: 100%;
@@ -161,6 +199,7 @@
     flex-wrap: wrap;
     gap: 6px;
     min-height: 22px;
+    padding-right: 32px;
 }
 
 .attachmentPill {

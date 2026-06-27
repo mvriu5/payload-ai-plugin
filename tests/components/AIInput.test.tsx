@@ -35,7 +35,7 @@ vi.mock("@payloadcms/ui", () => ({
                 {children}
             </button>
         ),
-    PlusIcon: () => <span data-testid="plus-icon" />,
+    PaperclipIcon: () => <span data-testid="paperclip-icon" />,
     useConfig: mockUseConfig,
 }))
 
