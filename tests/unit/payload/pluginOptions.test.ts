@@ -90,6 +90,49 @@ describe("payloadAiPlugin options", () => {
         })
     })
 
+    it("uses managed providers without adding provider or api key user fields", () => {
+        const config = payloadAiPlugin({
+            providers: [
+                {
+                    apiKey: "server-secret",
+                    baseURL: "http://localhost:11434/v1",
+                    id: "ollama",
+                    label: "Ollama",
+                    models: [
+                        { label: "Llama 3.3", value: "llama3.3" },
+                        { label: "Qwen 3", value: "qwen3" },
+                    ],
+                    provider: "openai",
+                },
+            ],
+        })(createBaseConfig() as never)
+
+        const usersCollection = config.collections?.find((collection) => collection.slug === "users")
+        const userFieldNames = usersCollection?.fields?.map((field) => ("name" in field ? field.name : null))
+        const adminPluginConfig = config.admin?.custom?.payloadAiPlugin as Record<string, unknown>
+
+        expect(userFieldNames).not.toContain("aiProvider")
+        expect(userFieldNames).not.toContain("aiApiKey")
+        expect(adminPluginConfig).toMatchObject({
+            allowUserApiKeys: false,
+            managedProviders: true,
+            providers: [
+                {
+                    defaultModel: "llama3.3",
+                    id: "ollama",
+                    label: "Ollama",
+                    models: [
+                        { label: "Llama 3.3", value: "llama3.3" },
+                        { label: "Qwen 3", value: "qwen3" },
+                    ],
+                    provider: "openai",
+                },
+            ],
+        })
+        expect(JSON.stringify(adminPluginConfig)).not.toContain("server-secret")
+        expect(JSON.stringify(adminPluginConfig)).not.toContain("localhost:11434")
+    })
+
     it("stops before dashboard and endpoint registration when disabled", () => {
         const config = payloadAiPlugin({
             disabled: true,

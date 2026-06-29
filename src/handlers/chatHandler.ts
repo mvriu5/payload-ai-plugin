@@ -4,7 +4,7 @@ import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
 import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSigning.js"
-import { isAIProvider, type AIModelConfig, type AIProvider } from "../ai/providerOptions.js"
+import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
@@ -183,6 +183,7 @@ type ChatOptions = {
     collections?: ResolvedCollectionPermissionMap
     maxOutputTokens?: number
     models?: AIModelConfig
+    providers?: ResolvedAIProviderConfig[]
 }
 
 const e2eModeEnabled = () => process.env.PAYLOAD_AI_E2E_MODE === "true"
@@ -1154,21 +1155,34 @@ export const createChatHandler =
         }
 
         const user = req.user as User
-        const requestedProvider = body?.provider || user.aiProvider || "openai"
+        const managedProviders = options.providers?.length ? options.providers : null
+        const requestedProvider = body?.provider || (managedProviders ? managedProviders[0].id : user.aiProvider || "openai")
+        const managedProvider = managedProviders?.find((providerConfig) => providerConfig.id === requestedProvider)
 
-        if (!isAIProvider(requestedProvider)) return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
+        if (managedProviders && !managedProvider) {
+            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
+        }
+        if (!managedProvider && !isAIProvider(requestedProvider)) {
+            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
+        }
 
-        const provider = requestedProvider
-        const userApiKey = options.allowUserApiKeys === false ? null : user.aiApiKey
+        const provider = (managedProvider?.provider || requestedProvider) as AIProvider
+        const requestedModel = body?.model || managedProvider?.defaultModel
+
+        if (managedProvider && requestedModel && !managedProvider.models.some((model) => model.value === requestedModel)) {
+            return Response.json({ error: `Unsupported model "${requestedModel}" for AI provider "${managedProvider.id}".` }, { status: 400 })
+        }
+
+        const userApiKey = managedProvider ? managedProvider.apiKey : options.allowUserApiKeys === false ? null : user.aiApiKey
         const providerConfig = getProviderConfig({
             apiKey: userApiKey,
             defaultModels: options.models?.defaults,
-            model: body?.model,
+            model: requestedModel,
             provider,
         })
         const debug: ChatDebug = {
             model: providerConfig.modelID,
-            provider,
+            provider: managedProvider?.id || provider,
             tools: [
                 "getDoc",
                 "getGlobal",
@@ -1203,9 +1217,11 @@ export const createChatHandler =
             return Response.json(
                 {
                     error:
-                        options.allowUserApiKeys === false
-                            ? `Configure a ${provider} API key in the server environment first.`
-                            : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
+                        managedProvider
+                            ? `Configure a ${managedProvider?.id || provider} API key in the plugin config or server environment first.`
+                            : options.allowUserApiKeys === false
+                              ? `Configure a ${provider} API key in the server environment first.`
+                              : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
                 },
                 { status: 400 }
             )
@@ -1936,6 +1952,7 @@ export const createChatHandler =
 
             const model = await getModel({
                 apiKey: providerConfig.apiKey,
+                ...(managedProvider?.baseURL ? { baseURL: managedProvider.baseURL } : {}),
                 model: providerConfig.modelID,
                 provider,
             })

@@ -159,6 +159,75 @@ describe("chatHandler", () => {
         expect(text).toContain("event: done")
     })
 
+    it("uses managed provider credentials and custom base URLs", async () => {
+        const handler = createChatHandler({
+            providers: [
+                {
+                    apiKey: "managed-key",
+                    baseURL: "http://localhost:11434/v1",
+                    defaultModel: "llama3.3",
+                    id: "ollama",
+                    label: "Ollama",
+                    models: [{ label: "Llama 3.3", value: "llama3.3" }],
+                    provider: "openai",
+                },
+            ],
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    model: "llama3.3",
+                    prompt: "What can you do?",
+                    provider: "ollama",
+                },
+                collections: [postsCollection],
+                user: {
+                    aiApiKey: "ignored-user-key",
+                    aiProvider: "unknown",
+                    id: "user-1",
+                },
+            })
+        )
+
+        expect(response.status).toBe(200)
+        expect(getModel).toHaveBeenCalledWith({
+            apiKey: "managed-key",
+            baseURL: "http://localhost:11434/v1",
+            model: "llama3.3",
+            provider: "openai",
+        })
+    })
+
+    it("rejects models outside the managed provider configuration", async () => {
+        const handler = createChatHandler({
+            providers: [
+                {
+                    apiKey: "managed-key",
+                    defaultModel: "allowed-model",
+                    id: "managed",
+                    label: "Managed",
+                    models: [{ label: "Allowed", value: "allowed-model" }],
+                    provider: "openai",
+                },
+            ],
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    model: "unapproved-model",
+                    prompt: "Hello",
+                    provider: "managed",
+                },
+            })
+        )
+
+        expect(response.status).toBe(400)
+        expect(getModel).not.toHaveBeenCalled()
+        await expect(readJSON(response)).resolves.toEqual({
+            error: 'Unsupported model "unapproved-model" for AI provider "managed".',
+        })
+    })
+
     it("adds uploaded media attachments and media schema to prompt context", async () => {
         const findByID = vi.fn().mockResolvedValue({
             filename: "hero.png",

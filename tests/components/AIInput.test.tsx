@@ -117,17 +117,37 @@ describe("AIInput", () => {
             defaultLocale: undefined,
             isCollectionMentionEnabled: vi.fn(() => true),
             locales: [],
+            managedProviders: false,
             media: {
                 acceptedMimeTypes: ["image/*"],
                 collectionSlug: "media",
                 enabled: true,
                 maxFileSize: 1024,
             },
+            providerProfiles: [
+                {
+                    defaultModel: "gpt-test",
+                    id: "openai",
+                    label: "OpenAI",
+                    models: [
+                        {
+                            label: "GPT Test",
+                            value: "gpt-test",
+                        },
+                        {
+                            label: "GPT 4.1",
+                            value: "gpt-4.1",
+                        },
+                    ],
+                    provider: "openai",
+                },
+            ],
         })
 
         mockUseAISettings.mockReturnValue({
             selectedModel: "gpt-test",
             setSelectedModel: mockSetSelectedModel,
+            setSelectedProviderModel: mockSetSelectedModel,
             settingsProvider: "openai",
         })
 
@@ -426,11 +446,53 @@ describe("AIInput", () => {
         const select = container.querySelector("select")
 
         act(() => {
-            if (select) select.value = "gpt-4.1"
+            if (select) select.value = JSON.stringify(["openai", "gpt-4.1"])
             select?.dispatchEvent(new Event("change", { bubbles: true }))
         })
 
-        expect(mockSetSelectedModel).toHaveBeenCalledWith("gpt-4.1")
+        expect(mockSetSelectedModel).toHaveBeenCalledWith("openai", "gpt-4.1")
+    })
+
+    it("groups models from managed providers in the model select", () => {
+        mockUsePluginConfig.mockReturnValue({
+            aiModelConfig: {
+                defaults: { openai: "gpt-test" },
+                providers: { openai: [{ label: "GPT Test", value: "gpt-test" }] },
+            },
+            defaultLocale: undefined,
+            isCollectionMentionEnabled: vi.fn(() => true),
+            locales: [],
+            managedProviders: true,
+            media: undefined,
+            providerProfiles: [
+                {
+                    defaultModel: "gpt-test",
+                    id: "company-openai",
+                    label: "Company OpenAI",
+                    models: [{ label: "GPT Test", value: "gpt-test" }],
+                    provider: "openai",
+                },
+                {
+                    defaultModel: "llama3.3",
+                    id: "ollama",
+                    label: "Ollama",
+                    models: [{ label: "Llama 3.3", value: "llama3.3" }],
+                    provider: "openai",
+                },
+            ],
+        })
+        mockUseAISettings.mockReturnValue({
+            selectedModel: "gpt-test",
+            setSelectedModel: mockSetSelectedModel,
+            setSelectedProviderModel: mockSetSelectedModel,
+            settingsProvider: "company-openai",
+        })
+
+        const { container } = render(<AIInput />)
+        const groups = Array.from(container.querySelectorAll("optgroup"))
+
+        expect(groups.map((group) => group.label)).toEqual(["Company OpenAI", "Ollama"])
+        expect(groups.map((group) => group.querySelector("option")?.textContent)).toEqual(["GPT Test", "Llama 3.3"])
     })
 
     it("renders chat stream state in the action toast", () => {

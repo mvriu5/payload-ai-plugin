@@ -39,6 +39,7 @@ const HookTest = ({ prompt = " update post " }: { prompt?: string }) => {
         mentionsRef,
         prompt,
         selectedModel: "gpt-test",
+        selectedProvider: "openai",
     })
 
     return (
@@ -139,6 +140,7 @@ describe("useAIChatStream", () => {
                     ],
                     model: "gpt-test",
                     prompt: "update post",
+                    provider: "openai",
                 }),
                 headers: { "Content-Type": "application/json" },
                 method: "POST",
@@ -220,6 +222,7 @@ describe("useAIChatStream", () => {
                     ],
                     model: "gpt-test",
                     prompt: "update post",
+                    provider: "openai",
                 }),
                 headers: { "Content-Type": "application/json" },
                 method: "POST",

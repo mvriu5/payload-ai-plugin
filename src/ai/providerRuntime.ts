@@ -10,6 +10,7 @@ type ProviderConfig = {
 
 type ModelConfig = {
     apiKey: string
+    baseURL?: string
     model: string
     provider: AIProvider
 }
@@ -55,8 +56,11 @@ const getMissingProviderDependencyError = (packageName: string, provider: AIProv
     return new Error(`Missing optional dependency ${packageName}. Install it to use the ${provider} provider.`)
 }
 
-export const getModel = async ({ apiKey, model, provider }: ModelConfig): Promise<LanguageModel> => {
-    const providerOptions = { apiKey }
+export const getModel = async ({ apiKey, baseURL, model, provider }: ModelConfig): Promise<LanguageModel> => {
+    const providerOptions = {
+        apiKey,
+        ...(baseURL ? { baseURL } : {}),
+    }
 
     if (provider === "claude") {
         try {

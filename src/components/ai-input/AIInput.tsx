@@ -39,6 +39,22 @@ const getProviderIcon = (provider: AIProvider | null) => {
 
 const getFileSignature = (file: File) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`
 
+const getModelSelectionValue = (provider: string, model: string) => JSON.stringify([provider, model])
+
+const parseModelSelectionValue = (value: string) => {
+    try {
+        const selection = JSON.parse(value) as unknown
+        if (!Array.isArray(selection) || selection.length !== 2 || selection.some((part) => typeof part !== "string")) return null
+
+        return {
+            model: selection[1] as string,
+            provider: selection[0] as string,
+        }
+    } catch {
+        return null
+    }
+}
+
 const AIInput = () => {
     const editorRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -52,18 +68,23 @@ const AIInput = () => {
     const uploadedFileSignaturesRef = useRef<Set<string>>(new Set())
 
     const { config } = useConfig()
-    const { aiModelConfig, isCollectionMentionEnabled, locales, defaultLocale, media } = usePluginConfig(config)
+    const { isCollectionMentionEnabled, locales, defaultLocale, managedProviders, media, providerProfiles } = usePluginConfig(config)
     const acceptedMimeTypes = media?.acceptedMimeTypes?.join(",")
     const mediaEnabled = Boolean(media?.enabled)
     const { loadRecentChanges, prependChange } = useAuditLog({
         adminRoute: config.routes.admin,
         apiRoute: config.routes.api,
     })
-    const { selectedModel, setSelectedModel, settingsProvider } = useAISettings({
+    const { selectedModel, setSelectedProviderModel, settingsProvider } = useAISettings({
         adminUserSlug: config.admin?.user,
         apiRoute: config.routes.api,
-        defaultModels: aiModelConfig.defaults,
+        managedProviders,
+        providerProfiles,
     })
+    const selectedProviderProfile = providerProfiles.find((profile) => profile.id === settingsProvider)
+    const selectableProviderProfiles = managedProviders
+        ? providerProfiles
+        : providerProfiles.filter((profile) => profile.id === settingsProvider)
     const { clearMentions, insertMention, mentionPopoverPosition, mentionRange, mentionSuggestions, mentionsRef, updateMentionState } = useMentions({
         apiRoute: config.routes.api,
         config,
@@ -130,6 +151,7 @@ const AIInput = () => {
         mentionsRef,
         prompt,
         selectedModel,
+        selectedProvider: settingsProvider,
     })
 
     const uploadSelectedFiles = async () => {
@@ -391,21 +413,27 @@ const AIInput = () => {
                         <label className={styles.setting}>
                             <span className={styles.settingLabel}>Model</span>
                             <div className={styles.selectWrapper}>
-                                {settingsProvider && getProviderIcon(settingsProvider)}
+                                {selectedProviderProfile && getProviderIcon(selectedProviderProfile.provider)}
                                 <select
                                     className={styles.select}
-                                    style={{ paddingLeft: settingsProvider ? "34px" : "12px" }}
+                                    style={{ paddingLeft: selectedProviderProfile ? "34px" : "12px" }}
                                     disabled={!settingsProvider}
-                                    onChange={(event) => setSelectedModel(event.target.value)}
-                                    value={selectedModel}
+                                    onChange={(event) => {
+                                        const selection = parseModelSelectionValue(event.target.value)
+                                        if (selection) setSelectedProviderModel(selection.provider, selection.model)
+                                    }}
+                                    value={settingsProvider && selectedModel ? getModelSelectionValue(settingsProvider, selectedModel) : ""}
                                 >
                                     {!settingsProvider && <option value="">No provider selected</option>}
-                                    {settingsProvider &&
-                                        aiModelConfig.providers[settingsProvider].map((model) => (
-                                            <option key={model.value} value={model.value}>
-                                                {model.label}
-                                            </option>
-                                        ))}
+                                    {selectableProviderProfiles.map((profile) => (
+                                        <optgroup key={profile.id} label={profile.label}>
+                                            {profile.models.map((model) => (
+                                                <option key={`${profile.id}-${model.value}`} value={getModelSelectionValue(profile.id, model.value)}>
+                                                    {model.label}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
                                 </select>
                             </div>
                         </label>

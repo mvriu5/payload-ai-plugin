@@ -1,11 +1,18 @@
 import { useMemo } from "react"
-import { getResolvedAIModelConfig, type AIModelConfig } from "../../ai/providerOptions.js"
+import {
+    getLegacyAIProviderProfiles,
+    getResolvedAIModelConfig,
+    type AIModelConfig,
+    type AIProviderProfile,
+} from "../../ai/providerOptions.js"
 
 type PayloadAIAdminCustom = {
     payloadAiPlugin?: {
         collectionSlugs?: string[]
         media?: MediaConfig
+        managedProviders?: boolean
         models?: AIModelConfig
+        providers?: AIProviderProfile[]
     }
 }
 
@@ -39,6 +46,10 @@ export const usePluginConfig = (config: {
     const pluginConfig = (config.admin?.custom as PayloadAIAdminCustom | undefined)?.payloadAiPlugin
 
     const aiModelConfig = useMemo(() => getResolvedAIModelConfig(pluginConfig?.models), [pluginConfig?.models])
+    const providerProfiles = useMemo(
+        () => (pluginConfig?.managedProviders ? pluginConfig.providers || [] : getLegacyAIProviderProfiles(pluginConfig?.models)),
+        [pluginConfig?.managedProviders, pluginConfig?.models, pluginConfig?.providers]
+    )
 
     const enabledCollectionSlugSet = useMemo(
         () => (pluginConfig?.collectionSlugs ? new Set(pluginConfig.collectionSlugs) : null),
@@ -53,6 +64,8 @@ export const usePluginConfig = (config: {
         enabledCollectionSlugSet,
         isCollectionMentionEnabled: (slug: string) => !enabledCollectionSlugSet || enabledCollectionSlugSet.has(slug),
         locales: localization?.locales ?? [],
+        managedProviders: Boolean(pluginConfig?.managedProviders),
         media: pluginConfig?.media,
+        providerProfiles,
     }
 }

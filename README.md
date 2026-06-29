@@ -39,19 +39,21 @@ export default buildConfig({
 });
 ```
 
-The plugin adds two fields to the configured Payload admin user collection:
+Without centrally configured providers, the plugin adds two fields to the configured Payload admin user collection:
 
 - `aiProvider`
 - `aiApiKey`
 
 Users can select their provider and optionally store their own API key in account settings. If no account-level key is set, the chat endpoint uses provider environment variables.
 
+When `providers` is configured, provider selection and API keys are managed centrally. The plugin does not add either field to the user collection. All configured provider models are grouped by provider in the AI input.
+
 ## Options
 
 ```ts
-import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai";
+import type { PayloadAIPluginOptions } from "@mvriu5/payload-ai";
 
-const options: PayloadAiPluginOptions = {
+const options: PayloadAIPluginOptions = {
   allowUserApiKeys: false,
   collections: {
     media: {
@@ -72,21 +74,35 @@ const options: PayloadAiPluginOptions = {
     acceptedMimeTypes: ["image/*"],
     maxFileSize: 10 * 1024 * 1024,
   },
-  models: {
-    defaults: {
-      openai: "gpt-4.1-mini",
-      openrouter: "openai/gpt-oss-120b",
-    },
-    providers: {
-      openai: [
+  providers: [
+    {
+      id: "company-openai",
+      label: "Company OpenAI",
+      provider: "openai",
+      apiKey: process.env.COMPANY_OPENAI_API_KEY,
+      models: [
         { label: "GPT-4.1 Mini", value: "gpt-4.1-mini" },
         { label: "GPT-4.1", value: "gpt-4.1" },
       ],
+      defaultModel: "gpt-4.1-mini",
     },
-  },
+    {
+      id: "ollama",
+      label: "Local Ollama",
+      provider: "openai",
+      baseURL: "http://localhost:11434/v1",
+      apiKey: "ollama",
+      models: [
+        { label: "Llama 3.3", value: "llama3.3" },
+        { label: "Qwen 3", value: "qwen3" },
+      ],
+    },
+  ],
   maxOutputTokens: 1200,
 };
 ```
+
+`models` configures model choices for the user-selected provider mode. Use `providers` instead when provider selection, credentials, and endpoints should be managed centrally.
 
 ### `collections`
 
@@ -180,6 +196,27 @@ OpenRouter includes these built-in model options:
 - `anthropic/claude-3.5-sonnet`
 - `google/gemini-2.0-flash-001`
 
+### `providers`
+
+Enables centrally managed provider profiles. Each profile supports:
+
+- `id`: unique provider profile identifier
+- `label`: provider group label shown in the model select
+- `provider`: SDK adapter (`openai`, `openrouter`, `claude`, `mistral`, or `google`)
+- `models`: allowed model list
+- `defaultModel`: optional default; otherwise the first configured model is used
+- `baseURL`: optional custom provider URL
+- `apiKey`: optional server-side API key
+
+When at least one profile is configured:
+
+- `aiProvider` and `aiApiKey` are not added to the admin user collection.
+- Models from every configured profile are displayed in provider groups.
+- The chat endpoint validates both provider IDs and model IDs against this configuration.
+- User-level provider and API key values are ignored.
+
+`apiKey` and `baseURL` remain server-side and are not included in Payload's public admin configuration. Custom endpoints must implement the protocol expected by their selected SDK adapter. For Ollama, vLLM, and similar APIs, use the `openai` adapter with an OpenAI-compatible `/v1` endpoint.
+
 ### `maxOutputTokens`
 
 Controls the maximum number of output tokens the chat endpoint may generate per request. If omitted, the plugin uses `700`.
@@ -202,6 +239,8 @@ payloadAiPlugin({
 
 When disabled, users can still select an AI provider, but API keys must come from environment variables.
 
+This option only applies when `providers` is not configured. Managed provider mode never adds user-level AI settings.
+
 ### `disabled`
 
 Disables endpoint and UI registration while keeping the plugin call in your config.
@@ -213,8 +252,9 @@ The package lazy-loads provider SDKs at runtime. If a user selects `claude`, `go
 
 API key priority is:
 
-1. account-level API key, unless `allowUserApiKeys: false`
-2. provider environment variables
+1. managed provider `apiKey`, when `providers` is configured
+2. account-level API key, unless `allowUserApiKeys: false`
+3. provider environment variables
 
 - `OPENAI_API_KEY`, `OPENAI_MODEL`
 - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`

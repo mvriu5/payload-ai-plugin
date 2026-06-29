@@ -1,6 +1,13 @@
 import type { CollectionConfig, Config } from "payload"
 
-import { aiProviders, getResolvedAIModelConfig, type AIModelConfig } from "./ai/providerOptions.js"
+import {
+    aiProviders,
+    getResolvedAIModelConfig,
+    resolveAIProviderConfigs,
+    toClientAIProviderProfiles,
+    type AIModelConfig,
+    type AIProviderConfig,
+} from "./ai/providerOptions.js"
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
@@ -9,6 +16,8 @@ import { createProposalDiffHandler } from "./handlers/proposalDiffHandler.js"
 import { createAuditLogHandler } from "./handlers/auditLogHandler.js"
 import { resolveCollectionPermissions, type CollectionPermissionMap } from "./payload/collectionPermissions.js"
 import { isInternalCollection } from "./payload/shared.js"
+
+export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
 
 export type PayloadAIPluginOptions = {
     allowUserApiKeys?: boolean
@@ -22,6 +31,7 @@ export type PayloadAIPluginOptions = {
         maxFileSize?: number
     }
     models?: AIModelConfig
+    providers?: AIProviderConfig[]
 }
 
 const resolveMediaUploadOptions = (media?: PayloadAIPluginOptions["media"]): MediaUploadOptions | null => {
@@ -176,7 +186,9 @@ export const payloadAiPlugin =
     (config: Config): Config => {
         const incomingOnInit = config.onInit
         const collectionPermissions = resolveCollectionPermissions(pluginOptions.collections)
-        const allowUserApiKeys = pluginOptions.allowUserApiKeys !== false
+        const providerConfigs = resolveAIProviderConfigs(pluginOptions.providers)
+        const managedProviders = providerConfigs.length > 0
+        const allowUserApiKeys = !managedProviders && pluginOptions.allowUserApiKeys !== false
         const modelConfig = getResolvedAIModelConfig(pluginOptions.models)
         const mediaUploadOptions = resolveMediaUploadOptions(pluginOptions.media)
         const maxOutputTokens =
@@ -189,7 +201,7 @@ export const payloadAiPlugin =
             config.collections.push(createAIChangesCollection())
         }
 
-        addAccountFields({ allowUserApiKeys, config })
+        if (!managedProviders) addAccountFields({ allowUserApiKeys, config })
 
         if (pluginOptions.disabled) return config
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
@@ -207,6 +219,7 @@ export const payloadAiPlugin =
                 ...((config.admin.custom?.payloadAiPlugin as Record<string, unknown> | undefined) || {}),
                 collectionSlugs: mentionCollectionSlugs,
                 allowUserApiKeys,
+                managedProviders,
                 ...(mediaUploadOptions
                     ? {
                           media: {
@@ -216,6 +229,7 @@ export const payloadAiPlugin =
                       }
                     : {}),
                 models: modelConfig,
+                providers: toClientAIProviderProfiles(providerConfigs),
             },
         }
         if (!config.admin.components) config.admin.components = {}
@@ -229,6 +243,7 @@ export const payloadAiPlugin =
                 collections: collectionPermissions,
                 maxOutputTokens,
                 models: modelConfig,
+                providers: providerConfigs,
             }),
             method: "post",
             path: "/ai-chat",

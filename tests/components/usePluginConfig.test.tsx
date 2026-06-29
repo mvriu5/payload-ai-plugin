@@ -7,7 +7,8 @@ import { usePluginConfig } from "../../src/components/hooks/usePluginConfig.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const HookTest = ({ config }: { config: Parameters<typeof usePluginConfig>[0] }) => {
-    const { aiModelConfig, defaultLocale, enabledCollectionSlugSet, isCollectionMentionEnabled, locales, media } = usePluginConfig(config)
+    const { aiModelConfig, defaultLocale, enabledCollectionSlugSet, isCollectionMentionEnabled, locales, managedProviders, media, providerProfiles } =
+        usePluginConfig(config)
 
     return (
         <div>
@@ -21,6 +22,8 @@ const HookTest = ({ config }: { config: Parameters<typeof usePluginConfig>[0] })
             <span data-testid="media-mime-types">{media?.acceptedMimeTypes?.join(",") || ""}</span>
             <span data-testid="openai-default">{aiModelConfig.defaults.openai}</span>
             <span data-testid="openai-models">{aiModelConfig.providers.openai.map((model) => model.value).join(",")}</span>
+            <span data-testid="managed-providers">{String(managedProviders)}</span>
+            <span data-testid="provider-profiles">{providerProfiles.map((provider) => provider.id).join(",")}</span>
         </div>
     )
 }
@@ -76,6 +79,8 @@ describe("usePluginConfig", () => {
         expect(container.querySelector('[data-testid="media-mime-types"]')?.textContent).toBe("image/*")
         expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("custom-openai")
         expect(container.querySelector('[data-testid="openai-models"]')?.textContent).toBe("custom-openai")
+        expect(container.querySelector('[data-testid="managed-providers"]')?.textContent).toBe("false")
+        expect(container.querySelector('[data-testid="provider-profiles"]')?.textContent).toContain("openai")
     })
 
     it("enables all collections when no collection filter is configured", () => {
@@ -88,5 +93,33 @@ describe("usePluginConfig", () => {
         expect(container.querySelector('[data-testid="has-slug-filter"]')?.textContent).toBe("false")
         expect(container.querySelector('[data-testid="media-enabled"]')?.textContent).toBe("false")
         expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("gpt-4.1-mini")
+    })
+
+    it("exposes configured provider profiles in managed mode", () => {
+        const { container } = render(
+            <HookTest
+                config={{
+                    admin: {
+                        custom: {
+                            payloadAiPlugin: {
+                                managedProviders: true,
+                                providers: [
+                                    {
+                                        defaultModel: "llama3.3",
+                                        id: "ollama",
+                                        label: "Ollama",
+                                        models: [{ label: "Llama 3.3", value: "llama3.3" }],
+                                        provider: "openai",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                }}
+            />
+        )
+
+        expect(container.querySelector('[data-testid="managed-providers"]')?.textContent).toBe("true")
+        expect(container.querySelector('[data-testid="provider-profiles"]')?.textContent).toBe("ollama")
     })
 })

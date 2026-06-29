@@ -1,4 +1,4 @@
-type AIProviderModelOption = {
+export type AIProviderModelOption = {
     label: string
     value: string
 }
@@ -39,6 +39,29 @@ const aiProviderModels = {
 export type AIProvider = keyof typeof aiProviderModels
 
 type AIProviderModels = Record<AIProvider, AIProviderModelOption[]>
+
+export type AIProviderConfig = {
+    apiKey?: string
+    baseURL?: string
+    defaultModel?: string
+    id: string
+    label: string
+    models: AIProviderModelOption[]
+    provider: AIProvider
+}
+
+export type AIProviderProfile = {
+    defaultModel: string
+    id: string
+    label: string
+    models: AIProviderModelOption[]
+    provider: AIProvider
+}
+
+export type ResolvedAIProviderConfig = AIProviderProfile & {
+    apiKey?: string
+    baseURL?: string
+}
 
 export const aiProviders: { label: string; value: AIProvider }[] = [
     { label: "Claude", value: "claude" },
@@ -87,3 +110,94 @@ export const getResolvedAIModelConfig = (modelConfig?: AIModelConfig) => {
 }
 
 export const isAIProvider = (provider: string): provider is AIProvider => provider in aiProviderModels
+
+export const getLegacyAIProviderProfiles = (modelConfig?: AIModelConfig): AIProviderProfile[] => {
+    const resolvedModels = getResolvedAIModelConfig(modelConfig)
+
+    return aiProviders.map(({ label, value }) => ({
+        defaultModel: resolvedModels.defaults[value],
+        id: value,
+        label,
+        models: resolvedModels.providers[value],
+        provider: value,
+    }))
+}
+
+export const resolveAIProviderConfigs = (providers?: AIProviderConfig[]): ResolvedAIProviderConfig[] => {
+    if (!providers?.length) return []
+
+    const providerIDs = new Set<string>()
+
+    return providers.map((providerConfig, index) => {
+        const path = `providers[${index}]`
+        const id = providerConfig.id.trim()
+        const label = providerConfig.label.trim()
+
+        if (!id || !/^[a-z0-9][a-z0-9_-]*$/i.test(id)) {
+            throw new Error(`${path}.id must contain only letters, numbers, hyphens, or underscores.`)
+        }
+        if (providerIDs.has(id)) throw new Error(`Duplicate AI provider id: ${id}`)
+        providerIDs.add(id)
+
+        if (!label) throw new Error(`${path}.label is required.`)
+        if (!isAIProvider(providerConfig.provider)) {
+            throw new Error(`${path}.provider is unsupported: ${String(providerConfig.provider)}`)
+        }
+        if (!providerConfig.models.length) throw new Error(`${path}.models must contain at least one model.`)
+
+        const modelValues = new Set<string>()
+        const models = providerConfig.models.map((model, modelIndex) => {
+            const modelPath = `${path}.models[${modelIndex}]`
+            const modelLabel = model.label.trim()
+            const value = model.value.trim()
+
+            if (!modelLabel) throw new Error(`${modelPath}.label is required.`)
+            if (!value) throw new Error(`${modelPath}.value is required.`)
+            if (modelValues.has(value)) throw new Error(`Duplicate model value "${value}" in AI provider "${id}".`)
+            modelValues.add(value)
+
+            return {
+                label: modelLabel,
+                value,
+            }
+        })
+        const defaultModel = providerConfig.defaultModel?.trim() || models[0].value
+
+        if (!modelValues.has(defaultModel)) {
+            throw new Error(`${path}.defaultModel must match a configured model value.`)
+        }
+
+        if (providerConfig.baseURL) {
+            let parsedURL: URL
+
+            try {
+                parsedURL = new URL(providerConfig.baseURL)
+            } catch {
+                throw new Error(`${path}.baseURL must be a valid URL.`)
+            }
+
+            if (!["http:", "https:"].includes(parsedURL.protocol)) {
+                throw new Error(`${path}.baseURL must use http or https.`)
+            }
+        }
+
+        return {
+            ...(providerConfig.apiKey ? { apiKey: providerConfig.apiKey } : {}),
+            ...(providerConfig.baseURL ? { baseURL: providerConfig.baseURL } : {}),
+            defaultModel,
+            id,
+            label,
+            models,
+            provider: providerConfig.provider,
+        }
+    })
+}
+
+export const toClientAIProviderProfiles = (providers: ResolvedAIProviderConfig[]): AIProviderProfile[] =>
+    providers.map(({ defaultModel, id, label, models, provider }) => ({
+        defaultModel,
+        id,
+        label,
+        models,
+        provider,
+    }))

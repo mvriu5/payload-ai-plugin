@@ -112,12 +112,14 @@ export const useAIChatStream = ({
     mentionsRef,
     prompt,
     selectedModel,
+    selectedProvider,
 }: {
     apiRoute: string
     clearInput: () => void
     mentionsRef: RefObject<Mention[]>
     prompt: string
     selectedModel: string
+    selectedProvider: string | null
 }) => {
     const [response, setResponse] = useState("")
     const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null)
@@ -156,6 +158,7 @@ export const useAIChatStream = ({
                         mentions: mentionsRef.current,
                         model: selectedModel,
                         prompt: trimmedPrompt,
+                        ...(selectedProvider ? { provider: selectedProvider } : {}),
                     }),
                     headers: { "Content-Type": "application/json" },
                     method: "POST",
@@ -268,7 +271,7 @@ export const useAIChatStream = ({
         } finally {
             setIsLoading(false)
         }
-    }, [apiRoute, clearInput, mentionsRef, prompt, resetChatState, selectedModel])
+    }, [apiRoute, clearInput, mentionsRef, prompt, resetChatState, selectedModel, selectedProvider])
 
     return {
         dismissChat,
