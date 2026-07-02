@@ -8,6 +8,11 @@ import {
     type AIModelConfig,
     type AIProviderConfig,
 } from "./ai/providerOptions.js"
+import {
+    resolveMaxTokenUsageOptions,
+    tokenUsageCollectionSlug,
+    type MaxTokenUsageOptions,
+} from "./ai/tokenUsage.js"
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
@@ -18,6 +23,7 @@ import { resolveCollectionPermissions, type CollectionPermissionMap } from "./pa
 import { isInternalCollection } from "./payload/shared.js"
 
 export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
+export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
 
 export type PayloadAIPluginOptions = {
     allowUserApiKeys?: boolean
@@ -31,6 +37,7 @@ export type PayloadAIPluginOptions = {
         maxFileSize?: number
     }
     models?: AIModelConfig
+    maxTokenUsage?: MaxTokenUsageOptions
     providers?: AIProviderConfig[]
 }
 
@@ -151,6 +158,57 @@ const createAIChangesCollection = (): CollectionConfig => ({
     timestamps: true,
 })
 
+const createAITokenUsageCollection = (): CollectionConfig => ({
+    slug: tokenUsageCollectionSlug,
+    access: {
+        create: () => false,
+        delete: () => false,
+        read: () => false,
+        update: () => false,
+    },
+    admin: {
+        hidden: true,
+    },
+    fields: [
+        {
+            name: "userID",
+            type: "text",
+            index: true,
+            required: true,
+        },
+        {
+            name: "provider",
+            type: "text",
+            required: true,
+        },
+        {
+            name: "model",
+            type: "text",
+            required: true,
+        },
+        {
+            name: "inputTokens",
+            type: "number",
+        },
+        {
+            name: "outputTokens",
+            type: "number",
+        },
+        {
+            name: "totalTokens",
+            type: "number",
+            required: true,
+        },
+        {
+            name: "recordedAt",
+            type: "date",
+            index: true,
+            required: true,
+        },
+    ],
+    timestamps: true,
+})
+
 const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: boolean; config: Config }) => {
     const adminUserSlug = config.admin?.user
     if (!adminUserSlug || !config.collections) return
@@ -190,6 +248,7 @@ export const payloadAiPlugin =
         const managedProviders = providerConfigs.length > 0
         const allowUserApiKeys = !managedProviders && pluginOptions.allowUserApiKeys !== false
         const modelConfig = getResolvedAIModelConfig(pluginOptions.models)
+        const maxTokenUsage = resolveMaxTokenUsageOptions(pluginOptions.maxTokenUsage)
         const mediaUploadOptions = resolveMediaUploadOptions(pluginOptions.media)
         const maxOutputTokens =
             typeof pluginOptions.maxOutputTokens === "number" && Number.isFinite(pluginOptions.maxOutputTokens) && pluginOptions.maxOutputTokens > 0
@@ -199,6 +258,9 @@ export const payloadAiPlugin =
         if (!config.collections) config.collections = []
         if (!config.collections.some((collection) => collection.slug === "payload-ai-auditlog")) {
             config.collections.push(createAIChangesCollection())
+        }
+        if (maxTokenUsage && !config.collections.some((collection) => collection.slug === tokenUsageCollectionSlug)) {
+            config.collections.push(createAITokenUsageCollection())
         }
 
         if (!managedProviders) addAccountFields({ allowUserApiKeys, config })
@@ -242,6 +304,7 @@ export const payloadAiPlugin =
                 allowUserApiKeys,
                 collections: collectionPermissions,
                 maxOutputTokens,
+                maxTokenUsage,
                 models: modelConfig,
                 providers: providerConfigs,
             }),

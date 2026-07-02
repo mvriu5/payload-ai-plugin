@@ -7,6 +7,11 @@ import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSign
 import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
+import {
+    getExceededTokenUsageLimit,
+    recordTokenUsage,
+    type ResolvedMaxTokenUsageOptions,
+} from "../ai/tokenUsage.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
 import { prepareProposalWriteData } from "../payload/proposalData.js"
@@ -45,6 +50,7 @@ type ChatMediaAttachment = {
 type User = {
     aiApiKey?: string | null
     aiProvider?: AIProvider | string | null
+    id: number | string
 }
 
 type ChatDebug = {
@@ -182,6 +188,7 @@ type ChatOptions = {
     allowUserApiKeys?: boolean
     collections?: ResolvedCollectionPermissionMap
     maxOutputTokens?: number
+    maxTokenUsage?: ResolvedMaxTokenUsageOptions
     models?: AIModelConfig
     providers?: ResolvedAIProviderConfig[]
 }
@@ -1155,6 +1162,36 @@ export const createChatHandler =
         }
 
         const user = req.user as User
+        const exceededTokenUsageLimit = await getExceededTokenUsageLimit({
+            maxTokenUsage: options.maxTokenUsage,
+            req,
+            userID: user.id,
+        })
+
+        if (exceededTokenUsageLimit) {
+            const scope = options.maxTokenUsage?.type === "site" ? "site" : "user"
+            const periodLabel = exceededTokenUsageLimit.period === "day" ? "Daily" : "Weekly"
+
+            logHandlerEvent(req, "warn", {
+                limit: exceededTokenUsageLimit.limit,
+                msg: "AI chat blocked: token usage limit reached",
+                period: exceededTokenUsageLimit.period,
+                scope,
+                used: exceededTokenUsageLimit.used,
+                userID: String(user.id),
+            })
+
+            return Response.json(
+                {
+                    error: `${periodLabel} AI token limit reached for this ${scope}.`,
+                    limit: exceededTokenUsageLimit.limit,
+                    period: exceededTokenUsageLimit.period,
+                    used: exceededTokenUsageLimit.used,
+                },
+                { status: 429 }
+            )
+        }
+
         const managedProviders = options.providers?.length ? options.providers : null
         const requestedProvider = body?.provider || (managedProviders ? managedProviders[0].id : user.aiProvider || "openai")
         const managedProvider = managedProviders?.find((providerConfig) => providerConfig.id === requestedProvider)
@@ -2016,6 +2053,23 @@ export const createChatHandler =
                                 }
 
                                 usage = finishPart.totalUsage || finishPart.usage || null
+                                if (usage && options.maxTokenUsage) {
+                                    try {
+                                        await recordTokenUsage({
+                                            model: providerConfig.modelID,
+                                            provider: managedProvider?.id || provider,
+                                            req,
+                                            usage,
+                                            userID: user.id,
+                                        })
+                                    } catch (err) {
+                                        req.payload.logger.error({
+                                            err,
+                                            msg: "AI token usage could not be recorded",
+                                            userID: String(user.id),
+                                        })
+                                    }
+                                }
                                 const reason = getChatCompletionReason({
                                     proposalCount: proposals.length,
                                     toolFailures,

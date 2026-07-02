@@ -126,6 +126,45 @@ describe("chatHandler", () => {
         await expect(readJSON(response)).resolves.toEqual({ error: "Configure a openai API key in the server environment first." })
     })
 
+    it("blocks requests when the user token limit is reached", async () => {
+        const find = vi.fn().mockResolvedValue({
+            docs: [
+                {
+                    recordedAt: new Date().toISOString(),
+                    totalTokens: 1000,
+                },
+            ],
+            hasNextPage: false,
+        })
+        const handler = createChatHandler({
+            maxTokenUsage: {
+                perDay: 1000,
+                type: "user",
+            },
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    prompt: "Hello",
+                },
+                find,
+                user: {
+                    aiProvider: "openai",
+                    id: "user-1",
+                },
+            })
+        )
+
+        expect(response.status).toBe(429)
+        expect(getModel).not.toHaveBeenCalled()
+        await expect(readJSON(response)).resolves.toEqual({
+            error: "Daily AI token limit reached for this user.",
+            limit: 1000,
+            period: "day",
+            used: 1000,
+        })
+    })
+
     it("streams text, proposals and usage without calling a real AI provider", async () => {
         const handler = createChatHandler()
         const req = createMockRequest({
@@ -157,6 +196,54 @@ describe("chatHandler", () => {
         expect(text).toContain('event: text\ndata: {"delta":"Prepared update"}')
         expect(text).toContain('event: proposals\ndata: {"proposals":[],"usage":{"inputTokens":10,"outputTokens":5,"totalTokens":15}}')
         expect(text).toContain("event: done")
+    })
+
+    it("records completed model usage when token limits are configured", async () => {
+        const create = vi.fn().mockResolvedValue({ id: "usage-1" })
+        const find = vi.fn().mockResolvedValue({
+            docs: [],
+            hasNextPage: false,
+        })
+        const handler = createChatHandler({
+            maxTokenUsage: {
+                perWeek: 10000,
+                type: "site",
+            },
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    model: "gpt-test",
+                    prompt: "What can you do?",
+                },
+                collections: [postsCollection],
+                create,
+                find,
+                user: {
+                    aiProvider: "openai",
+                    id: "user-1",
+                },
+            })
+        )
+
+        const text = await readText(response)
+
+        expect(response.status, text).toBe(200)
+        expect(text).toContain("event: proposals")
+        expect(create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "payload-ai-usage",
+                data: expect.objectContaining({
+                    inputTokens: 10,
+                    model: "gpt-test",
+                    outputTokens: 5,
+                    provider: "openai",
+                    totalTokens: 15,
+                    userID: "user-1",
+                }),
+                overrideAccess: true,
+            })
+        )
     })
 
     it("uses managed provider credentials and custom base URLs", async () => {

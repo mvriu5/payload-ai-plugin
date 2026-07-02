@@ -99,6 +99,11 @@ const options: PayloadAIPluginOptions = {
     },
   ],
   maxOutputTokens: 1200,
+  maxTokenUsage: {
+    type: "user",
+    perDay: 50_000,
+    perWeek: 250_000,
+  },
 };
 ```
 
@@ -226,6 +231,24 @@ payloadAiPlugin({
   maxOutputTokens: 1200,
 })
 ```
+
+### `maxTokenUsage`
+
+Limits total AI tokens across rolling 24-hour and 7-day windows.
+
+```ts
+payloadAiPlugin({
+  maxTokenUsage: {
+    type: "user",
+    perDay: 50_000,
+    perWeek: 250_000,
+  },
+})
+```
+
+Use `type: "user"` to enforce separate budgets per authenticated user, or `type: "site"` to share one budget across the entire Payload installation. `perDay` and `perWeek` are optional individually, but at least one must be configured.
+
+Completed model usage is stored in the hidden `payload-ai-usage` collection. Requests made after a limit is reached return HTTP `429`. Because providers report token usage after completion, the request that crosses a limit is allowed to finish and subsequent requests are blocked.
 
 ### `allowUserApiKeys`
 

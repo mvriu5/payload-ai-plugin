@@ -167,4 +167,28 @@ describe("payloadAiPlugin options", () => {
             },
         })
     })
+
+    it("registers a hidden usage collection when token limits are configured", () => {
+        const config = payloadAiPlugin({
+            maxTokenUsage: {
+                perDay: 5000,
+                perWeek: 25000,
+                type: "site",
+            },
+        })(createBaseConfig() as never)
+
+        const usageCollection = config.collections?.find((collection) => collection.slug === "payload-ai-usage")
+
+        expect(usageCollection?.admin?.hidden).toBe(true)
+        expect(usageCollection?.access?.read?.({ req: { user: { id: "user-1" } } } as never)).toBe(false)
+        expect(usageCollection?.fields.map((field) => ("name" in field ? field.name : null))).toEqual([
+            "userID",
+            "provider",
+            "model",
+            "inputTokens",
+            "outputTokens",
+            "totalTokens",
+            "recordedAt",
+        ])
+    })
 })
