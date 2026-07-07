@@ -70,7 +70,7 @@
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^3.0.37",
         "@ai-sdk/openai": "^3.0.67",
-        "@openrouter/ai-sdk-provider": "^2.9.1",
+        "@openrouter/ai-sdk-provider": "^3.0.0",
         "@payloadcms/db-postgres": "3.84.1",
         "@payloadcms/next": "3.84.1",
         "@payloadcms/richtext-lexical": "3.84.1",
@@ -101,7 +101,7 @@
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^3.0.37",
         "@ai-sdk/openai": "^3.0.67",
-        "@openrouter/ai-sdk-provider": "^2.9.1",
+        "@openrouter/ai-sdk-provider": "^3.0.0",
         "@payloadcms/ui": "^3.84.1",
         "payload": "^3.84.1"
     },
