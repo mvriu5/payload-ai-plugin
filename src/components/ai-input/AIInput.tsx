@@ -41,6 +41,38 @@ const getFileSignature = (file: File) => `${file.name}:${file.size}:${file.lastM
 
 const getModelSelectionValue = (provider: string, model: string) => JSON.stringify([provider, model])
 
+type PayloadAdminConfig = Parameters<typeof usePluginConfig>[0] & {
+    admin?: {
+        user?: string
+    }
+    collections: {
+        fields: unknown[]
+        labels?: {
+            singular?: unknown
+        }
+        slug: string
+    }[]
+    globals?: {
+        fields: unknown[]
+        label?: unknown
+        slug: string
+    }[]
+    routes: {
+        admin: string
+        api: string
+    }
+}
+
+const fallbackConfig: PayloadAdminConfig = {
+    admin: {},
+    collections: [],
+    globals: [],
+    routes: {
+        admin: "/admin",
+        api: "/api",
+    },
+}
+
 const parseModelSelectionValue = (value: string) => {
     try {
         const selection = JSON.parse(value) as unknown
@@ -67,7 +99,9 @@ const AIInput = () => {
     const mediaAttachmentsRef = useRef<MediaAttachment[]>([])
     const uploadedFileSignaturesRef = useRef<Set<string>>(new Set())
 
-    const { config } = useConfig()
+    const payloadConfigContext = useConfig() as { config?: PayloadAdminConfig } | undefined
+    const config = payloadConfigContext?.config ?? fallbackConfig
+    const hasPayloadConfigContext = Boolean(payloadConfigContext?.config)
     const { isCollectionMentionEnabled, locales, defaultLocale, managedProviders, media, providerProfiles } = usePluginConfig(config)
     const acceptedMimeTypes = media?.acceptedMimeTypes?.join(",")
     const mediaEnabled = Boolean(media?.enabled)
@@ -291,6 +325,21 @@ const AIInput = () => {
         } finally {
             setIsApplying(false)
         }
+    }
+
+    if (!hasPayloadConfigContext) {
+        return (
+            <div className={styles.chatLayout}>
+                <div className={styles.chat}>
+                    <div className={styles.chatHeader}>
+                        <h2 className={styles.chatTitle}>AI Assistant</h2>
+                    </div>
+                    <div className={styles.chatError}>
+                        Payload config context is unavailable. Make sure the app and this plugin resolve the same @payloadcms/ui version.
+                    </div>
+                </div>
+            </div>
+        )
     }
 
     return (

@@ -41,8 +41,23 @@ const getChangeProposal = (change: AppliedChange): ActionProposal => ({
     slug: change.slug || undefined,
 })
 
+type PayloadAdminConfig = {
+    routes: {
+        admin: string
+        api: string
+    }
+}
+
+const fallbackConfig: PayloadAdminConfig = {
+    routes: {
+        admin: "/admin",
+        api: "/api",
+    },
+}
+
 const AuditLogList = () => {
-    const { config } = useConfig()
+    const payloadConfigContext = useConfig() as { config?: PayloadAdminConfig } | undefined
+    const config = payloadConfigContext?.config ?? fallbackConfig
     const {
         loadRecentChanges,
         allChangesURL,
@@ -74,7 +89,7 @@ const AuditLogList = () => {
                     <Button
                         url={allChangesURL}
                         el="anchor"
-                        aria-labelabel="View all"
+                        aria-label="View all"
                         margin={false}
                         buttonStyle="tab"
                         size="small"
