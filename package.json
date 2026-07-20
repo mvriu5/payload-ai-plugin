@@ -73,7 +73,7 @@
         "@openrouter/ai-sdk-provider": "^2.9.1",
         "@payloadcms/db-postgres": "3.84.1",
         "@payloadcms/next": "3.84.1",
-        "@payloadcms/richtext-lexical": "3.84.1",
+        "@payloadcms/richtext-lexical": "3.86.0",
         "@payloadcms/ui": "3.84.1",
         "@playwright/test": "^1.56.1",
         "@swc/cli": "0.8.1",
