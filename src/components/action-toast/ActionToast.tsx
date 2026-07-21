@@ -1,10 +1,11 @@
-import { Button, CheckIcon, SwapIcon, XIcon } from "@payloadcms/ui"
+import { Button, CheckIcon, SwapIcon } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
 import { redactSensitiveData } from "../../ai/sensitiveData.js"
 import type { ActiveDiff } from "../audit-log-list/AuditLogList.js"
 import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
 import styles from "./ActionToast.module.css"
+import { TextShimmer } from "../text-shimmer/TextShimmer.js"
 
 export type ActionProposal = {
     _aiSignature?: {
@@ -24,6 +25,7 @@ type ActionToastProps = {
     error?: string
     getViewURL?: (proposal: ActionProposal) => string | null
     isApplying: boolean
+    isLoading: boolean
     onDismiss?: () => void
     onDismissError?: () => void
     onApply: (proposal: ActionProposal, index: number) => void
@@ -62,6 +64,7 @@ export const ActionToast = ({
     error,
     getViewURL,
     isApplying,
+    isLoading,
     onDismiss,
     onDismissError,
     onApply,
@@ -73,7 +76,8 @@ export const ActionToast = ({
     const [diffError, setDiffError] = useState("")
     const [loadingDiffIndex, setLoadingDiffIndex] = useState<number | null>(null)
 
-    if (proposals.length === 0 && !error && !description) return null
+    if (proposals.length === 0 && !error && !description && !isLoading) return null
+    
     const descriptionPreview = description ? getDescriptionPreview(description) : ""
     const isDescriptionTruncated = Boolean(description) && descriptionPreview !== description
 
@@ -116,6 +120,14 @@ export const ActionToast = ({
 
     return (
         <div className={styles.list}>
+             {proposals.length === 0 && isLoading && (
+                <div className={styles.item}>
+                    <div className={styles.label}>Waiting for Response</div>
+                    <div className={styles.description}>
+                        <TextShimmer>Please wait, until the Response is received</TextShimmer>
+                    </div>
+                </div>
+            )}
             {error && (
                 <div className={`${styles.item} ${styles.errorItem}`}>
                     <div>

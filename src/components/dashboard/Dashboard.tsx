@@ -7,7 +7,7 @@ import styles from "./Dashboard.module.css"
 const Dashboard = () => {
     return (
         <div className={styles.dashboard}>
-            <AIInput />
+            <AIInput homeAIInput={true}/>
             <AuditLogList />
         </div>
     )

@@ -1,3 +1,4 @@
+import { AIInput as AIInput_9bc5ba0ba94cef620e04c74aadf9cea5 } from '@mvriu5/payload-ai/client'
 import { AIApiKeyField as AIApiKeyField_9bc5ba0ba94cef620e04c74aadf9cea5 } from '@mvriu5/payload-ai/client'
 import { RscEntryLexicalCell as RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
 import { RscEntryLexicalField as RscEntryLexicalField_44fe37237e0ebf4470c9990d8cb7b07e } from '@payloadcms/richtext-lexical/rsc'
@@ -27,6 +28,7 @@ import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } f
 
 /** @type import('payload').ImportMap */
 export const importMap = {
+  "@mvriu5/payload-ai/client#AIInput": AIInput_9bc5ba0ba94cef620e04c74aadf9cea5,
   "@mvriu5/payload-ai/client#AIApiKeyField": AIApiKeyField_9bc5ba0ba94cef620e04c74aadf9cea5,
   "@payloadcms/richtext-lexical/rsc#RscEntryLexicalCell": RscEntryLexicalCell_44fe37237e0ebf4470c9990d8cb7b07e,
   "@payloadcms/richtext-lexical/rsc#RscEntryLexicalField": RscEntryLexicalField_44fe37237e0ebf4470c9990d8cb7b07e,
