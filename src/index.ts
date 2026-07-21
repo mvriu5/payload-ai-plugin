@@ -239,6 +239,35 @@ const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: bool
     }
 }
 
+const aiField: any = {
+  name: "payloadAi",
+  type: "ui",
+  admin: {
+    components: {
+      Field: "@mvriu5/payload-ai/client#AIInput",
+    },
+  },
+}
+
+const addAIFieldToDocumentsAndGlobals = (config: Config) => {
+  for (const collection of config.collections || []) {
+    if (isInternalCollection(collection.slug)) continue
+    if (collection.slug === "payload-ai-auditlog") continue
+
+    collection.fields = [
+      aiField,
+      ...(collection.fields || []),
+    ]
+  }
+
+  for (const global of config.globals || []) {
+    global.fields = [
+      aiField,
+      ...(global.fields || []),
+    ]
+  }
+}
+
 export const payloadAiPlugin =
     (pluginOptions: PayloadAIPluginOptions) =>
     (config: Config): Config => {
@@ -353,6 +382,8 @@ export const payloadAiPlugin =
                 await incomingOnInit(payload)
             }
         }
+
+        addAIFieldToDocumentsAndGlobals(config)
 
         return config
     }

@@ -143,7 +143,6 @@ export const useAIChatStream = ({
         const trimmedPrompt = prompt.trim()
         if (!trimmedPrompt) return
 
-        setIsLoading(true)
         resetChatState()
 
         try {
@@ -164,6 +163,8 @@ export const useAIChatStream = ({
                     method: "POST",
                 }
             )
+
+            setIsLoading(false)
 
             if (!res.ok) {
                 const result = (await res.json().catch(() => null)) as { error?: string } | null
@@ -268,8 +269,6 @@ export const useAIChatStream = ({
             setResponse("")
             setTokenUsage(null)
             setError(err instanceof Error ? err.message : "AI request failed")
-        } finally {
-            setIsLoading(false)
         }
     }, [apiRoute, clearInput, mentionsRef, prompt, resetChatState, selectedModel, selectedProvider])
 
@@ -277,6 +276,7 @@ export const useAIChatStream = ({
         dismissChat,
         error,
         isLoading,
+        setIsLoading,
         proposals,
         resetChatState,
         response,

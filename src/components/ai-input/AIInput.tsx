@@ -87,7 +87,11 @@ const parseModelSelectionValue = (value: string) => {
     }
 }
 
-const AIInput = () => {
+type AIInputProps = {
+    homeAIInput: boolean
+}
+
+const AIInput = ({ homeAIInput = false }: AIInputProps) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
@@ -179,7 +183,7 @@ const AIInput = () => {
         updateMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
     }
 
-    const { dismissChat, error, isLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
+    const { dismissChat, error, isLoading, setIsLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
         apiRoute: config.routes.api,
         clearInput,
         mentionsRef,
@@ -231,6 +235,7 @@ const AIInput = () => {
     const handleSubmit = async () => {
         if (isUploadingMedia) return
 
+        setIsLoading(true)
         setError("")
         setIsUploadingMedia(true)
 
@@ -343,7 +348,7 @@ const AIInput = () => {
     }
 
     return (
-        <div className={styles.chatLayout}>
+        <div className={styles.chatLayout} style={{"marginBottom": homeAIInput ? "0" : "20px"}}>
             <div className={styles.chat}>
                 <div className={styles.chatHeader}>
                     <h2 className={styles.chatTitle}>AI Assistant</h2>
@@ -442,15 +447,15 @@ const AIInput = () => {
                             </>
                         )}
                     </div>
-                    {mentionRange && (
+                    {(mentionRange && homeAIInput) && (
                         <MentionPopover
                             onSelect={insertMention}
                             style={
                                 mentionPopoverPosition
                                     ? {
-                                          left: `${mentionPopoverPosition.left}px`,
-                                          top: `${mentionPopoverPosition.top}px`,
-                                      }
+                                        left: `${mentionPopoverPosition.left}px`,
+                                        top: `${mentionPopoverPosition.top}px`,
+                                    }
                                     : undefined
                             }
                             suggestions={mentionSuggestions}
@@ -508,13 +513,14 @@ const AIInput = () => {
                         </Button>
                     </div>
                 </div>
-                {(proposals.length > 0 || response) && (
+                {(proposals.length > 0 || response || isLoading) && (
                     <ActionToast
                         apiRoute={config.routes.api}
                         description={response}
                         error={error}
                         getViewURL={getProposalViewURL}
                         isApplying={isApplying}
+                        isLoading={isLoading}
                         onDismiss={() => dismissChat()}
                         onDismissError={() => setError("")}
                         onApply={(proposal, _index) => void handleApplyProposal(proposal)}
