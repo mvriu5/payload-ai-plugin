@@ -88,10 +88,10 @@ const parseModelSelectionValue = (value: string) => {
 }
 
 type AIInputProps = {
-    homeAIInput: boolean
+    isDashboard: boolean
 }
 
-const AIInput = ({ homeAIInput = false }: AIInputProps) => {
+const AIInput = ({ isDashboard = false }: AIInputProps) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
@@ -348,7 +348,7 @@ const AIInput = ({ homeAIInput = false }: AIInputProps) => {
     }
 
     return (
-        <div className={styles.chatLayout} style={{"marginBottom": homeAIInput ? "0" : "20px"}}>
+        <div className={styles.chatLayout} style={{marginBottom: isDashboard ? "0" : "20px", height: isDashboard ? "332px" : "220px"}}>
             <div className={styles.chat}>
                 <div className={styles.chatHeader}>
                     <h2 className={styles.chatTitle}>AI Assistant</h2>
@@ -447,7 +447,7 @@ const AIInput = ({ homeAIInput = false }: AIInputProps) => {
                             </>
                         )}
                     </div>
-                    {(mentionRange && homeAIInput) && (
+                    {(mentionRange && isDashboard) && (
                         <MentionPopover
                             onSelect={insertMention}
                             style={

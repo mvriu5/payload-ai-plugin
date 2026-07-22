@@ -269,6 +269,8 @@ export const useAIChatStream = ({
             setResponse("")
             setTokenUsage(null)
             setError(err instanceof Error ? err.message : "AI request failed")
+        } finally {
+            setIsLoading(false)
         }
     }, [apiRoute, clearInput, mentionsRef, prompt, resetChatState, selectedModel, selectedProvider])
 
