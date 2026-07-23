@@ -1,10 +1,33 @@
-import { Button, CheckIcon, SwapIcon, XIcon } from "@payloadcms/ui"
+import { Button, CheckIcon, SwapIcon } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
 import { redactSensitiveData } from "../../ai/sensitiveData.js"
 import type { ActiveDiff } from "../audit-log-list/AuditLogList.js"
 import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
+import { TextShimmer } from "../text-shimmer/TextShimmer.js"
 import styles from "./ActionToast.module.css"
+
+const ACTION_TOAST_TEXT = {
+    aiRequestFailed: "AI request failed",
+    aiResponse: "AI response",
+    applyProposal: "Apply proposal",
+    details: "Details",
+    diffReviewFailed: "Diff review failed",
+    dismiss: "Dismiss",
+    dismissProposals: "Dismiss proposals",
+    fullResponse: "Full response",
+    goToSource: "Go to source",
+    loading: "Loading",
+    proposalDiffError: "Could not load proposal diff.",
+    redacted: "[redacted]",
+    review: "Review",
+    reviewProposal: "Review proposal",
+    waitingForResponse: "Please wait, until the Response is received",
+} as const
+
+const PROPOSAL_DIFF_ENDPOINT = "/ai-proposal-diff"
+const JSON_CONTENT_TYPE = "application/json"
+const POST_METHOD = "POST"
 
 export type ActionProposal = {
     _aiSignature?: {
@@ -13,8 +36,11 @@ export type ActionProposal = {
     }
     action: "create" | "delete" | "update" | "updateGlobal"
     collection?: string
+    data?: Record<string, unknown>
     id?: string
     label: string
+    locale?: string
+    localizedData?: Record<string, Record<string, unknown>>
     slug?: string
 }
 
@@ -24,6 +50,7 @@ type ActionToastProps = {
     error?: string
     getViewURL?: (proposal: ActionProposal) => string | null
     isApplying: boolean
+    isLoading: boolean
     onDismiss?: () => void
     onDismissError?: () => void
     onApply: (proposal: ActionProposal, index: number) => void
@@ -49,7 +76,7 @@ const getSafeProposalDetails = (proposal: ActionProposal) => {
     if (redactedProposal._aiSignature) {
         redactedProposal._aiSignature = {
             expiresAt: redactedProposal._aiSignature.expiresAt,
-            value: "[redacted]",
+            value: ACTION_TOAST_TEXT.redacted,
         }
     }
 
@@ -62,6 +89,7 @@ export const ActionToast = ({
     error,
     getViewURL,
     isApplying,
+    isLoading,
     onDismiss,
     onDismissError,
     onApply,
@@ -73,7 +101,8 @@ export const ActionToast = ({
     const [diffError, setDiffError] = useState("")
     const [loadingDiffIndex, setLoadingDiffIndex] = useState<number | null>(null)
 
-    if (proposals.length === 0 && !error && !description) return null
+    if (proposals.length === 0 && !error && !description && !isLoading) return null
+
     const descriptionPreview = description ? getDescriptionPreview(description) : ""
     const isDescriptionTruncated = Boolean(description) && descriptionPreview !== description
 
@@ -85,18 +114,18 @@ export const ActionToast = ({
             const res = await fetch(
                 formatAdminURL({
                     apiRoute,
-                    path: "/ai-proposal-diff",
+                    path: PROPOSAL_DIFF_ENDPOINT,
                 }),
                 {
                     body: JSON.stringify({ proposal, prompt }),
-                    headers: { "Content-Type": "application/json" },
-                    method: "POST",
+                    headers: { "Content-Type": JSON_CONTENT_TYPE },
+                    method: POST_METHOD,
                 }
             )
             const result = (await res.json().catch(() => null)) as (ProposalDiff & { error?: string }) | null
 
             if (!res.ok || !result) {
-                throw new Error(result?.error || "Could not load proposal diff.")
+                throw new Error(result?.error || ACTION_TOAST_TEXT.proposalDiffError)
             }
 
             setActiveDiff({
@@ -108,7 +137,7 @@ export const ActionToast = ({
                 proposal,
             })
         } catch (err) {
-            setDiffError(err instanceof Error ? err.message : "Could not load proposal diff.")
+            setDiffError(err instanceof Error ? err.message : ACTION_TOAST_TEXT.proposalDiffError)
         } finally {
             setLoadingDiffIndex(null)
         }
@@ -116,15 +145,23 @@ export const ActionToast = ({
 
     return (
         <div className={styles.list}>
+            {proposals.length === 0 && isLoading && (
+                <div className={styles.item}>
+                    <div className={styles.label}>{ACTION_TOAST_TEXT.aiResponse}</div>
+                    <div className={styles.description}>
+                        <TextShimmer>{ACTION_TOAST_TEXT.waitingForResponse}</TextShimmer>
+                    </div>
+                </div>
+            )}
             {error && (
                 <div className={`${styles.item} ${styles.errorItem}`}>
                     <div>
-                        <div className={styles.label}>AI request failed</div>
+                        <div className={styles.label}>{ACTION_TOAST_TEXT.aiRequestFailed}</div>
                         <div className={styles.description}>{error}</div>
                     </div>
                     {onDismissError && (
                         <button className={styles.button} onClick={onDismissError} type="button">
-                            Dismiss
+                            {ACTION_TOAST_TEXT.dismiss}
                         </button>
                     )}
                 </div>
@@ -132,11 +169,11 @@ export const ActionToast = ({
             {!error && proposals.length === 0 && description && (
                 <div className={styles.item}>
                     <div>
-                        <div className={styles.label}>AI response</div>
+                        <div className={styles.label}>{ACTION_TOAST_TEXT.aiResponse}</div>
                         <div className={styles.description}>{descriptionPreview}</div>
                         {isDescriptionTruncated && (
                             <details className={styles.details}>
-                                <summary className={styles.summary}>Full response</summary>
+                                <summary className={styles.summary}>{ACTION_TOAST_TEXT.fullResponse}</summary>
                                 <pre className={styles.proposalDetails}>{description}</pre>
                             </details>
                         )}
@@ -157,37 +194,39 @@ export const ActionToast = ({
                             {description && <div className={styles.description}>{descriptionPreview}</div>}
                             {description && isDescriptionTruncated && (
                                 <details className={styles.details}>
-                                    <summary className={styles.summary}>Full response</summary>
+                                    <summary className={styles.summary}>{ACTION_TOAST_TEXT.fullResponse}</summary>
                                     <pre className={styles.proposalDetails}>{description}</pre>
                                 </details>
                             )}
                             <details className={styles.details}>
-                                <summary className={styles.summary}>Details</summary>
+                                <summary className={styles.summary}>{ACTION_TOAST_TEXT.details}</summary>
                                 <pre className={styles.proposalDetails}>{JSON.stringify(getSafeProposalDetails(proposal), null, 2)}</pre>
                             </details>
                         </div>
                         <div className={styles.footer}>
                             <div className={styles.viewAction}>
                                 <Button
-                                    aria-label={`Review proposal: ${proposal.label}`}
+                                    aria-label={`${ACTION_TOAST_TEXT.reviewProposal}: ${proposal.label}`}
                                     margin={false}
                                     buttonStyle="subtle"
                                     disabled={loadingDiffIndex === index}
                                     onClick={() => void openDiff(proposal, index)}
                                 >
                                     <SwapIcon />
-                                    {loadingDiffIndex === index ? "Loading" : "Review"}
+                                    {loadingDiffIndex === index ? ACTION_TOAST_TEXT.loading : ACTION_TOAST_TEXT.review}
                                 </Button>
                                 {viewURL && (
                                     <Button el="anchor" buttonStyle="tab" url={viewURL} newTab margin={false}>
-                                        Go to source
+                                        {ACTION_TOAST_TEXT.goToSource}
                                     </Button>
                                 )}
                             </div>
                             <div className={styles.actions}>
-                                {onDismiss && <Button icon="x" aria-label="Dismiss proposals" buttonStyle="subtle" margin={false} onClick={onDismiss} />}
+                                {onDismiss && (
+                                    <Button icon="x" aria-label={ACTION_TOAST_TEXT.dismissProposals} buttonStyle="subtle" margin={false} onClick={onDismiss} />
+                                )}
                                 <Button
-                                    aria-label={`Apply proposal: ${proposal.label}`}
+                                    aria-label={`${ACTION_TOAST_TEXT.applyProposal}: ${proposal.label}`}
                                     margin={false}
                                     buttonStyle="primary"
                                     disabled={isApplying}
@@ -203,11 +242,11 @@ export const ActionToast = ({
             {diffError && (
                 <div className={`${styles.item} ${styles.errorItem}`}>
                     <div>
-                        <div className={styles.label}>Diff review failed</div>
+                        <div className={styles.label}>{ACTION_TOAST_TEXT.diffReviewFailed}</div>
                         <div className={styles.description}>{diffError}</div>
                     </div>
                     <button className={styles.button} onClick={() => setDiffError("")} type="button">
-                        Dismiss
+                        {ACTION_TOAST_TEXT.dismiss}
                     </button>
                 </div>
             )}
