@@ -1,19 +1,19 @@
 .textShimmer {
-  animation: textShimmer 2s linear infinite;
+    animation: textShimmer 2s linear infinite;
 }
 
 @keyframes textShimmer {
-  0% {
-    background-position: 250% 0;
-  }
-  100% {
-    background-position: -250% 0;
-  }
+    0% {
+        background-position: 250% 0;
+    }
+    100% {
+        background-position: -250% 0;
+    }
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --base-color: #71717a;
-    --shimmer-color: #ffffff;
-  }
+    :root {
+        --base-color: #71717a;
+        --shimmer-color: #ffffff;
+    }
 }
