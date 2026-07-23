@@ -19,6 +19,17 @@ export type MediaAttachment = {
     url?: string
 }
 
+export type DocumentScope =
+    | {
+          collection: string
+          id?: string
+          type: "collection"
+      }
+    | {
+          slug: string
+          type: "global"
+      }
+
 type ChatStreamEvent =
     | {
           data: {
@@ -109,6 +120,7 @@ const getChatDebugMessage = (debugInfo: ChatDebugInfo) => {
 export const useAIChatStream = ({
     apiRoute,
     clearInput,
+    documentScope,
     mentionsRef,
     prompt,
     selectedModel,
@@ -116,6 +128,7 @@ export const useAIChatStream = ({
 }: {
     apiRoute: string
     clearInput: () => void
+    documentScope?: DocumentScope
     mentionsRef: RefObject<Mention[]>
     prompt: string
     selectedModel: string
@@ -154,6 +167,7 @@ export const useAIChatStream = ({
                 {
                     body: JSON.stringify({
                         ...(attachments.length > 0 ? { attachments } : {}),
+                        ...(documentScope ? { documentScope } : {}),
                         mentions: mentionsRef.current,
                         model: selectedModel,
                         prompt: trimmedPrompt,
@@ -272,7 +286,7 @@ export const useAIChatStream = ({
         } finally {
             setIsLoading(false)
         }
-    }, [apiRoute, clearInput, mentionsRef, prompt, resetChatState, selectedModel, selectedProvider])
+    }, [apiRoute, clearInput, documentScope, mentionsRef, prompt, resetChatState, selectedModel, selectedProvider])
 
     return {
         dismissChat,

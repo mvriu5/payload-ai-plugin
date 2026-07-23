@@ -8,6 +8,9 @@ import { adminConfig } from "../fixtures/payloadConfig.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const mockUseConfig = vi.hoisted(() => vi.fn())
+const mockUseDocumentForm = vi.hoisted(() => vi.fn())
+const mockUseDocumentInfo = vi.hoisted(() => vi.fn())
+const mockUseLocale = vi.hoisted(() => vi.fn())
 const mockUseAISettings = vi.hoisted(() => vi.fn())
 const mockUsePluginConfig = vi.hoisted(() => vi.fn())
 const mockUseMentions = vi.hoisted(() => vi.fn())
@@ -37,6 +40,9 @@ vi.mock("@payloadcms/ui", () => ({
         ),
     PaperclipIcon: () => <span data-testid="paperclip-icon" />,
     useConfig: mockUseConfig,
+    useDocumentForm: mockUseDocumentForm,
+    useDocumentInfo: mockUseDocumentInfo,
+    useLocale: mockUseLocale,
 }))
 
 vi.mock("../../src/components/hooks/useAISettings.js", () => ({
@@ -57,11 +63,26 @@ vi.mock("../../src/components/hooks/useAIChatStream.js", () => ({
 }))
 
 vi.mock("../../src/components/action-toast/ActionToast.js", () => ({
-    ActionToast: ({ description, error, proposals }: { description?: string; error?: string; proposals: unknown[] }) => (
+    ActionToast: ({
+        description,
+        error,
+        onApply,
+        proposals,
+    }: {
+        description?: string
+        error?: string
+        onApply: (proposal: unknown, index: number) => void
+        proposals: unknown[]
+    }) => (
         <div data-testid="action-toast">
             <span data-testid="toast-description">{description || ""}</span>
             <span data-testid="toast-error">{error || ""}</span>
             <span data-testid="toast-proposals">{proposals.length}</span>
+            {proposals[0] ? (
+                <button data-testid="apply-proposal" onClick={() => onApply(proposals[0], 0)} type="button">
+                    Apply
+                </button>
+            ) : null}
         </div>
     ),
 }))
@@ -90,11 +111,23 @@ describe("AIInput", () => {
     const mockUpdateMentionState = vi.fn()
     const mockClearMentions = vi.fn()
     const mockInsertMention = vi.fn()
+    const mockResetForm = vi.fn()
+    const mockSetModified = vi.fn()
     const mockMentionsRef = { current: [] }
 
     beforeEach(() => {
         vi.clearAllMocks()
         mockUseConfig.mockReturnValue({ config: adminConfig })
+        mockUseDocumentInfo.mockReturnValue({
+            collectionSlug: "posts",
+            id: "post-1",
+        })
+        mockUseDocumentForm.mockReturnValue({
+            getData: vi.fn(() => ({ title: "Old", settings: { theme: "light" } })),
+            reset: mockResetForm,
+            setModified: mockSetModified,
+        })
+        mockUseLocale.mockReturnValue({ code: "en" })
 
         mockUsePluginConfig.mockReturnValue({
             aiModelConfig: {
@@ -169,12 +202,61 @@ describe("AIInput", () => {
             resetChatState: vi.fn(),
             response: "",
             setError: mockSetError,
+            setIsLoading: vi.fn(),
             setProposals: vi.fn(),
             setResponse: vi.fn(),
             setTokenUsage: vi.fn(),
             submit: mockSubmit,
             tokenUsage: null,
         })
+    })
+
+    it("passes the current collection document as chat scope", () => {
+        render(<AIInput />)
+
+        expect(mockUseAIChatStream).toHaveBeenCalledWith(
+            expect.objectContaining({
+                documentScope: {
+                    collection: "posts",
+                    id: "post-1",
+                    type: "collection",
+                },
+            })
+        )
+    })
+
+    it("applies document proposals to the local form without saving", async () => {
+        mockUseAIChatStream.mockReturnValue({
+            ...mockUseAIChatStream(),
+            proposals: [
+                {
+                    action: "update",
+                    collection: "posts",
+                    data: {
+                        settings: { layout: "wide" },
+                        title: "New",
+                    },
+                    id: "post-1",
+                    label: "Update current post",
+                },
+            ],
+        })
+
+        const { container } = render(<AIInput />)
+
+        await act(async () => {
+            container.querySelector<HTMLButtonElement>('[data-testid="apply-proposal"]')?.click()
+            await Promise.resolve()
+        })
+
+        expect(mockResetForm).toHaveBeenCalledWith({
+            settings: {
+                layout: "wide",
+                theme: "light",
+            },
+            title: "New",
+        })
+        expect(mockSetModified).toHaveBeenCalledWith(true)
     })
 
     afterEach(() => {

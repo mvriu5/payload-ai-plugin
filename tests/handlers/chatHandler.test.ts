@@ -36,6 +36,15 @@ type ToolInvocationArgs = {
     }
 }
 
+type ScopedToolInvocationArgs = {
+    tools: Record<
+        string,
+        {
+            execute?: (input: Record<string, unknown>) => Promise<unknown>
+        }
+    >
+}
+
 describe("chatHandler", () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -124,6 +133,61 @@ describe("chatHandler", () => {
         expect(response.status).toBe(400)
         expect(getModel).not.toHaveBeenCalled()
         await expect(readJSON(response)).resolves.toEqual({ error: "Configure a openai API key in the server environment first." })
+    })
+
+    it("limits document-field chats to the current document", async () => {
+        const findByID = vi.fn().mockResolvedValue({
+            id: "post-1",
+            title: "Current post",
+        })
+        let capturedTools: ScopedToolInvocationArgs["tools"] = {}
+        streamText.mockImplementationOnce((args: ScopedToolInvocationArgs) => {
+            capturedTools = args.tools
+
+            return {
+                fullStream: (async function* () {
+                    yield { totalUsage: { totalTokens: 1 }, type: "finish" }
+                })(),
+            }
+        })
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    documentScope: {
+                        collection: "posts",
+                        id: "post-1",
+                        type: "collection",
+                    },
+                    prompt: "Update the title",
+                },
+                collections: [postsCollection],
+                findByID,
+            })
+        )
+        await readText(response)
+
+        expect(Object.keys(capturedTools).sort()).toEqual(["getDoc", "listCollections", "proposeUpdateDoc"])
+        expect(findByID).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "posts",
+                id: "post-1",
+                overrideAccess: false,
+            })
+        )
+        await expect(
+            capturedTools.proposeUpdateDoc?.execute?.({
+                collection: "posts",
+                data: { title: "Other post" },
+                id: "post-2",
+                label: "Update other post",
+            })
+        ).resolves.toEqual(
+            expect.objectContaining({
+                error: "Only the current document can be updated in this context.",
+            })
+        )
     })
 
     it("blocks requests when the user token limit is reached", async () => {

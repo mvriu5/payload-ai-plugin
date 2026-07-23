@@ -31,6 +31,16 @@ import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath,
 
 type ChatBody = {
     attachments?: ChatMediaAttachment[]
+    documentScope?:
+        | {
+              collection?: string
+              id?: string
+              type?: "collection"
+          }
+        | {
+              slug?: string
+              type?: "global"
+          }
     mentions?: ChatMention[]
     model?: string
     prompt?: string
@@ -1320,15 +1330,47 @@ export const createChatHandler =
                 })
                 return signedProposal
             }
-            const collectionSlugs = getAllowedCollectionSlugs(req, options.collections)
+            const requestedDocumentScope = body?.documentScope
+            const configuredCollectionSlugs = getAllowedCollectionSlugs(req, options.collections)
+            const configuredCollectionSlugSet = new Set(configuredCollectionSlugs)
+            const allGlobalConfigs = req.payload.config.globals || []
+            const requestedCollectionSlug =
+                requestedDocumentScope?.type === "collection" && typeof requestedDocumentScope.collection === "string"
+                    ? requestedDocumentScope.collection.trim()
+                    : undefined
+            const requestedGlobalSlug =
+                requestedDocumentScope?.type === "global" && typeof requestedDocumentScope.slug === "string"
+                    ? requestedDocumentScope.slug.trim()
+                    : undefined
+            const requestedDocumentID =
+                requestedDocumentScope?.type === "collection" && typeof requestedDocumentScope.id === "string"
+                    ? requestedDocumentScope.id.trim()
+                    : undefined
+
+            if (requestedDocumentScope?.type === "collection" && (!requestedCollectionSlug || !configuredCollectionSlugSet.has(requestedCollectionSlug))) {
+                return Response.json({ error: "The current collection is not available to the AI assistant." }, { status: 400 })
+            }
+            if (requestedDocumentScope?.type === "global" && (!requestedGlobalSlug || !allGlobalConfigs.some((global) => global.slug === requestedGlobalSlug))) {
+                return Response.json({ error: "The current global is not available to the AI assistant." }, { status: 400 })
+            }
+
+            const collectionSlugs = requestedDocumentScope
+                ? requestedCollectionSlug
+                    ? [requestedCollectionSlug]
+                    : []
+                : configuredCollectionSlugs
             const collectionSlugSet = new Set(collectionSlugs)
-            const globalConfigs = req.payload.config.globals || []
+            const globalConfigs = requestedDocumentScope
+                ? requestedGlobalSlug
+                    ? allGlobalConfigs.filter((global) => global.slug === requestedGlobalSlug)
+                    : []
+                : allGlobalConfigs
             const globalSlugs = globalConfigs.map((global) => global.slug)
             const globalConfigsBySlug = new Map(globalConfigs.map((global) => [global.slug, global]))
             const allowedCollections = req.payload.config.collections.filter((collection) => collectionSlugSet.has(collection.slug))
             const allowedCollectionsBySlug = new Map(allowedCollections.map((collection) => [collection.slug, collection]))
 
-            if (collectionSlugs.length === 0) {
+            if (collectionSlugs.length === 0 && globalConfigs.length === 0) {
                 logHandlerEvent(req, "warn", {
                     debug,
                     msg: "AI chat blocked: no AI-enabled collections configured",
@@ -1358,6 +1400,35 @@ export const createChatHandler =
                 mentions: body?.mentions,
                 req,
             })
+            if (requestedCollectionSlug && requestedDocumentID) {
+                const currentDocument = await req.payload.findByID({
+                    collection: requestedCollectionSlug as never,
+                    depth: 2,
+                    id: requestedDocumentID,
+                    ...(activeLocale ? { locale: activeLocale } : {}),
+                    overrideAccess: false,
+                    req,
+                })
+                mentionContext.push({
+                    collection: requestedCollectionSlug,
+                    document: currentDocument,
+                    id: requestedDocumentID,
+                    type: "currentDocument",
+                })
+            } else if (requestedGlobalSlug) {
+                const currentGlobal = await req.payload.findGlobal({
+                    depth: 2,
+                    ...(activeLocale ? { locale: activeLocale } : {}),
+                    overrideAccess: false,
+                    req,
+                    slug: requestedGlobalSlug as never,
+                })
+                mentionContext.push({
+                    global: currentGlobal,
+                    slug: requestedGlobalSlug,
+                    type: "currentGlobal",
+                })
+            }
             const mediaAttachmentContext = await getMediaAttachmentContext({
                 allowedCollectionsBySlug,
                 attachments: body?.attachments,
@@ -1408,11 +1479,12 @@ export const createChatHandler =
             })
             const writeIntent = hasWriteIntent(prompt)
             const inferredCollectionSlug =
-                mentionedCollectionSlugs.length === 1
+                requestedCollectionSlug ||
+                (mentionedCollectionSlugs.length === 1
                     ? mentionedCollectionSlugs[0]
                     : mentionedCollectionSlugs.length === 0 && likelyCollectionMatches.length === 1
                       ? likelyCollectionMatches[0]
-                      : undefined
+                      : undefined)
             const inferredCollectionConfig = inferredCollectionSlug ? allowedCollectionsBySlug.get(inferredCollectionSlug) : undefined
             if (inferredCollectionConfig && !mentionContext.some((item) => item.type === "collection" && item.slug === inferredCollectionConfig.slug)) {
                 mentionContext.push({
@@ -1424,7 +1496,18 @@ export const createChatHandler =
                     inferredFromPrompt: true,
                 })
             }
-            const intentToolChoice = inferredCollectionConfig ? getIntentToolChoice(prompt) : undefined
+            if (requestedGlobalSlug) {
+                const currentGlobalConfig = globalConfigsBySlug.get(requestedGlobalSlug)
+                if (currentGlobalConfig) {
+                    mentionContext.push(
+                        describeCollectionLikeConfig({
+                            config: currentGlobalConfig as never,
+                            type: "global",
+                        })
+                    )
+                }
+            }
+            let intentToolChoice = inferredCollectionConfig ? getIntentToolChoice(prompt) : undefined
             logHandlerEvent(req, "info", {
                 activeLocale,
                 allowedCollectionCount: allowedCollections.length,
@@ -1438,7 +1521,8 @@ export const createChatHandler =
                 selectedLocales,
                 writeIntent,
             })
-            const collectionSlugSchema = z.enum(collectionSlugs as [string, ...string[]])
+            const collectionSlugSchema =
+                collectionSlugs.length > 0 ? z.enum(collectionSlugs as [string, ...string[]]) : z.string().refine(() => false, "No collection is in scope.")
             const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
                 if (
                     isCollectionActionAllowed({
@@ -1456,7 +1540,7 @@ export const createChatHandler =
                     tool: "collectionPermissionCheck",
                 })
             }
-            const tools = {
+            const allTools = {
                 getDoc: {
                     description: "Read a document by collection and id.",
                     inputSchema: z.object({
@@ -1464,6 +1548,13 @@ export const createChatHandler =
                         id: z.string().min(1),
                     }),
                     execute: async ({ collection, id }: CollectionInput & DocIDInput) => {
+                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
+                            return createToolError({
+                                collection,
+                                message: "Only the current document can be read in this context.",
+                                tool: "getDoc",
+                            })
+                        }
                         return req.payload.findByID({
                             collection: collection as never,
                             depth: 2,
@@ -1512,6 +1603,13 @@ export const createChatHandler =
                         slug: z.string().min(1),
                     }),
                     execute: async ({ slug }: SlugInput) => {
+                        if (requestedDocumentScope && slug !== requestedGlobalSlug) {
+                            return createToolError({
+                                message: "Only the current global can be read in this context.",
+                                slug,
+                                tool: "getGlobal",
+                            })
+                        }
                         const globalConfig = globalConfigsBySlug.get(slug)
                         if (!globalConfig) {
                             return createToolError({
@@ -1747,6 +1845,13 @@ export const createChatHandler =
                         label: z.string().min(1),
                     }),
                     execute: async ({ collection, id, label }: CollectionInput & DocIDInput & LabelInput) => {
+                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
+                            return createToolError({
+                                collection,
+                                message: "Only the current document can be deleted in this context.",
+                                tool: "proposeDeleteDoc",
+                            })
+                        }
                         const permissionError = getDisallowedCollectionActionError(collection, "delete")
                         if (permissionError) return permissionError
 
@@ -1782,6 +1887,13 @@ export const createChatHandler =
                         label,
                         localizedData,
                     }: CollectionInput & Partial<DataInput> & DocIDInput & LabelInput & { localizedData?: LocalizedDataInput }) => {
+                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
+                            return createToolError({
+                                collection,
+                                message: "Only the current document can be updated in this context.",
+                                tool: "proposeUpdateDoc",
+                            })
+                        }
                         const permissionError = getDisallowedCollectionActionError(collection, "update")
                         if (permissionError) return permissionError
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
@@ -1901,6 +2013,13 @@ export const createChatHandler =
                         localizedData,
                         slug,
                     }: Partial<DataInput> & LabelInput & SlugInput & { localizedData?: LocalizedDataInput }) => {
+                        if (requestedDocumentScope && slug !== requestedGlobalSlug) {
+                            return createToolError({
+                                message: "Only the current global can be updated in this context.",
+                                slug,
+                                tool: "proposeUpdateGlobal",
+                            })
+                        }
                         const globalConfig = globalConfigsBySlug.get(slug)
                         if (!globalConfig) {
                             return createToolError({
@@ -1981,6 +2100,19 @@ export const createChatHandler =
                         })
                     },
                 },
+            }
+            const scopedToolNames = requestedCollectionSlug
+                ? requestedDocumentID
+                    ? new Set(["getDoc", "listCollections", "proposeUpdateDoc"])
+                    : new Set(["listCollections", "proposeCreateDoc"])
+                : requestedGlobalSlug
+                  ? new Set(["getGlobal", "listGlobals", "proposeUpdateGlobal"])
+                  : null
+            const tools = scopedToolNames
+                ? Object.fromEntries(Object.entries(allTools).filter(([name]) => scopedToolNames.has(name)))
+                : allTools
+            if (intentToolChoice && scopedToolNames && !scopedToolNames.has(intentToolChoice.toolName)) {
+                intentToolChoice = undefined
             }
             const encoder = new TextEncoder()
             const sendEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, data: unknown) => {

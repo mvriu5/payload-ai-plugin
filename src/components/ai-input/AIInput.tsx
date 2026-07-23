@@ -1,12 +1,13 @@
 "use client"
 
-import { Button, useConfig } from "@payloadcms/ui"
+import { Button, useConfig, useDocumentForm, useDocumentInfo, useLocale } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
+import { mergeData } from "../../payload/shared.js"
 import { ActionToast, type ActionProposal } from "../action-toast/ActionToast.js"
 import { type AppliedChange } from "../audit-log-list/AuditLogList.js"
-import { type MediaAttachment, useAIChatStream } from "../hooks/useAIChatStream.js"
+import { type DocumentScope, type MediaAttachment, useAIChatStream } from "../hooks/useAIChatStream.js"
 import { useAISettings } from "../hooks/useAISettings.js"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 import { getTextBeforeCaret, useMentions } from "../hooks/useMentions.js"
@@ -88,10 +89,16 @@ const parseModelSelectionValue = (value: string) => {
 }
 
 type AIInputProps = {
+    isDashboard?: boolean
+}
+
+type AIInputCoreProps = {
+    applyProposalLocally?: (proposal: ActionProposal) => Promise<void>
+    documentScope?: DocumentScope
     isDashboard: boolean
 }
 
-const AIInput = ({ isDashboard = false }: AIInputProps) => {
+const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInputCoreProps) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [prompt, setPrompt] = useState("")
@@ -186,6 +193,7 @@ const AIInput = ({ isDashboard = false }: AIInputProps) => {
     const { dismissChat, error, isLoading, setIsLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
         apiRoute: config.routes.api,
         clearInput,
+        documentScope,
         mentionsRef,
         prompt,
         selectedModel,
@@ -288,6 +296,13 @@ const AIInput = ({ isDashboard = false }: AIInputProps) => {
         setError("")
 
         try {
+            if (applyProposalLocally) {
+                await applyProposalLocally(proposal)
+                resetChatState()
+                clearInput()
+                return
+            }
+
             const res = await fetch(
                 formatAdminURL({
                     apiRoute: config.routes.api,
@@ -532,6 +547,50 @@ const AIInput = ({ isDashboard = false }: AIInputProps) => {
             </div>
         </div>
     )
+}
+
+const DocumentAIInput = () => {
+    const documentInfo = useDocumentInfo()
+    const documentForm = useDocumentForm()
+    const locale = useLocale()
+    const documentScope: DocumentScope | undefined = documentInfo.collectionSlug
+        ? {
+              collection: documentInfo.collectionSlug,
+              ...(documentInfo.id === undefined ? {} : { id: String(documentInfo.id) }),
+              type: "collection",
+          }
+        : documentInfo.globalSlug
+          ? {
+                slug: documentInfo.globalSlug,
+                type: "global",
+            }
+          : undefined
+
+    const applyProposalLocally = async (proposal: ActionProposal) => {
+        if (proposal.action === "delete") {
+            throw new Error("Delete proposals cannot be applied without saving.")
+        }
+
+        const proposalData = proposal.localizedData
+            ? proposal.localizedData[proposal.locale || locale.code]
+            : proposal.data
+
+        if (!proposalData) {
+            throw new Error(`This proposal has no changes for the active locale "${locale.code}".`)
+        }
+
+        const currentData = documentForm.getData()
+        await documentForm.reset(mergeData(currentData, proposalData))
+        documentForm.setModified(true)
+    }
+
+    return <AIInputCore applyProposalLocally={applyProposalLocally} documentScope={documentScope} isDashboard={false} />
+}
+
+const AIInput = ({ isDashboard = false }: AIInputProps) => {
+    if (isDashboard) return <AIInputCore isDashboard />
+
+    return <DocumentAIInput />
 }
 
 export default AIInput
