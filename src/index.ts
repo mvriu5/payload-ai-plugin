@@ -24,9 +24,11 @@ export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./a
 export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
 
 export type PayloadAIPluginOptions = {
+    aiInput?: boolean
     allowUserApiKeys?: boolean
     collections?: CollectionPermissionMap
     disabled?: boolean
+    generateFields?: boolean
     maxOutputTokens?: number
     media?: {
         acceptedMimeTypes?: string[]
@@ -257,32 +259,44 @@ const getEntityLabel = (label: unknown, fallback: string) => {
     return fallback
 }
 
-const addAIFieldsToDocumentsAndGlobals = (config: Config) => {
+const addAIFieldsToDocumentsAndGlobals = ({
+    addGenerateFields,
+    addAIInput,
+    config,
+}: {
+    addGenerateFields: boolean
+    addAIInput: boolean
+    config: Config
+}) => {
     const pageContexts = new Map<string, TextGenerationPageContext>()
 
     for (const collection of config.collections || []) {
         if (isInternalCollection(collection.slug)) continue
         if (collection.slug === "payload-ai-auditlog") continue
 
-        const pageContext = addTextGenerationFields({
-            fields: collection.fields || [],
-            label: getEntityLabel(collection.labels?.singular, collection.slug),
-            slug: collection.slug,
-            type: "collection",
-        })
-        pageContexts.set(`collection:${collection.slug}`, pageContext)
-        collection.fields = [aiField, ...(collection.fields || [])]
+        if (addGenerateFields) {
+            const pageContext = addTextGenerationFields({
+                fields: collection.fields || [],
+                label: getEntityLabel(collection.labels?.singular, collection.slug),
+                slug: collection.slug,
+                type: "collection",
+            })
+            pageContexts.set(`collection:${collection.slug}`, pageContext)
+        }
+        if (addAIInput) collection.fields = [aiField, ...(collection.fields || [])]
     }
 
     for (const global of config.globals || []) {
-        const pageContext = addTextGenerationFields({
-            fields: global.fields || [],
-            label: getEntityLabel(global.label, global.slug),
-            slug: global.slug,
-            type: "global",
-        })
-        pageContexts.set(`global:${global.slug}`, pageContext)
-        global.fields = [aiField, ...(global.fields || [])]
+        if (addGenerateFields) {
+            const pageContext = addTextGenerationFields({
+                fields: global.fields || [],
+                label: getEntityLabel(global.label, global.slug),
+                slug: global.slug,
+                type: "global",
+            })
+            pageContexts.set(`global:${global.slug}`, pageContext)
+        }
+        if (addAIInput) global.fields = [aiField, ...(global.fields || [])]
     }
 
     return pageContexts
@@ -315,7 +329,12 @@ export const payloadAiPlugin =
         if (!managedProviders) addAccountFields({ allowUserApiKeys, config })
 
         if (pluginOptions.disabled) return config
-        const textGenerationPageContexts = addAIFieldsToDocumentsAndGlobals(config)
+        const generateFields = pluginOptions.generateFields !== false
+        const textGenerationPageContexts = addAIFieldsToDocumentsAndGlobals({
+            addGenerateFields: generateFields,
+            addAIInput: pluginOptions.aiInput !== false,
+            config,
+        })
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
             if (isInternalCollection(collection.slug)) return []
             if (collectionPermissions && !collectionPermissions[collection.slug]?.read) return []
@@ -390,18 +409,20 @@ export const payloadAiPlugin =
             method: "post",
             path: "/ai-mention-suggestion",
         })
-        config.endpoints.push({
-            handler: createGenerateFieldHandler({
-                allowUserApiKeys,
-                maxOutputTokens,
-                maxTokenUsage,
-                models: modelConfig,
-                pageContexts: textGenerationPageContexts,
-                providers: providerConfigs,
-            }),
-            method: "post",
-            path: "/ai-generate-field",
-        })
+        if (generateFields) {
+            config.endpoints.push({
+                handler: createGenerateFieldHandler({
+                    allowUserApiKeys,
+                    maxOutputTokens,
+                    maxTokenUsage,
+                    models: modelConfig,
+                    pageContexts: textGenerationPageContexts,
+                    providers: providerConfigs,
+                }),
+                method: "post",
+                path: "/ai-generate-field",
+            })
+        }
         if (mediaUploadOptions) {
             config.endpoints.push({
                 handler: createMediaUploadHandler(mediaUploadOptions),

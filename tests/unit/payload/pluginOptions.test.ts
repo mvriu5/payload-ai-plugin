@@ -169,6 +169,62 @@ describe("payloadAiPlugin options", () => {
         })
     })
 
+    it("can disable generated field controls and their endpoint", () => {
+        const baseConfig = createBaseConfig()
+        baseConfig.collections[1].fields = [
+            {
+                name: "title",
+                type: "text",
+            },
+        ] as never
+        const config = payloadAiPlugin({
+            generateFields: false,
+        })(baseConfig as never)
+        const posts = config.collections?.find((collection) => collection.slug === "posts")
+        const title = posts?.fields.find((field) => "name" in field && field.name === "title")
+
+        expect(config.endpoints?.map((endpoint) => endpoint.path)).not.toContain("/ai-generate-field")
+        expect(title && "admin" in title ? title.admin?.components?.afterInput : undefined).toBeUndefined()
+        expect(posts?.fields.some((field) => "name" in field && field.name === "payloadAi")).toBe(true)
+    })
+
+    it("can disable the embedded AI input while keeping generated field controls", () => {
+        const baseConfig = {
+            ...createBaseConfig(),
+            globals: [
+                {
+                    fields: [
+                        {
+                            name: "headline",
+                            type: "text",
+                        },
+                    ],
+                    slug: "site-settings",
+                },
+            ],
+        }
+        baseConfig.collections[1].fields = [
+            {
+                name: "title",
+                type: "text",
+            },
+        ] as never
+        const config = payloadAiPlugin({
+            aiInput: false,
+        })(baseConfig as never)
+        const posts = config.collections?.find((collection) => collection.slug === "posts")
+        const title = posts?.fields.find((field) => "name" in field && field.name === "title")
+        const siteSettings = config.globals?.find((global) => global.slug === "site-settings")
+        const headline = siteSettings?.fields.find((field) => "name" in field && field.name === "headline")
+
+        expect(posts?.fields.some((field) => "name" in field && field.name === "payloadAi")).toBe(false)
+        expect(title && "admin" in title ? title.admin?.components?.afterInput : undefined).toHaveLength(1)
+        expect(siteSettings?.fields.some((field) => "name" in field && field.name === "payloadAi")).toBe(false)
+        expect(headline && "admin" in headline ? headline.admin?.components?.afterInput : undefined).toHaveLength(1)
+        expect(config.endpoints?.map((endpoint) => endpoint.path)).toContain("/ai-generate-field")
+        expect(config.admin?.components?.beforeDashboard).toContain("@mvriu5/payload-ai/client#Dashboard")
+    })
+
     it("registers a hidden usage collection when token limits are configured", () => {
         const config = payloadAiPlugin({
             maxTokenUsage: {

@@ -54,6 +54,7 @@ When `providers` is configured, provider selection and API keys are managed cent
 import type { PayloadAIPluginOptions } from "@mvriu5/payload-ai";
 
 const options: PayloadAIPluginOptions = {
+  aiInput: true,
   allowUserApiKeys: false,
   collections: {
     media: {
@@ -68,6 +69,7 @@ const options: PayloadAIPluginOptions = {
     },
     users: true,
   },
+  generateFields: true,
   media: {
     enabled: true,
     collectionSlug: "media",
@@ -108,6 +110,30 @@ const options: PayloadAIPluginOptions = {
 ```
 
 `models` configures model choices for the user-selected provider mode. Use `providers` instead when provider selection, credentials, and endpoints should be managed centrally.
+
+### `aiInput`
+
+Controls whether the collapsible AI Assistant input is added to collection and global edit views. It defaults to `true`.
+
+```ts
+payloadAiPlugin({
+  aiInput: false,
+})
+```
+
+Disabling this option does not remove the AI dashboard or per-field Generate controls.
+
+### `generateFields`
+
+Controls whether supported fields receive a Generate control. It defaults to `true`.
+
+```ts
+payloadAiPlugin({
+  generateFields: false,
+})
+```
+
+Generate controls are added to `text`, `textarea`, `richText`, and `json` fields in collection and global edit views. When disabled, the plugin also omits the `/ai-generate-field` endpoint. The embedded AI Assistant and dashboard remain available.
 
 ### `collections`
 
