@@ -1,0 +1,39 @@
+.generateField {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 6px;
+}
+
+.generateButton {
+    background: transparent;
+    border: 0;
+    color: var(--theme-elevation-600);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.2;
+    padding: 2px 0;
+}
+
+.generateButton:hover,
+.generateButton:focus-visible {
+    color: var(--theme-text);
+}
+
+.generateButton:focus-visible {
+    outline: 1px solid currentColor;
+    outline-offset: 2px;
+}
+
+.generateButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.generateError {
+    color: var(--theme-error-500);
+    font-size: 11px;
+    line-height: 1.2;
+}

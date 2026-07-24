@@ -65,6 +65,7 @@ describe("payloadAiPlugin options", () => {
             "/ai-audit-log",
             "/ai-proposal-diff",
             "/ai-mention-suggestion",
+            "/ai-generate-field",
         ])
 
         const usersCollection = config.collections?.find((collection) => collection.slug === "users")

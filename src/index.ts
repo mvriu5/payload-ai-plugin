@@ -11,12 +11,14 @@ import {
 import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug, type MaxTokenUsageOptions } from "./ai/tokenUsage.js"
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
+import { createGenerateFieldHandler } from "./handlers/generateFieldHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
 import { createMediaUploadHandler, type MediaUploadOptions } from "./handlers/mediaUploadHandler.js"
 import { createProposalDiffHandler } from "./handlers/proposalDiffHandler.js"
 import { createAuditLogHandler } from "./handlers/auditLogHandler.js"
 import { resolveCollectionPermissions, type CollectionPermissionMap } from "./payload/collectionPermissions.js"
 import { isInternalCollection } from "./payload/shared.js"
+import { addTextGenerationFields, type TextGenerationPageContext } from "./payload/textFieldGeneration.js"
 
 export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
 export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
@@ -245,17 +247,45 @@ const aiField: any = {
     },
 }
 
-const addAIFieldToDocumentsAndGlobals = (config: Config) => {
+const getEntityLabel = (label: unknown, fallback: string) => {
+    if (typeof label === "string") return label
+    if (label && typeof label === "object") {
+        const translatedLabel = Object.values(label).find((value) => typeof value === "string")
+        if (typeof translatedLabel === "string") return translatedLabel
+    }
+
+    return fallback
+}
+
+const addAIFieldsToDocumentsAndGlobals = (config: Config) => {
+    const pageContexts = new Map<string, TextGenerationPageContext>()
+
     for (const collection of config.collections || []) {
         if (isInternalCollection(collection.slug)) continue
         if (collection.slug === "payload-ai-auditlog") continue
 
+        const pageContext = addTextGenerationFields({
+            fields: collection.fields || [],
+            label: getEntityLabel(collection.labels?.singular, collection.slug),
+            slug: collection.slug,
+            type: "collection",
+        })
+        pageContexts.set(`collection:${collection.slug}`, pageContext)
         collection.fields = [aiField, ...(collection.fields || [])]
     }
 
     for (const global of config.globals || []) {
+        const pageContext = addTextGenerationFields({
+            fields: global.fields || [],
+            label: getEntityLabel(global.label, global.slug),
+            slug: global.slug,
+            type: "global",
+        })
+        pageContexts.set(`global:${global.slug}`, pageContext)
         global.fields = [aiField, ...(global.fields || [])]
     }
+
+    return pageContexts
 }
 
 export const payloadAiPlugin =
@@ -285,6 +315,7 @@ export const payloadAiPlugin =
         if (!managedProviders) addAccountFields({ allowUserApiKeys, config })
 
         if (pluginOptions.disabled) return config
+        const textGenerationPageContexts = addAIFieldsToDocumentsAndGlobals(config)
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
             if (isInternalCollection(collection.slug)) return []
             if (collectionPermissions && !collectionPermissions[collection.slug]?.read) return []
@@ -359,6 +390,18 @@ export const payloadAiPlugin =
             method: "post",
             path: "/ai-mention-suggestion",
         })
+        config.endpoints.push({
+            handler: createGenerateFieldHandler({
+                allowUserApiKeys,
+                maxOutputTokens,
+                maxTokenUsage,
+                models: modelConfig,
+                pageContexts: textGenerationPageContexts,
+                providers: providerConfigs,
+            }),
+            method: "post",
+            path: "/ai-generate-field",
+        })
         if (mediaUploadOptions) {
             config.endpoints.push({
                 handler: createMediaUploadHandler(mediaUploadOptions),
@@ -372,8 +415,6 @@ export const payloadAiPlugin =
                 await incomingOnInit(payload)
             }
         }
-
-        addAIFieldToDocumentsAndGlobals(config)
 
         return config
     }
