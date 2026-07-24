@@ -1,3 +1,52 @@
+.collapsible {
+    border: 1px solid var(--theme-elevation-150);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    width: 100%;
+}
+
+.collapsibleToggle {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--theme-text);
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    font-weight: 600;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 0 20px;
+    text-align: left;
+    width: 100%;
+}
+
+.collapsibleToggle:hover {
+    color: var(--theme-elevation-800);
+}
+
+.collapsibleToggle:focus-visible {
+    outline: 2px solid var(--theme-success-500);
+    outline-offset: 2px;
+}
+
+.collapsibleToggle .collapsibleChevron {
+    flex: 0 0 24px;
+    height: 24px;
+    width: 24px;
+}
+
+.collapsibleContent {
+    padding: 0;
+}
+
+.collapsibleContent .chat {
+    border: 0;
+    border-radius: 0;
+    padding-top: 0;
+}
+
 .chatLayout {
     width: 100%;
     max-width: none;

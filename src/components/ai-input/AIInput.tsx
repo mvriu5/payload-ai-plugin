@@ -1,6 +1,6 @@
 "use client"
 
-import { Button, useConfig, useDocumentForm, useDocumentInfo, useLocale } from "@payloadcms/ui"
+import { Button, ChevronIcon, useConfig, useDocumentForm, useDocumentInfo, useLocale } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
@@ -127,9 +127,7 @@ const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInp
         providerProfiles,
     })
     const selectedProviderProfile = providerProfiles.find((profile) => profile.id === settingsProvider)
-    const selectableProviderProfiles = managedProviders
-        ? providerProfiles
-        : providerProfiles.filter((profile) => profile.id === settingsProvider)
+    const selectableProviderProfiles = managedProviders ? providerProfiles : providerProfiles.filter((profile) => profile.id === settingsProvider)
     const { clearMentions, insertMention, mentionPopoverPosition, mentionRange, mentionSuggestions, mentionsRef, updateMentionState } = useMentions({
         apiRoute: config.routes.api,
         config,
@@ -190,15 +188,16 @@ const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInp
         updateMediaAttachments((currentAttachments) => currentAttachments.filter((_, index) => index !== attachmentIndex))
     }
 
-    const { dismissChat, error, isLoading, setIsLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } = useAIChatStream({
-        apiRoute: config.routes.api,
-        clearInput,
-        documentScope,
-        mentionsRef,
-        prompt,
-        selectedModel,
-        selectedProvider: settingsProvider,
-    })
+    const { dismissChat, error, isLoading, setIsLoading, proposals, resetChatState, response, setError, setProposals, setResponse, submit, tokenUsage } =
+        useAIChatStream({
+            apiRoute: config.routes.api,
+            clearInput,
+            documentScope,
+            mentionsRef,
+            prompt,
+            selectedModel,
+            selectedProvider: settingsProvider,
+        })
 
     const uploadSelectedFiles = async () => {
         const filesToUpload = selectedFilesRef.current
@@ -351,9 +350,11 @@ const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInp
         return (
             <div className={styles.chatLayout}>
                 <div className={styles.chat}>
-                    <div className={styles.chatHeader}>
-                        <h2 className={styles.chatTitle}>AI Assistant</h2>
-                    </div>
+                    {isDashboard && (
+                        <div className={styles.chatHeader}>
+                            <h2 className={styles.chatTitle}>AI Assistant</h2>
+                        </div>
+                    )}
                     <div className={styles.chatError}>
                         Payload config context is unavailable. Make sure the app and this plugin resolve the same @payloadcms/ui version.
                     </div>
@@ -363,11 +364,13 @@ const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInp
     }
 
     return (
-        <div className={styles.chatLayout} style={{marginBottom: isDashboard ? "0" : "20px", height: isDashboard ? "332px" : "220px"}}>
+        <div className={styles.chatLayout} style={{ marginBottom: "0", height: isDashboard ? "332px" : "220px" }}>
             <div className={styles.chat}>
-                <div className={styles.chatHeader}>
-                    <h2 className={styles.chatTitle}>AI Assistant</h2>
-                </div>
+                {isDashboard && (
+                    <div className={styles.chatHeader}>
+                        <h2 className={styles.chatTitle}>AI Assistant</h2>
+                    </div>
+                )}
                 <div className={styles.chatInputRow}>
                     <div className={styles.chatInputSurface} onClick={() => editorRef.current?.focus()}>
                         <div
@@ -462,15 +465,15 @@ const AIInputCore = ({ applyProposalLocally, documentScope, isDashboard }: AIInp
                             </>
                         )}
                     </div>
-                    {(mentionRange && isDashboard) && (
+                    {mentionRange && isDashboard && (
                         <MentionPopover
                             onSelect={insertMention}
                             style={
                                 mentionPopoverPosition
                                     ? {
-                                        left: `${mentionPopoverPosition.left}px`,
-                                        top: `${mentionPopoverPosition.top}px`,
-                                    }
+                                          left: `${mentionPopoverPosition.left}px`,
+                                          top: `${mentionPopoverPosition.top}px`,
+                                      }
                                     : undefined
                             }
                             suggestions={mentionSuggestions}
@@ -571,9 +574,7 @@ const DocumentAIInput = () => {
             throw new Error("Delete proposals cannot be applied without saving.")
         }
 
-        const proposalData = proposal.localizedData
-            ? proposal.localizedData[proposal.locale || locale.code]
-            : proposal.data
+        const proposalData = proposal.localizedData ? proposal.localizedData[proposal.locale || locale.code] : proposal.data
 
         if (!proposalData) {
             throw new Error(`This proposal has no changes for the active locale "${locale.code}".`)
@@ -590,7 +591,35 @@ const DocumentAIInput = () => {
 const AIInput = ({ isDashboard = false }: AIInputProps) => {
     if (isDashboard) return <AIInputCore isDashboard />
 
-    return <DocumentAIInput />
+    return <CollapsibleDocumentAIInput />
+}
+
+const CollapsibleDocumentAIInput = () => {
+    const [isExpanded, setIsExpanded] = useState(false)
+
+    return (
+        <div className={styles.collapsible}>
+            <button
+                aria-controls="payload-ai-input-content"
+                aria-expanded={isExpanded}
+                className={styles.collapsibleToggle}
+                onClick={() => setIsExpanded((current) => !current)}
+                type="button"
+            >
+                <span>AI Assistant</span>
+                <ChevronIcon
+                    ariaLabel={isExpanded ? "Collapse AI Assistant" : "Expand AI Assistant"}
+                    className={styles.collapsibleChevron}
+                    direction={isExpanded ? "up" : "down"}
+                />
+            </button>
+            {isExpanded && (
+                <div className={styles.collapsibleContent} id="payload-ai-input-content">
+                    <DocumentAIInput />
+                </div>
+            )}
+        </div>
+    )
 }
 
 export default AIInput

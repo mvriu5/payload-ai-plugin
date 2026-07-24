@@ -38,6 +38,7 @@ vi.mock("@payloadcms/ui", () => ({
                 {children}
             </button>
         ),
+    ChevronIcon: ({ direction }: { direction?: string }) => <span data-direction={direction} data-testid="chevron-icon" />,
     PaperclipIcon: () => <span data-testid="paperclip-icon" />,
     useConfig: mockUseConfig,
     useDocumentForm: mockUseDocumentForm,
@@ -100,6 +101,16 @@ const flushPromises = async (ticks = 1) => {
     for (let index = 0; index < ticks; index += 1) {
         await Promise.resolve()
     }
+}
+
+const renderExpandedAIInput = () => {
+    const rendered = render(<AIInput />)
+
+    act(() => {
+        rendered.container.querySelector<HTMLButtonElement>('[aria-expanded="false"]')?.click()
+    })
+
+    return rendered
 }
 
 describe("AIInput", () => {
@@ -211,8 +222,25 @@ describe("AIInput", () => {
         })
     })
 
+    it("is collapsed by default in collections and globals", () => {
+        const { container } = render(<AIInput />)
+        const toggle = container.querySelector<HTMLButtonElement>('[aria-expanded="false"]')
+
+        expect(toggle?.textContent).toContain("AI Assistant")
+        expect(container.querySelector('[aria-label="AIInput"]')).toBeNull()
+        expect(container.querySelector('[data-testid="chevron-icon"]')?.getAttribute("data-direction")).toBe("down")
+
+        act(() => {
+            toggle?.click()
+        })
+
+        expect(toggle?.getAttribute("aria-expanded")).toBe("true")
+        expect(container.querySelector('[aria-label="AIInput"]')).not.toBeNull()
+        expect(container.querySelector('[data-testid="chevron-icon"]')?.getAttribute("data-direction")).toBe("up")
+    })
+
     it("passes the current collection document as chat scope", () => {
-        render(<AIInput />)
+        renderExpandedAIInput()
 
         expect(mockUseAIChatStream).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -242,7 +270,7 @@ describe("AIInput", () => {
             ],
         })
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         await act(async () => {
             container.querySelector<HTMLButtonElement>('[data-testid="apply-proposal"]')?.click()
@@ -266,7 +294,7 @@ describe("AIInput", () => {
     })
 
     it("updates prompt text and mention state from the editor", () => {
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
 
@@ -278,7 +306,7 @@ describe("AIInput", () => {
     })
 
     it("clears mentions when the editor is emptied", () => {
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
 
@@ -290,7 +318,7 @@ describe("AIInput", () => {
     })
 
     it("submits through the chat stream hook", async () => {
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
@@ -326,7 +354,7 @@ describe("AIInput", () => {
             })
         )
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
         const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
@@ -386,7 +414,7 @@ describe("AIInput", () => {
             })
         )
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
         const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
@@ -444,7 +472,7 @@ describe("AIInput", () => {
         )
         mockSubmit.mockRejectedValueOnce(new Error("AI request failed")).mockResolvedValueOnce(undefined)
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
         const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
         const sendButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Send"))
@@ -502,7 +530,7 @@ describe("AIInput", () => {
     })
 
     it("submits on enter without shift", async () => {
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         const editor = container.querySelector<HTMLElement>('[aria-label="AIInput"]')
 
@@ -524,7 +552,7 @@ describe("AIInput", () => {
     })
 
     it("updates the selected model through settings", () => {
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
         const select = container.querySelector("select")
 
         act(() => {
@@ -570,7 +598,7 @@ describe("AIInput", () => {
             settingsProvider: "company-openai",
         })
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
         const groups = Array.from(container.querySelectorAll("optgroup"))
 
         expect(groups.map((group) => group.label)).toEqual(["Company OpenAI", "Ollama"])
@@ -593,7 +621,7 @@ describe("AIInput", () => {
             tokenUsage: null,
         })
 
-        const { container } = render(<AIInput />)
+        const { container } = renderExpandedAIInput()
 
         expect(container.querySelector('[data-testid="toast-description"]')?.textContent).toBe("AI response")
         expect(container.querySelector('[data-testid="toast-error"]')?.textContent).toBe("Missing key")
