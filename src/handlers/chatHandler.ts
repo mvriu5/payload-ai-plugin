@@ -24,6 +24,7 @@ import {
 import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
 import { type ProposalValidationIssue } from "../payload/proposalData.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
+import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../payload/toolSchemas.js"
 
 type ChatBody = {
     attachments?: ChatMediaAttachment[]
@@ -159,10 +160,6 @@ type ProposalWritePayload =
           data?: never
           localizedData: LocalizedDataInput
       }
-
-const nonEmptyLocalizedDataSchema = z.record(z.string(), z.record(z.string(), z.unknown())).refine((value) => Object.keys(value).length > 0, {
-    message: "localizedData must include at least one locale entry.",
-})
 
 export type ActionProposal = (
     | ({
@@ -1647,6 +1644,24 @@ export const createChatHandler =
             })
             const collectionSlugSchema =
                 collectionSlugs.length > 0 ? z.enum(collectionSlugs as [string, ...string[]]) : z.string().refine(() => false, "No collection is in scope.")
+            const focusedCollectionDataSchema = createPayloadDataSchema(inferredCollectionConfig as ProposalCollectionConfig | undefined)
+            const focusedCollectionSlugSchema = inferredCollectionSlug ? z.literal(inferredCollectionSlug) : collectionSlugSchema
+            const focusedGlobalConfig = requestedGlobalSlug ? globalConfigsBySlug.get(requestedGlobalSlug) : undefined
+            const focusedGlobalDataSchema = createPayloadDataSchema(
+                focusedGlobalConfig
+                    ? {
+                          fields: focusedGlobalConfig.fields as ProposalFieldConfig[],
+                          slug: focusedGlobalConfig.slug,
+                      }
+                    : undefined
+            )
+            const createDataSchema = inferredCollectionConfig ? focusedCollectionDataSchema : genericPayloadDataSchema
+            const createLocalizedDataSchema = createLocalizedPayloadDataSchema(createDataSchema)
+            const updateHasMultipleTargets = mediaAttachmentContext.length > 0 && !requestedDocumentID
+            const updateDataSchema = inferredCollectionConfig && !updateHasMultipleTargets ? focusedCollectionDataSchema : genericPayloadDataSchema
+            const updateLocalizedDataSchema = createLocalizedPayloadDataSchema(updateDataSchema)
+            const globalDataSchema = focusedGlobalConfig ? focusedGlobalDataSchema : genericPayloadDataSchema
+            const globalLocalizedDataSchema = createLocalizedPayloadDataSchema(globalDataSchema)
             const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
                 if (
                     isCollectionActionAllowed({
@@ -1786,10 +1801,10 @@ export const createChatHandler =
                     description: "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
-                            collection: collectionSlugSchema,
-                            data: z.record(z.string(), z.unknown()).optional(),
+                            collection: focusedCollectionSlugSchema,
+                            data: createDataSchema.optional(),
                             label: z.string().min(1),
-                            localizedData: nonEmptyLocalizedDataSchema.optional(),
+                            localizedData: createLocalizedDataSchema.optional(),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
@@ -1993,11 +2008,11 @@ export const createChatHandler =
                     description: "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
-                            collection: collectionSlugSchema,
-                            data: z.record(z.string(), z.unknown()).optional(),
+                            collection: updateHasMultipleTargets ? collectionSlugSchema : focusedCollectionSlugSchema,
+                            data: updateDataSchema.optional(),
                             id: z.string().min(1),
                             label: z.string().min(1),
-                            localizedData: nonEmptyLocalizedDataSchema.optional(),
+                            localizedData: updateLocalizedDataSchema.optional(),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
@@ -2121,10 +2136,10 @@ export const createChatHandler =
                     description: "Propose global update. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
-                            data: z.record(z.string(), z.unknown()).optional(),
+                            data: globalDataSchema.optional(),
                             label: z.string().min(1),
-                            localizedData: nonEmptyLocalizedDataSchema.optional(),
-                            slug: z.string().min(1),
+                            localizedData: globalLocalizedDataSchema.optional(),
+                            slug: requestedGlobalSlug ? z.literal(requestedGlobalSlug) : z.string().min(1),
                         })
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",

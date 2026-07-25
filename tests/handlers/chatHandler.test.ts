@@ -46,6 +46,11 @@ type ScopedToolInvocationArgs = {
         string,
         {
             execute?: (input: Record<string, unknown>) => Promise<unknown>
+            inputSchema?: {
+                safeParse: (input: unknown) => {
+                    success: boolean
+                }
+            }
         }
     >
 }
@@ -199,6 +204,55 @@ describe("chatHandler", () => {
                 error: "Only the current document can be updated in this context.",
             })
         )
+    })
+
+    it("uses the focused collection schema for proposal tool inputs", async () => {
+        let capturedTools: ScopedToolInvocationArgs["tools"] = {}
+        streamText.mockImplementationOnce((args: ScopedToolInvocationArgs) => {
+            capturedTools = args.tools
+
+            return {
+                fullStream: (async function* () {
+                    yield { totalUsage: { totalTokens: 1 }, type: "finish" }
+                })(),
+            }
+        })
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [{ slug: "posts", type: "collection" }],
+                    prompt: "Create a post",
+                },
+                collections: [postsCollection],
+            })
+        )
+        await readText(response)
+
+        const schema = capturedTools.proposeCreateDoc?.inputSchema
+
+        expect(
+            schema?.safeParse({
+                collection: "posts",
+                data: { title: "Valid post" },
+                label: "Create post",
+            }).success
+        ).toBe(true)
+        expect(
+            schema?.safeParse({
+                collection: "posts",
+                data: { missing: "field" },
+                label: "Create post",
+            }).success
+        ).toBe(false)
+        expect(
+            schema?.safeParse({
+                collection: "media",
+                data: { title: "Wrong collection" },
+                label: "Create post",
+            }).success
+        ).toBe(false)
     })
 
     it("uses depth two only for an explicitly mentioned current document without duplicating its data", async () => {
