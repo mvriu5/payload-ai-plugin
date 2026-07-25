@@ -7,11 +7,7 @@ import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSign
 import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
-import {
-    getExceededTokenUsageLimit,
-    recordTokenUsage,
-    type ResolvedMaxTokenUsageOptions,
-} from "../ai/tokenUsage.js"
+import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
 import { prepareProposalWriteData } from "../payload/proposalData.js"
@@ -1121,8 +1117,7 @@ const normalizeIntentText = (prompt: string) =>
         .normalize("NFKD")
         .replace(/[\u0300-\u036f]/g, "")
 
-const deleteIntentPattern =
-    /\b(?:delete|remove|erase|destroy|discard|purge|loesch\w*|losch\w*|entfern\w*|rausnehm\w*|wegnehm\w*|verwerf\w*)\b/
+const deleteIntentPattern = /\b(?:delete|remove|erase|destroy|discard|purge|loesch\w*|losch\w*|entfern\w*|rausnehm\w*|wegnehm\w*|verwerf\w*)\b/
 const createIntentPattern =
     /\b(?:create|build|generate|draft|compose|author|write|make|new|erstell\w*|anleg\w*|erzeug\w*|generier\w*|entwerf\w*|verfass\w*|schreib\w*|neu)\b/
 const updateIntentPattern =
@@ -1156,11 +1151,7 @@ const getChatIntent = ({
         return "create"
     }
 
-    if (
-        updateIntentPattern.test(normalizedPrompt) ||
-        additiveIntentPattern.test(normalizedPrompt) ||
-        separableUpdateIntentPattern.test(normalizedPrompt)
-    ) {
+    if (updateIntentPattern.test(normalizedPrompt) || additiveIntentPattern.test(normalizedPrompt) || separableUpdateIntentPattern.test(normalizedPrompt)) {
         return hasCurrentGlobal ? "updateGlobal" : "update"
     }
 
@@ -1364,12 +1355,11 @@ export const createChatHandler =
             })
             return Response.json(
                 {
-                    error:
-                        managedProvider
-                            ? `Configure a ${managedProvider?.id || provider} API key in the plugin config or server environment first.`
-                            : options.allowUserApiKeys === false
-                              ? `Configure a ${provider} API key in the server environment first.`
-                              : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
+                    error: managedProvider
+                        ? `Configure a ${managedProvider?.id || provider} API key in the plugin config or server environment first.`
+                        : options.allowUserApiKeys === false
+                          ? `Configure a ${provider} API key in the server environment first.`
+                          : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
                 },
                 { status: 400 }
             )
@@ -1440,26 +1430,21 @@ export const createChatHandler =
                     ? requestedDocumentScope.collection.trim()
                     : undefined
             const requestedGlobalSlug =
-                requestedDocumentScope?.type === "global" && typeof requestedDocumentScope.slug === "string"
-                    ? requestedDocumentScope.slug.trim()
-                    : undefined
+                requestedDocumentScope?.type === "global" && typeof requestedDocumentScope.slug === "string" ? requestedDocumentScope.slug.trim() : undefined
             const requestedDocumentID =
-                requestedDocumentScope?.type === "collection" && typeof requestedDocumentScope.id === "string"
-                    ? requestedDocumentScope.id.trim()
-                    : undefined
+                requestedDocumentScope?.type === "collection" && typeof requestedDocumentScope.id === "string" ? requestedDocumentScope.id.trim() : undefined
 
             if (requestedDocumentScope?.type === "collection" && (!requestedCollectionSlug || !configuredCollectionSlugSet.has(requestedCollectionSlug))) {
                 return Response.json({ error: "The current collection is not available to the AI assistant." }, { status: 400 })
             }
-            if (requestedDocumentScope?.type === "global" && (!requestedGlobalSlug || !allGlobalConfigs.some((global) => global.slug === requestedGlobalSlug))) {
+            if (
+                requestedDocumentScope?.type === "global" &&
+                (!requestedGlobalSlug || !allGlobalConfigs.some((global) => global.slug === requestedGlobalSlug))
+            ) {
                 return Response.json({ error: "The current global is not available to the AI assistant." }, { status: 400 })
             }
 
-            const collectionSlugs = requestedDocumentScope
-                ? requestedCollectionSlug
-                    ? [requestedCollectionSlug]
-                    : []
-                : configuredCollectionSlugs
+            const collectionSlugs = requestedDocumentScope ? (requestedCollectionSlug ? [requestedCollectionSlug] : []) : configuredCollectionSlugs
             const collectionSlugSet = new Set(collectionSlugs)
             const globalConfigs = requestedDocumentScope
                 ? requestedGlobalSlug
@@ -1771,8 +1756,7 @@ export const createChatHandler =
                     },
                 },
                 proposeCreateDoc: {
-                    description:
-                        "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
+                    description: "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
@@ -1979,8 +1963,7 @@ export const createChatHandler =
                     },
                 },
                 proposeUpdateDoc: {
-                    description:
-                        "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
+                    description: "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
                     inputSchema: z
                         .object({
                             collection: collectionSlugSchema,
