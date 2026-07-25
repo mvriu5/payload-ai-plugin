@@ -122,6 +122,8 @@ type TokenUsage = {
 
 type ProposalToolName = "proposeCreateDoc" | "proposeDeleteDoc" | "proposeUpdateDoc" | "proposeUpdateGlobal"
 
+type ChatIntent = "create" | "delete" | "read" | "search" | "update" | "updateGlobal"
+
 type ToolChoice = {
     toolName: ProposalToolName
     type: "tool"
@@ -1109,38 +1111,137 @@ const getLikelyCollectionMatches = ({ aliasMap, prompt }: { aliasMap: Record<str
     return [...matches]
 }
 
-const hasWriteIntent = (prompt: string) => {
-    const normalizedPrompt = prompt.toLowerCase()
-    return /\b(create|build|generate|write|draft|make|add|update|edit|change|revise|refine|rewrite|translate|delete|remove)\b/.test(normalizedPrompt)
+const normalizeIntentText = (prompt: string) =>
+    prompt
+        .toLowerCase()
+        .replace(/ä/g, "ae")
+        .replace(/ö/g, "oe")
+        .replace(/ü/g, "ue")
+        .replace(/ß/g, "ss")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+
+const deleteIntentPattern =
+    /\b(?:delete|remove|erase|destroy|discard|purge|loesch\w*|losch\w*|entfern\w*|rausnehm\w*|wegnehm\w*|verwerf\w*)\b/
+const createIntentPattern =
+    /\b(?:create|build|generate|draft|compose|author|write|make|new|erstell\w*|anleg\w*|erzeug\w*|generier\w*|entwerf\w*|verfass\w*|schreib\w*|neu)\b/
+const updateIntentPattern =
+    /\b(?:update|edit|change|modify|revise|refine|rewrite|translate|replace|rename|correct|fix|set|publish|unpublish|aktualisier\w*|aender\w*|bearbeit\w*|anpass\w*|ueberarbeit\w*|uberarbeit\w*|umschreib\w*|uebersetz\w*|ubersetz\w*|ersetz\w*|umbenenn\w*|korrigier\w*|reparier\w*|setz\w*|veroeffentlich\w*|veroffentlich\w*|zurueckzieh\w*|zuruckzieh\w*)\b/
+const additiveIntentPattern =
+    /\b(?:add|insert|append|attach|assign|link|include|extend|ergaenz\w*|erganz\w*|hinzufueg\w*|hinzufug\w*|einfueg\w*|einfug\w*|anhaeng\w*|anhang\w*|zuweis\w*|verknuepf\w*|verknupf\w*)\b/
+const searchIntentPattern =
+    /\b(?:search|find|lookup|locate|list|show|fetch|browse|query|such\w*|find\w*|nachschlag\w*|auflist\w*|anzeig\w*|zeig\w*|hol\w*|durchsuch\w*)\b/
+const separableDeleteIntentPattern = /\b(?:nimm|nehm\w*)\b(?:\s+\w+){0,8}\s+(?:raus|weg)\b/
+const separableUpdateIntentPattern =
+    /\b(?:pass(?:e|t|en|st)?\b(?:\s+\w+){0,8}\s+an|fueg\w*\b(?:\s+\w+){0,8}\s+(?:ein|hinzu)|haeng\w*\b(?:\s+\w+){0,8}\s+an|weis\w*\b(?:\s+\w+){0,8}\s+zu)\b/
+
+const getChatIntent = ({
+    hasCurrentDocument,
+    hasCurrentGlobal,
+    prompt,
+}: {
+    hasCurrentDocument: boolean
+    hasCurrentGlobal: boolean
+    prompt: string
+}): ChatIntent => {
+    const normalizedPrompt = normalizeIntentText(prompt)
+
+    if (deleteIntentPattern.test(normalizedPrompt) || separableDeleteIntentPattern.test(normalizedPrompt)) {
+        return hasCurrentGlobal ? "read" : "delete"
+    }
+
+    if (createIntentPattern.test(normalizedPrompt)) {
+        if (hasCurrentGlobal) return "updateGlobal"
+        if (hasCurrentDocument) return "update"
+        return "create"
+    }
+
+    if (
+        updateIntentPattern.test(normalizedPrompt) ||
+        additiveIntentPattern.test(normalizedPrompt) ||
+        separableUpdateIntentPattern.test(normalizedPrompt)
+    ) {
+        return hasCurrentGlobal ? "updateGlobal" : "update"
+    }
+
+    if (searchIntentPattern.test(normalizedPrompt)) {
+        return "search"
+    }
+
+    return "read"
 }
 
-const getIntentToolChoice = (prompt: string): ToolChoice | undefined => {
-    const normalizedPrompt = prompt.toLowerCase()
-
-    if (/\b(delete|remove)\b/.test(normalizedPrompt)) {
-        return {
-            toolName: "proposeDeleteDoc",
-            type: "tool",
-        }
+const getIntentToolChoice = ({
+    hasKnownCollection,
+    hasKnownDocument,
+    hasKnownGlobal,
+    intent,
+}: {
+    hasKnownCollection: boolean
+    hasKnownDocument: boolean
+    hasKnownGlobal: boolean
+    intent: ChatIntent
+}): ToolChoice | undefined => {
+    if (intent === "create" && hasKnownCollection) {
+        return { toolName: "proposeCreateDoc", type: "tool" }
     }
-
-    // Update existing document (add block, modify content, etc.)
-    if (/\b(update|edit|change|modify|einfügen|hinzufügen|addieren)\b/.test(normalizedPrompt)) {
-        return {
-            toolName: "proposeUpdateDoc",
-            type: "tool",
-        }
+    if (intent === "update" && hasKnownDocument) {
+        return { toolName: "proposeUpdateDoc", type: "tool" }
     }
-
-    // Create a new document
-    if (/\b(create|build|generate|write|draft|make|add|füge|einfügen|hinzufügen|addieren)\b/.test(normalizedPrompt)) {
-        return {
-            toolName: "proposeCreateDoc",
-            type: "tool",
-        }
+    if (intent === "delete" && hasKnownDocument) {
+        return { toolName: "proposeDeleteDoc", type: "tool" }
+    }
+    if (intent === "updateGlobal" && hasKnownGlobal) {
+        return { toolName: "proposeUpdateGlobal", type: "tool" }
     }
 
     return undefined
+}
+
+const getToolNamesForIntent = ({
+    hasAttachments,
+    hasKnownCollection,
+    hasCurrentDocument,
+    hasCurrentGlobal,
+    intent,
+}: {
+    hasAttachments: boolean
+    hasKnownCollection: boolean
+    hasCurrentDocument: boolean
+    hasCurrentGlobal: boolean
+    intent: ChatIntent
+}) => {
+    if (hasCurrentGlobal) {
+        return new Set(intent === "updateGlobal" ? ["getGlobal", "listGlobals", "proposeUpdateGlobal"] : ["getGlobal", "listGlobals"])
+    }
+
+    if (hasCurrentDocument) {
+        if (intent === "delete") return new Set(["getDoc", "proposeDeleteDoc"])
+        if (intent === "update" || intent === "create") return new Set(["getDoc", "listCollections", "proposeUpdateDoc"])
+        return new Set(["getDoc", "listCollections"])
+    }
+
+    if (hasKnownCollection) {
+        if (intent === "create") return new Set(["getDoc", "listCollections", "proposeCreateDoc", "searchDocs"])
+        if (intent === "update") return new Set(["getDoc", "listCollections", "proposeUpdateDoc", "searchDocs"])
+        if (intent === "delete") return new Set(["getDoc", "proposeDeleteDoc", "searchDocs"])
+        return new Set(["getDoc", "listCollections", "searchDocs"])
+    }
+
+    const toolNames =
+        intent === "create"
+            ? new Set(["getDoc", "listCollections", "proposeCreateDoc", "searchDocs"])
+            : intent === "update"
+              ? new Set(["getDoc", "getGlobal", "listCollections", "listGlobals", "proposeUpdateDoc", "proposeUpdateGlobal", "searchDocs"])
+              : intent === "delete"
+                ? new Set(["getDoc", "listCollections", "proposeDeleteDoc", "searchDocs"])
+                : new Set(["getDoc", "getGlobal", "listCollections", "listGlobals", "searchDocs"])
+
+    if (hasAttachments && (intent === "create" || intent === "update")) {
+        toolNames.add("proposeUpdateDoc")
+    }
+
+    return toolNames
 }
 
 export const createChatHandler =
@@ -1477,7 +1578,12 @@ export const createChatHandler =
                 aliasMap: collectionAliasMap,
                 prompt,
             })
-            const writeIntent = hasWriteIntent(prompt)
+            const chatIntent = getChatIntent({
+                hasCurrentDocument: Boolean(requestedCollectionSlug && requestedDocumentID),
+                hasCurrentGlobal: Boolean(requestedGlobalSlug),
+                prompt,
+            })
+            const writeIntent = ["create", "delete", "update", "updateGlobal"].includes(chatIntent)
             const inferredCollectionSlug =
                 requestedCollectionSlug ||
                 (mentionedCollectionSlugs.length === 1
@@ -1507,10 +1613,16 @@ export const createChatHandler =
                     )
                 }
             }
-            let intentToolChoice = inferredCollectionConfig ? getIntentToolChoice(prompt) : undefined
+            let intentToolChoice = getIntentToolChoice({
+                hasKnownCollection: Boolean(inferredCollectionConfig),
+                hasKnownDocument: Boolean(requestedCollectionSlug && requestedDocumentID),
+                hasKnownGlobal: Boolean(requestedGlobalSlug),
+                intent: chatIntent,
+            })
             logHandlerEvent(req, "info", {
                 activeLocale,
                 allowedCollectionCount: allowedCollections.length,
+                chatIntent,
                 collectionSlugs,
                 focusedCollections: mentionedCollectionSlugs,
                 globalSlugs,
@@ -2101,17 +2213,16 @@ export const createChatHandler =
                     },
                 },
             }
-            const scopedToolNames = requestedCollectionSlug
-                ? requestedDocumentID
-                    ? new Set(["getDoc", "listCollections", "proposeUpdateDoc"])
-                    : new Set(["listCollections", "proposeCreateDoc"])
-                : requestedGlobalSlug
-                  ? new Set(["getGlobal", "listGlobals", "proposeUpdateGlobal"])
-                  : null
-            const tools = scopedToolNames
-                ? Object.fromEntries(Object.entries(allTools).filter(([name]) => scopedToolNames.has(name)))
-                : allTools
-            if (intentToolChoice && scopedToolNames && !scopedToolNames.has(intentToolChoice.toolName)) {
+            const scopedToolNames = getToolNamesForIntent({
+                hasAttachments: Boolean(body?.attachments?.length),
+                hasKnownCollection: Boolean(inferredCollectionConfig),
+                hasCurrentDocument: Boolean(requestedCollectionSlug && requestedDocumentID),
+                hasCurrentGlobal: Boolean(requestedGlobalSlug),
+                intent: chatIntent,
+            })
+            const tools = Object.fromEntries(Object.entries(allTools).filter(([name]) => scopedToolNames.has(name)))
+            debug.tools = Object.keys(tools)
+            if (intentToolChoice && !scopedToolNames.has(intentToolChoice.toolName)) {
                 intentToolChoice = undefined
             }
             const encoder = new TextEncoder()
@@ -2151,7 +2262,7 @@ export const createChatHandler =
                     `Likely collection matches for this prompt: ${JSON.stringify(likelyCollectionMatches)}.`,
                     `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
                     `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
-                    `Preferred proposal tool for this prompt: ${intentToolChoice?.toolName || "none"}.`,
+                    `Request intent: ${chatIntent}. Preferred proposal tool: ${intentToolChoice?.toolName || "none"}.`,
                     "Visible response: plain text, under 40 words, no Markdown, no proposed content.",
                 ].join("\n"),
                 ...(intentToolChoice ? { toolChoice: intentToolChoice } : {}),

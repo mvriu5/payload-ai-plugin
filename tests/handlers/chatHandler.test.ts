@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createChatHandler } from "../../src/handlers/chatHandler.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
-import { mediaCollection, postsCollection } from "../fixtures/payloadConfig.js"
+import { mediaCollection, postsCollection, siteSettingsGlobal } from "../fixtures/payloadConfig.js"
 
 const streamText = vi.hoisted(() => vi.fn())
 const getModel = vi.hoisted(() => vi.fn())
@@ -37,6 +37,10 @@ type ToolInvocationArgs = {
 }
 
 type ScopedToolInvocationArgs = {
+    toolChoice?: {
+        toolName: string
+        type: string
+    }
     tools: Record<
         string,
         {
@@ -188,6 +192,101 @@ describe("chatHandler", () => {
                 error: "Only the current document can be updated in this context.",
             })
         )
+    })
+
+    it.each([
+        {
+            body: {
+                mentions: [{ label: "Posts", slug: "posts", type: "collection" }],
+                prompt: "Erstelle einen neuen Beitrag",
+            },
+            expectedToolChoice: "proposeCreateDoc",
+            expectedTools: ["getDoc", "listCollections", "proposeCreateDoc", "searchDocs"],
+        },
+        {
+            body: {
+                documentScope: {
+                    collection: "posts",
+                    id: "post-1",
+                    type: "collection",
+                },
+                prompt: "Ergänze einen weiteren Absatz",
+            },
+            expectedToolChoice: "proposeUpdateDoc",
+            expectedTools: ["getDoc", "listCollections", "proposeUpdateDoc"],
+        },
+        {
+            body: {
+                documentScope: {
+                    collection: "posts",
+                    id: "post-1",
+                    type: "collection",
+                },
+                prompt: "Lösche diesen Beitrag",
+            },
+            expectedToolChoice: "proposeDeleteDoc",
+            expectedTools: ["getDoc", "proposeDeleteDoc"],
+        },
+        {
+            body: {
+                prompt: "Zeige mir andere passende Beiträge",
+            },
+            expectedToolChoice: undefined,
+            expectedTools: ["getDoc", "getGlobal", "listCollections", "listGlobals", "searchDocs"],
+        },
+        {
+            body: {
+                prompt: "Was kannst du für mich tun?",
+            },
+            expectedToolChoice: undefined,
+            expectedTools: ["getDoc", "getGlobal", "listCollections", "listGlobals", "searchDocs"],
+        },
+    ])("routes '$body.prompt' to a focused tool set", async ({ body, expectedToolChoice, expectedTools }) => {
+        const findByID = vi.fn().mockResolvedValue({
+            id: "post-1",
+            title: "Current post",
+        })
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body,
+                collections: [postsCollection],
+                findByID,
+            })
+        )
+        await readText(response)
+
+        const invocation = streamText.mock.calls.at(-1)?.[0] as ScopedToolInvocationArgs
+
+        expect(Object.keys(invocation.tools).sort()).toEqual(expectedTools)
+        expect(invocation.toolChoice?.toolName).toBe(expectedToolChoice)
+    })
+
+    it("routes German global updates to global tools", async () => {
+        const findGlobal = vi.fn().mockResolvedValue({
+            siteName: "Current site",
+        })
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    documentScope: {
+                        slug: "site-settings",
+                        type: "global",
+                    },
+                    prompt: "Passe die Seiteneinstellungen an",
+                },
+                collections: [postsCollection],
+                findGlobal,
+                globals: [siteSettingsGlobal],
+            })
+        )
+        await readText(response)
+
+        const invocation = streamText.mock.calls.at(-1)?.[0] as ScopedToolInvocationArgs
+
+        expect(Object.keys(invocation.tools).sort()).toEqual(["getGlobal", "listGlobals", "proposeUpdateGlobal"])
+        expect(invocation.toolChoice?.toolName).toBe("proposeUpdateGlobal")
     })
 
     it("blocks requests when the user token limit is reached", async () => {
