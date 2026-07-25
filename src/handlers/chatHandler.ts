@@ -1478,6 +1478,14 @@ export const createChatHandler =
                     })
                 ),
             ]
+            const explicitlyMentionedDocumentKeys = new Set(
+                (body?.mentions || []).flatMap((mention) =>
+                    mention.type === "doc" && mention.collection && mention.id ? [`${mention.collection}:${mention.id}`] : []
+                )
+            )
+            const explicitlyMentionedGlobalSlugs = new Set(
+                (body?.mentions || []).flatMap((mention) => (mention.type === "global" && mention.slug ? [mention.slug] : []))
+            )
             const mentionContext = await getMentionContext({
                 blockContexts,
                 collectionSlugs,
@@ -1487,33 +1495,52 @@ export const createChatHandler =
                 req,
             })
             if (requestedCollectionSlug && requestedDocumentID) {
-                const currentDocument = await req.payload.findByID({
-                    collection: requestedCollectionSlug as never,
-                    depth: 2,
-                    id: requestedDocumentID,
-                    ...(activeLocale ? { locale: activeLocale } : {}),
-                    overrideAccess: false,
-                    req,
-                })
-                mentionContext.push({
-                    collection: requestedCollectionSlug,
-                    document: currentDocument,
-                    id: requestedDocumentID,
-                    type: "currentDocument",
-                })
+                const currentDocumentKey = `${requestedCollectionSlug}:${requestedDocumentID}`
+
+                if (explicitlyMentionedDocumentKeys.has(currentDocumentKey)) {
+                    mentionContext.push({
+                        collection: requestedCollectionSlug,
+                        id: requestedDocumentID,
+                        source: "mention",
+                        type: "currentDocumentScope",
+                    })
+                } else {
+                    const currentDocument = await req.payload.findByID({
+                        collection: requestedCollectionSlug as never,
+                        depth: 1,
+                        id: requestedDocumentID,
+                        ...(activeLocale ? { locale: activeLocale } : {}),
+                        overrideAccess: false,
+                        req,
+                    })
+                    mentionContext.push({
+                        collection: requestedCollectionSlug,
+                        document: currentDocument,
+                        id: requestedDocumentID,
+                        type: "currentDocument",
+                    })
+                }
             } else if (requestedGlobalSlug) {
-                const currentGlobal = await req.payload.findGlobal({
-                    depth: 2,
-                    ...(activeLocale ? { locale: activeLocale } : {}),
-                    overrideAccess: false,
-                    req,
-                    slug: requestedGlobalSlug as never,
-                })
-                mentionContext.push({
-                    global: currentGlobal,
-                    slug: requestedGlobalSlug,
-                    type: "currentGlobal",
-                })
+                if (explicitlyMentionedGlobalSlugs.has(requestedGlobalSlug)) {
+                    mentionContext.push({
+                        slug: requestedGlobalSlug,
+                        source: "mention",
+                        type: "currentGlobalScope",
+                    })
+                } else {
+                    const currentGlobal = await req.payload.findGlobal({
+                        depth: 1,
+                        ...(activeLocale ? { locale: activeLocale } : {}),
+                        overrideAccess: false,
+                        req,
+                        slug: requestedGlobalSlug as never,
+                    })
+                    mentionContext.push({
+                        global: currentGlobal,
+                        slug: requestedGlobalSlug,
+                        type: "currentGlobal",
+                    })
+                }
             }
             const mediaAttachmentContext = await getMediaAttachmentContext({
                 allowedCollectionsBySlug,
@@ -1654,7 +1681,7 @@ export const createChatHandler =
                         }
                         return req.payload.findByID({
                             collection: collection as never,
-                            depth: 2,
+                            depth: explicitlyMentionedDocumentKeys.has(`${collection}:${id}`) ? 2 : 1,
                             id,
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             overrideAccess: false,
@@ -1717,7 +1744,7 @@ export const createChatHandler =
                         }
 
                         return req.payload.findGlobal({
-                            depth: 2,
+                            depth: explicitlyMentionedGlobalSlugs.has(slug) ? 2 : 1,
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             overrideAccess: false,
                             req,

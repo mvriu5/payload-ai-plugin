@@ -37,6 +37,7 @@ type ToolInvocationArgs = {
 }
 
 type ScopedToolInvocationArgs = {
+    prompt?: string
     toolChoice?: {
         toolName: string
         type: string
@@ -176,8 +177,14 @@ describe("chatHandler", () => {
         expect(findByID).toHaveBeenCalledWith(
             expect.objectContaining({
                 collection: "posts",
+                depth: 1,
                 id: "post-1",
                 overrideAccess: false,
+            })
+        )
+        expect(streamText).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.stringContaining('"name":"title"'),
             })
         )
         await expect(
@@ -190,6 +197,58 @@ describe("chatHandler", () => {
         ).resolves.toEqual(
             expect.objectContaining({
                 error: "Only the current document can be updated in this context.",
+            })
+        )
+    })
+
+    it("uses depth two only for an explicitly mentioned current document without duplicating its data", async () => {
+        const findByID = vi.fn().mockResolvedValue({
+            id: "post-1",
+            title: "Mentioned post",
+        })
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    documentScope: {
+                        collection: "posts",
+                        id: "post-1",
+                        type: "collection",
+                    },
+                    mentions: [
+                        {
+                            collection: "posts",
+                            id: "post-1",
+                            label: "Mentioned post",
+                            slug: "mentioned-post",
+                            type: "doc",
+                        },
+                    ],
+                    prompt: "Überarbeite den erwähnten Beitrag",
+                },
+                collections: [postsCollection],
+                findByID,
+            })
+        )
+        await readText(response)
+
+        expect(findByID).toHaveBeenCalledTimes(1)
+        expect(findByID).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "posts",
+                depth: 2,
+                id: "post-1",
+                overrideAccess: false,
+            })
+        )
+        expect(streamText).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.stringContaining('"type":"currentDocumentScope"'),
+            })
+        )
+        expect(streamText).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.stringContaining('"name":"title"'),
             })
         )
     })
@@ -287,6 +346,13 @@ describe("chatHandler", () => {
 
         expect(Object.keys(invocation.tools).sort()).toEqual(["getGlobal", "listGlobals", "proposeUpdateGlobal"])
         expect(invocation.toolChoice?.toolName).toBe("proposeUpdateGlobal")
+        expect(findGlobal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                depth: 1,
+                slug: "site-settings",
+            })
+        )
+        expect(invocation.prompt).toContain('"name":"siteName"')
     })
 
     it("blocks requests when the user token limit is reached", async () => {
