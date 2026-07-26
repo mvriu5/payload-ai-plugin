@@ -12,7 +12,7 @@ import {
     createProposalRepairTracker,
     type CompactProposalRepairIssue,
 } from "../ai/proposalRepair.js"
-import { containsSensitiveData } from "../ai/sensitiveData.js"
+import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../ai/sensitiveData.js"
 import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
@@ -30,6 +30,7 @@ import {
 import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../payload/toolSchemas.js"
+import { createToolFieldNamesSchema, resolveToolFieldSelection, type ReadCollectionConfig } from "../payload/toolFieldSelection.js"
 
 type ChatBody = {
     attachments?: ChatMediaAttachment[]
@@ -114,6 +115,10 @@ type SlugInput = {
 
 type OptionalSlugInput = {
     slug?: string
+}
+
+type FieldsInput = {
+    fields?: string[]
 }
 
 type LocalizedDataInput = Record<string, Record<string, unknown>>
@@ -1005,14 +1010,18 @@ const getMediaAttachmentContext = async ({
 
         const collectionConfig = allowedCollectionsBySlug.get(attachment.collection)
         if (!collectionConfig?.upload) continue
+        const fieldSelection = resolveToolFieldSelection({
+            config: collectionConfig as ReadCollectionConfig,
+        })
 
         const doc = await req.payload
             .findByID({
                 collection: attachment.collection as never,
-                depth: 1,
+                depth: fieldSelection.depth,
                 id: attachment.id,
                 overrideAccess: false,
                 req,
+                select: fieldSelection.select,
             })
             .catch(() => null)
 
@@ -1561,13 +1570,18 @@ export const createChatHandler =
                         type: "currentDocumentScope",
                     })
                 } else {
+                    const currentCollectionConfig = allowedCollectionsBySlug.get(requestedCollectionSlug)
+                    const fieldSelection = resolveToolFieldSelection({
+                        config: currentCollectionConfig as ReadCollectionConfig,
+                    })
                     const currentDocument = await req.payload.findByID({
                         collection: requestedCollectionSlug as never,
-                        depth: 1,
+                        depth: fieldSelection.depth,
                         id: requestedDocumentID,
                         ...(activeLocale ? { locale: activeLocale } : {}),
                         overrideAccess: false,
                         req,
+                        select: fieldSelection.select,
                     })
                     mentionContext.push({
                         collection: requestedCollectionSlug,
@@ -1584,11 +1598,16 @@ export const createChatHandler =
                         type: "currentGlobalScope",
                     })
                 } else {
+                    const currentGlobalConfig = globalConfigsBySlug.get(requestedGlobalSlug)
+                    const fieldSelection = resolveToolFieldSelection({
+                        config: currentGlobalConfig as ReadCollectionConfig,
+                    })
                     const currentGlobal = await req.payload.findGlobal({
-                        depth: 1,
+                        depth: fieldSelection.depth,
                         ...(activeLocale ? { locale: activeLocale } : {}),
                         overrideAccess: false,
                         req,
+                        select: fieldSelection.select,
                         slug: requestedGlobalSlug as never,
                     })
                     mentionContext.push({
@@ -1707,6 +1726,8 @@ export const createChatHandler =
             const focusedCollectionSlugSchema = inferredCollectionSlug ? z.literal(inferredCollectionSlug) : collectionSlugSchema
             const focusedGlobalConfig = requestedGlobalSlug ? globalConfigsBySlug.get(requestedGlobalSlug) : undefined
             const focusedGlobalDataSchema = createPayloadDataSchema(focusedGlobalConfig as ProposalCollectionConfig | undefined)
+            const collectionReadFieldsSchema = createToolFieldNamesSchema(allowedCollections as ReadCollectionConfig[])
+            const globalReadFieldsSchema = createToolFieldNamesSchema(globalConfigs as ReadCollectionConfig[])
             const createDataSchema = inferredCollectionConfig ? focusedCollectionDataSchema : genericPayloadDataSchema
             const createLocalizedDataSchema = createLocalizedPayloadDataSchema(createDataSchema)
             const updateHasMultipleTargets = mediaAttachmentContext.length > 0 && !requestedDocumentID
@@ -1733,12 +1754,14 @@ export const createChatHandler =
             }
             const allTools = {
                 getDoc: {
-                    description: "Read a document by collection and id.",
+                    description:
+                        "Read a compact document by collection and id. Optionally request up to 12 exact top-level schema fields. Explicitly @-mentioned documents remain complete.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
+                        fields: collectionReadFieldsSchema,
                         id: z.string().min(1),
                     }),
-                    execute: async ({ collection, id }: CollectionInput & DocIDInput) => {
+                    execute: async ({ collection, fields, id }: CollectionInput & DocIDInput & FieldsInput) => {
                         if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
                             return createToolError({
                                 collection,
@@ -1746,14 +1769,34 @@ export const createChatHandler =
                                 tool: "getDoc",
                             })
                         }
-                        return req.payload.findByID({
+                        const explicitlyMentioned = explicitlyMentionedDocumentKeys.has(`${collection}:${id}`)
+                        const collectionConfig = allowedCollectionsBySlug.get(collection)
+                        const fieldSelection = resolveToolFieldSelection({
+                            config: collectionConfig as ReadCollectionConfig,
+                            requestedFields: fields,
+                        })
+                        if (!explicitlyMentioned && fieldSelection.invalidFields.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    invalidFields: fieldSelection.invalidFields,
+                                },
+                                errorCode: "INVALID_FIELD_SELECTION",
+                                message: `Unknown or sensitive fields requested for ${collection}: ${fieldSelection.invalidFields.join(", ")}.`,
+                                tool: "getDoc",
+                            })
+                        }
+                        const document = await req.payload.findByID({
                             collection: collection as never,
-                            depth: explicitlyMentionedDocumentKeys.has(`${collection}:${id}`) ? 2 : 1,
+                            depth: explicitlyMentioned ? 2 : fieldSelection.depth,
                             id,
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             overrideAccess: false,
                             req,
+                            ...(!explicitlyMentioned ? { select: fieldSelection.select } : {}),
                         })
+
+                        return redactSensitiveData(document)
                     },
                 },
                 listCollections: {
@@ -1789,11 +1832,13 @@ export const createChatHandler =
                     },
                 },
                 getGlobal: {
-                    description: "Read a global by slug.",
+                    description:
+                        "Read a compact global. Optionally request up to 12 exact top-level schema fields. Explicitly @-mentioned globals remain complete.",
                     inputSchema: z.object({
+                        fields: globalReadFieldsSchema,
                         slug: z.string().min(1),
                     }),
-                    execute: async ({ slug }: SlugInput) => {
+                    execute: async ({ fields, slug }: FieldsInput & SlugInput) => {
                         if (requestedDocumentScope && slug !== requestedGlobalSlug) {
                             return createToolError({
                                 message: "Only the current global can be read in this context.",
@@ -1809,14 +1854,33 @@ export const createChatHandler =
                                 tool: "getGlobal",
                             })
                         }
+                        const explicitlyMentioned = explicitlyMentionedGlobalSlugs.has(slug)
+                        const fieldSelection = resolveToolFieldSelection({
+                            config: globalConfig as ReadCollectionConfig,
+                            requestedFields: fields,
+                        })
+                        if (!explicitlyMentioned && fieldSelection.invalidFields.length > 0) {
+                            return createToolError({
+                                details: {
+                                    invalidFields: fieldSelection.invalidFields,
+                                },
+                                errorCode: "INVALID_FIELD_SELECTION",
+                                message: `Unknown or sensitive fields requested for global ${slug}: ${fieldSelection.invalidFields.join(", ")}.`,
+                                slug,
+                                tool: "getGlobal",
+                            })
+                        }
 
-                        return req.payload.findGlobal({
-                            depth: explicitlyMentionedGlobalSlugs.has(slug) ? 2 : 1,
+                        const global = await req.payload.findGlobal({
+                            depth: explicitlyMentioned ? 2 : fieldSelection.depth,
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             overrideAccess: false,
                             req,
+                            ...(!explicitlyMentioned ? { select: fieldSelection.select } : {}),
                             slug: slug as never,
                         })
+
+                        return redactSensitiveData(global)
                     },
                 },
                 listGlobals: {
@@ -2281,17 +2345,41 @@ export const createChatHandler =
                     },
                 },
                 searchDocs: {
-                    description: "Search documents in one collection.",
+                    description:
+                        "Search compact documents in one collection. Returns default identity fields or up to 12 requested exact top-level schema fields.",
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
+                        fields: collectionReadFieldsSchema,
                         limit: z.number().int().min(1).max(10).default(5),
                         query: z.string().optional(),
                     }),
-                    execute: async ({ collection, limit, query }: CollectionInput & { limit: number; query?: string }) => {
+                    execute: async ({ collection, fields, limit, query }: CollectionInput & FieldsInput & { limit: number; query?: string }) => {
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
+                        const fieldSelection = resolveToolFieldSelection({
+                            config: collectionConfig as ReadCollectionConfig,
+                            mode: "search",
+                            requestedFields: fields,
+                        })
+                        if (fieldSelection.invalidFields.length > 0) {
+                            return createToolError({
+                                collection,
+                                details: {
+                                    invalidFields: fieldSelection.invalidFields,
+                                },
+                                errorCode: "INVALID_FIELD_SELECTION",
+                                message: `Unknown or sensitive fields requested for ${collection}: ${fieldSelection.invalidFields.join(", ")}.`,
+                                tool: "searchDocs",
+                            })
+                        }
                         const searchableFields =
                             collectionConfig?.fields.flatMap((field) => {
-                                if (!("name" in field) || !["email", "text", "textarea"].includes(field.type) || !field.name) return []
+                                if (
+                                    !("name" in field) ||
+                                    !["email", "text", "textarea"].includes(field.type) ||
+                                    !field.name ||
+                                    isSensitiveKey(field.name)
+                                )
+                                    return []
 
                                 return [field.name]
                             }) || []
@@ -2307,14 +2395,20 @@ export const createChatHandler =
                                   }
                                 : undefined
 
-                        return req.payload.find({
+                        const result = await req.payload.find({
                             collection: collection as never,
-                            depth: 1,
+                            depth: fieldSelection.depth,
                             limit,
                             ...(activeLocale ? { locale: activeLocale } : {}),
                             overrideAccess: false,
                             req,
+                            select: fieldSelection.select,
                             where,
+                        })
+
+                        return redactSensitiveData({
+                            docs: result.docs,
+                            hasNextPage: result.hasNextPage,
                         })
                     },
                 },
@@ -2344,7 +2438,8 @@ export const createChatHandler =
             })
             const promptCaching = options.promptCaching !== false
             const explicitPromptCaching = promptCaching && !managedProvider?.baseURL
-            const { cacheable: cacheableMentionContext, dynamic: dynamicMentionContext } = splitPromptCacheContext(mentionContext)
+            const sanitizedMentionContext = redactSensitiveData(mentionContext) as Record<string, unknown>[]
+            const { cacheable: cacheableMentionContext, dynamic: dynamicMentionContext } = splitPromptCacheContext(sanitizedMentionContext)
             const staticSystemInstructions = [
                 "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
                 "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
@@ -2358,6 +2453,7 @@ export const createChatHandler =
                 "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
                 "For arrays: every item must be an object matching the child field schema, not free text.",
                 "If schema details are missing, call listCollections/listGlobals with a slug before proposing. If an inferred collection schema is already present in context, use it directly.",
+                "Read tools return compact identity fields by default. Request only the additional fields needed for the current task; full schemas remain available separately.",
                 "If a proposal tool returns retryable=true, correct only repair.issues and call the same proposal tool once more. If retryable=false, do not retry that tool target.",
             ]
             const cacheableSystemInstructions = [

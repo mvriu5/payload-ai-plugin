@@ -17,6 +17,8 @@ describe("sensitive data helpers", () => {
                 ],
             })
         ).toBe(true)
+        expect(containsSensitiveData({ password: "secret" })).toBe(true)
+        expect(containsSensitiveData({ privateKey: "secret" })).toBe(true)
     })
 
     it("ignores safe scalar and record values", () => {

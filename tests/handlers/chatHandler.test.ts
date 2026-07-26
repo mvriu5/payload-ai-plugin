@@ -188,9 +188,14 @@ describe("chatHandler", () => {
         expect(findByID).toHaveBeenCalledWith(
             expect.objectContaining({
                 collection: "posts",
-                depth: 1,
+                depth: 0,
                 id: "post-1",
                 overrideAccess: false,
+                select: {
+                    slug: true,
+                    title: true,
+                    updatedAt: true,
+                },
             })
         )
         expect(streamText).toHaveBeenCalledWith(
@@ -265,6 +270,174 @@ describe("chatHandler", () => {
                 label: "Create post",
             }).success
         ).toBe(false)
+    })
+
+    it("loads only explicitly requested document fields and relationships", async () => {
+        const richPostsCollection = {
+            ...postsCollection,
+            fields: [
+                ...postsCollection.fields,
+                { name: "content", type: "richText" },
+                { name: "author", relationTo: "users", type: "relationship" },
+            ],
+        }
+        const findByID = vi.fn().mockResolvedValue({
+            author: { id: "user-1", name: "Author" },
+            content: "Content",
+            id: "post-1",
+        })
+        let capturedTools: ScopedToolInvocationArgs["tools"] = {}
+        streamText.mockImplementationOnce((args: ScopedToolInvocationArgs) => {
+            capturedTools = args.tools
+            return {
+                fullStream: (async function* () {
+                    yield { totalUsage: { totalTokens: 1 }, type: "finish" }
+                })(),
+            }
+        })
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [{ slug: "posts", type: "collection" }],
+                    prompt: "Find the post content",
+                },
+                collections: [richPostsCollection],
+                findByID,
+            })
+        )
+        await readText(response)
+
+        await capturedTools.getDoc?.execute?.({
+            collection: "posts",
+            fields: ["content", "author"],
+            id: "post-1",
+        })
+
+        expect(findByID).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "posts",
+                depth: 1,
+                id: "post-1",
+                select: {
+                    author: true,
+                    content: true,
+                },
+            })
+        )
+        expect(
+            capturedTools.getDoc?.inputSchema?.safeParse({
+                collection: "posts",
+                fields: ["apiKey"],
+                id: "post-1",
+            }).success
+        ).toBe(false)
+    })
+
+    it("keeps explicitly mentioned documents complete at depth two", async () => {
+        const findByID = vi.fn().mockResolvedValue({
+            content: "Complete content",
+            id: "post-1",
+            title: "Mentioned post",
+        })
+        let capturedTools: ScopedToolInvocationArgs["tools"] = {}
+        streamText.mockImplementationOnce((args: ScopedToolInvocationArgs) => {
+            capturedTools = args.tools
+            return {
+                fullStream: (async function* () {
+                    yield { totalUsage: { totalTokens: 1 }, type: "finish" }
+                })(),
+            }
+        })
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [
+                        {
+                            collection: "posts",
+                            id: "post-1",
+                            type: "doc",
+                        },
+                    ],
+                    prompt: "Show the mentioned post",
+                },
+                collections: [postsCollection],
+                findByID,
+            })
+        )
+        await readText(response)
+        findByID.mockClear()
+
+        await capturedTools.getDoc?.execute?.({
+            collection: "posts",
+            fields: ["title"],
+            id: "post-1",
+        })
+
+        expect(findByID).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "posts",
+                depth: 2,
+                id: "post-1",
+            })
+        )
+        expect(findByID.mock.calls[0]?.[0]).not.toHaveProperty("select")
+    })
+
+    it("returns compact search results with default identity fields", async () => {
+        const find = vi.fn().mockResolvedValue({
+            docs: [{ id: "post-1", slug: "post", title: "Post" }],
+            hasNextPage: true,
+            page: 1,
+            totalDocs: 50,
+            totalPages: 10,
+        })
+        let capturedTools: ScopedToolInvocationArgs["tools"] = {}
+        streamText.mockImplementationOnce((args: ScopedToolInvocationArgs) => {
+            capturedTools = args.tools
+            return {
+                fullStream: (async function* () {
+                    yield { totalUsage: { totalTokens: 1 }, type: "finish" }
+                })(),
+            }
+        })
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [{ slug: "posts", type: "collection" }],
+                    prompt: "Search posts",
+                },
+                collections: [postsCollection],
+                find,
+            })
+        )
+        await readText(response)
+
+        const result = await capturedTools.searchDocs?.execute?.({
+            collection: "posts",
+            limit: 5,
+            query: "Post",
+        })
+
+        expect(find).toHaveBeenCalledWith(
+            expect.objectContaining({
+                collection: "posts",
+                depth: 0,
+                select: {
+                    slug: true,
+                    title: true,
+                },
+            })
+        )
+        expect(result).toEqual({
+            docs: [{ id: "post-1", slug: "post", title: "Post" }],
+            hasNextPage: true,
+        })
     })
 
     it("allows one structured repair and accepts the corrected proposal", async () => {
@@ -542,7 +715,11 @@ describe("chatHandler", () => {
         expect(invocation.toolChoice?.toolName).toBe("proposeUpdateGlobal")
         expect(findGlobal).toHaveBeenCalledWith(
             expect.objectContaining({
-                depth: 1,
+                depth: 0,
+                select: {
+                    siteName: true,
+                    updatedAt: true,
+                },
                 slug: "site-settings",
             })
         )
@@ -775,10 +952,18 @@ describe("chatHandler", () => {
 
         expect(findByID).toHaveBeenCalledWith({
             collection: "media",
-            depth: 1,
+            depth: 0,
             id: "media-1",
             overrideAccess: false,
             req,
+            select: {
+                alt: true,
+                filename: true,
+                filesize: true,
+                mimeType: true,
+                updatedAt: true,
+                url: true,
+            },
         })
         expect(streamText).toHaveBeenCalledWith(
             expect.objectContaining({

@@ -6,11 +6,13 @@ const sensitiveKeyPatterns = [
     /^aiApiKey$/i,
     /^authorization$/i,
     /^accessToken$/i,
+    /^password$/i,
+    /^privateKey$/i,
     /^refreshToken$/i,
     /^secret$/i,
 ]
 
-const isSensitiveKey = (key: string) => sensitiveKeyPatterns.some((pattern) => pattern.test(key))
+export const isSensitiveKey = (key: string) => sensitiveKeyPatterns.some((pattern) => pattern.test(key))
 
 export const containsSensitiveData = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.some(containsSensitiveData)
