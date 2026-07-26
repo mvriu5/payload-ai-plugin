@@ -12,6 +12,7 @@ import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug, type MaxTokenUsa
 import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
 import { createChatHandler } from "./handlers/chatHandler.js"
 import { createGenerateFieldHandler } from "./handlers/generateFieldHandler.js"
+import { createTranslateDocumentHandler } from "./handlers/translateDocumentHandler.js"
 import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
 import { createMediaUploadHandler, type MediaUploadOptions } from "./handlers/mediaUploadHandler.js"
 import { createProposalDiffHandler } from "./handlers/proposalDiffHandler.js"
@@ -19,6 +20,7 @@ import { createAuditLogHandler } from "./handlers/auditLogHandler.js"
 import { resolveCollectionPermissions, type CollectionPermissionMap } from "./payload/collectionPermissions.js"
 import { isInternalCollection } from "./payload/shared.js"
 import { addTextGenerationFields, type TextGenerationPageContext } from "./payload/textFieldGeneration.js"
+import { hasLocalizedFields, type TranslationPageContext } from "./payload/documentTranslation.js"
 
 export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
 export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
@@ -40,6 +42,7 @@ export type PayloadAIPluginOptions = {
     maxTokenUsage?: MaxTokenUsageOptions
     promptCaching?: boolean
     providers?: AIProviderConfig[]
+    translate?: boolean
 }
 
 const resolveMediaUploadOptions = (media?: PayloadAIPluginOptions["media"]): MediaUploadOptions | null => {
@@ -250,6 +253,8 @@ const aiField: any = {
     },
 }
 
+const translateDocumentComponent = "@mvriu5/payload-ai/client#TranslateDocumentButton"
+
 const getEntityLabel = (label: unknown, fallback: string) => {
     if (typeof label === "string") return label
     if (label && typeof label === "object") {
@@ -263,13 +268,16 @@ const getEntityLabel = (label: unknown, fallback: string) => {
 const addAIFieldsToDocumentsAndGlobals = ({
     addGenerateFields,
     addAIInput,
+    addTranslation,
     config,
 }: {
     addGenerateFields: boolean
     addAIInput: boolean
+    addTranslation: boolean
     config: Config
 }) => {
     const pageContexts = new Map<string, TextGenerationPageContext>()
+    const translationPageContexts = new Map<string, TranslationPageContext>()
 
     for (const collection of config.collections || []) {
         if (isInternalCollection(collection.slug)) continue
@@ -285,6 +293,21 @@ const addAIFieldsToDocumentsAndGlobals = ({
             pageContexts.set(`collection:${collection.slug}`, pageContext)
         }
         if (addAIInput) collection.fields = [aiField, ...(collection.fields || [])]
+        if (addTranslation && hasLocalizedFields(collection.fields || [])) {
+            translationPageContexts.set(`collection:${collection.slug}`, {
+                fields: collection.fields || [],
+                label: getEntityLabel(collection.labels?.singular, collection.slug),
+                slug: collection.slug,
+                type: "collection",
+            })
+            collection.admin = collection.admin || {}
+            collection.admin.components = collection.admin.components || {}
+            collection.admin.components.edit = collection.admin.components.edit || {}
+            const controls = collection.admin.components.edit.beforeDocumentControls || []
+            if (!controls.includes(translateDocumentComponent)) {
+                collection.admin.components.edit.beforeDocumentControls = [...controls, translateDocumentComponent]
+            }
+        }
     }
 
     for (const global of config.globals || []) {
@@ -298,9 +321,27 @@ const addAIFieldsToDocumentsAndGlobals = ({
             pageContexts.set(`global:${global.slug}`, pageContext)
         }
         if (addAIInput) global.fields = [aiField, ...(global.fields || [])]
+        if (addTranslation && hasLocalizedFields(global.fields || [])) {
+            translationPageContexts.set(`global:${global.slug}`, {
+                fields: global.fields || [],
+                label: getEntityLabel(global.label, global.slug),
+                slug: global.slug,
+                type: "global",
+            })
+            global.admin = global.admin || {}
+            global.admin.components = global.admin.components || {}
+            global.admin.components.elements = global.admin.components.elements || {}
+            const controls = global.admin.components.elements.beforeDocumentControls || []
+            if (!controls.includes(translateDocumentComponent)) {
+                global.admin.components.elements.beforeDocumentControls = [...controls, translateDocumentComponent]
+            }
+        }
     }
 
-    return pageContexts
+    return {
+        textGenerationPageContexts: pageContexts,
+        translationPageContexts,
+    }
 }
 
 export const payloadAiPlugin =
@@ -331,9 +372,10 @@ export const payloadAiPlugin =
 
         if (pluginOptions.disabled) return config
         const generateFields = pluginOptions.generateFields !== false
-        const textGenerationPageContexts = addAIFieldsToDocumentsAndGlobals({
+        const { textGenerationPageContexts, translationPageContexts } = addAIFieldsToDocumentsAndGlobals({
             addGenerateFields: generateFields,
             addAIInput: pluginOptions.aiInput !== false,
+            addTranslation: pluginOptions.translate !== false,
             config,
         })
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
@@ -423,6 +465,20 @@ export const payloadAiPlugin =
                 }),
                 method: "post",
                 path: "/ai-generate-field",
+            })
+        }
+        if (translationPageContexts.size > 0) {
+            config.endpoints.push({
+                handler: createTranslateDocumentHandler({
+                    allowUserApiKeys,
+                    maxOutputTokens,
+                    maxTokenUsage,
+                    models: modelConfig,
+                    pageContexts: translationPageContexts,
+                    providers: providerConfigs,
+                }),
+                method: "post",
+                path: "/ai-translate-document",
             })
         }
         if (mediaUploadOptions) {

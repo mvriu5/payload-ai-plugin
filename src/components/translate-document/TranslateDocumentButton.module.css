@@ -1,0 +1,11 @@
+.wrapper {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.error {
+    color: var(--theme-error-500);
+    font-size: 12px;
+    max-width: 240px;
+}

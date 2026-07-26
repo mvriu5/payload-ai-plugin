@@ -248,4 +248,56 @@ describe("payloadAiPlugin options", () => {
             "recordedAt",
         ])
     })
+
+    it("registers document translation controls for localized collections and globals", () => {
+        const config = payloadAiPlugin({})({
+            ...createBaseConfig(),
+            globals: [
+                {
+                    fields: [{ localized: true, name: "headline", type: "text" }],
+                    slug: "site-settings",
+                },
+            ],
+            localization: {
+                defaultLocale: "en",
+                locales: [
+                    { code: "en", label: "English" },
+                    { code: "de", label: "Deutsch" },
+                ],
+            },
+        } as never)
+        const posts = config.collections?.find((collection) => collection.slug === "posts")
+        const siteSettings = config.globals?.find((global) => global.slug === "site-settings")
+
+        expect(posts?.admin?.components?.edit?.beforeDocumentControls).toBeUndefined()
+        expect(siteSettings?.admin?.components?.elements?.beforeDocumentControls).toContain(
+            "@mvriu5/payload-ai/client#TranslateDocumentButton"
+        )
+        expect(config.endpoints?.map((endpoint) => endpoint.path)).toContain("/ai-translate-document")
+    })
+
+    it("can disable document translation controls and their endpoint", () => {
+        const config = payloadAiPlugin({
+            translate: false,
+        })({
+            ...createBaseConfig(),
+            globals: [
+                {
+                    fields: [{ localized: true, name: "headline", type: "text" }],
+                    slug: "site-settings",
+                },
+            ],
+            localization: {
+                defaultLocale: "en",
+                locales: [
+                    { code: "en", label: "English" },
+                    { code: "de", label: "Deutsch" },
+                ],
+            },
+        } as never)
+        const siteSettings = config.globals?.find((global) => global.slug === "site-settings")
+
+        expect(siteSettings?.admin?.components?.elements?.beforeDocumentControls).toBeUndefined()
+        expect(config.endpoints?.map((endpoint) => endpoint.path)).not.toContain("/ai-translate-document")
+    })
 })
