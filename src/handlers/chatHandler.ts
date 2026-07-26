@@ -7,6 +7,11 @@ import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSign
 import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { createCachedSystemMessages, createPromptCacheProviderOptions, splitPromptCacheContext } from "../ai/promptCaching.js"
+import {
+    compactProposalRepairIssues,
+    createProposalRepairTracker,
+    type CompactProposalRepairIssue,
+} from "../ai/proposalRepair.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
 import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
@@ -23,7 +28,6 @@ import {
     type FieldConfig,
 } from "../payload/schemaContext.js"
 import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
-import { type ProposalValidationIssue } from "../payload/proposalData.js"
 import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
 import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../payload/toolSchemas.js"
 
@@ -70,7 +74,9 @@ type ChatDebug = {
 type ToolFailure = {
     collection?: string
     details?: Record<string, unknown>
+    errorCode?: string
     message: string
+    retryable?: boolean
     slug?: string
     tool: string
 }
@@ -1029,30 +1035,6 @@ const getMediaAttachmentContext = async ({
     return contexts
 }
 
-const formatProposalIssuesForRetry = (issues: ProposalValidationIssue[]) => {
-    return issues
-        .slice(0, 6)
-        .map((issue) => {
-            switch (issue.code) {
-                case "invalid_block_type":
-                    return `${issue.path}: use an exact blockType from the schema`
-                case "invalid_blocks":
-                    return `${issue.path}: blocks fields must be arrays of objects with blockType and exact field names`
-                case "invalid_array":
-                    return `${issue.path}: array fields must be arrays of complete objects`
-                case "missing_required_field":
-                    return `${issue.path}: required field missing`
-                case "unknown_field":
-                    return `${issue.path}: unknown field, use exact schema field names only`
-                case "invalid_relationship":
-                    return `${issue.path}: use relationship IDs or { relationTo, value }, not free text`
-                default:
-                    return `${issue.path}: ${issue.message}`
-            }
-        })
-        .join("; ")
-}
-
 const createCollectionAliasMap = (collections: Array<{ labels?: { plural?: unknown; singular?: unknown }; slug: string }>) => {
     const aliasMap = new Map<string, string>()
 
@@ -1367,6 +1349,7 @@ export const createChatHandler =
         try {
             const proposals: ActionProposal[] = []
             const toolFailures: ToolFailure[] = []
+            const proposalRepairTracker = createProposalRepairTracker()
             const registerToolFailure = (failure: ToolFailure) => {
                 toolFailures.push(failure)
                 logHandlerEvent(req, "warn", {
@@ -1376,18 +1359,92 @@ export const createChatHandler =
                     promptPreview: getLogPreview(prompt),
                 })
             }
-            const createToolError = ({ collection, details, message, slug, tool }: ToolFailure) => {
+            const createToolError = ({ collection, details, errorCode = "NON_RETRYABLE_TOOL_ERROR", message, slug, tool }: ToolFailure) => {
                 registerToolFailure({
                     collection,
                     details,
+                    errorCode,
                     message,
+                    retryable: false,
                     slug,
                     tool,
                 })
 
                 return {
                     error: message,
+                    errorCode,
+                    retryable: false,
                 }
+            }
+            const createRepairableToolError = ({
+                collection,
+                details,
+                id,
+                issues,
+                message,
+                slug,
+                tool,
+            }: ToolFailure & {
+                id?: string
+                issues: CompactProposalRepairIssue[]
+            }) => {
+                const repair = proposalRepairTracker.registerFailure({
+                    collection,
+                    id,
+                    slug,
+                    tool,
+                })
+                const responseMessage = repair.retryable
+                    ? message
+                    : "The single proposal repair attempt failed. Do not call the same proposal tool for this target again."
+                registerToolFailure({
+                    collection,
+                    details,
+                    errorCode: repair.errorCode,
+                    message: responseMessage,
+                    retryable: repair.retryable,
+                    slug,
+                    tool,
+                })
+
+                return {
+                    error: responseMessage,
+                    errorCode: repair.errorCode,
+                    repair: {
+                        attempt: repair.attempt,
+                        issues,
+                        maxAttempts: repair.maxAttempts,
+                    },
+                    retryable: repair.retryable,
+                }
+            }
+            const getProposalRepairLimitError = ({
+                collection,
+                id,
+                slug,
+                tool,
+            }: {
+                collection?: string
+                id?: string
+                slug?: string
+                tool: string
+            }) => {
+                const callState = proposalRepairTracker.beginCall({
+                    collection,
+                    id,
+                    slug,
+                    tool,
+                })
+
+                if (callState !== "blocked") return null
+
+                return createToolError({
+                    collection,
+                    errorCode: "REPAIR_EXHAUSTED",
+                    message: "The single proposal repair attempt was already used. Do not call this proposal tool for the same target again.",
+                    slug,
+                    tool,
+                })
             }
             const addSignedProposal = <Proposal extends ActionProposal>(proposal: Proposal) => {
                 if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
@@ -1812,6 +1869,13 @@ export const createChatHandler =
                     }: CollectionInput & Partial<DataInput> & LabelInput & { localizedData?: LocalizedDataInput }) => {
                         const permissionError = getDisallowedCollectionActionError(collection, "create")
                         if (permissionError) return permissionError
+                        const repairTargetID = getSafeProposalLabel(label)
+                        const repairLimitError = getProposalRepairLimitError({
+                            collection,
+                            id: repairTargetID,
+                            tool: "proposeCreateDoc",
+                        })
+                        if (repairLimitError) return repairLimitError
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
@@ -1829,15 +1893,17 @@ export const createChatHandler =
                                 ? preparedData.issues.some((issue) => issue.path === titleFieldName || issue.path.endsWith(`.${titleFieldName}`))
                                 : false
 
-                            return createToolError({
+                            return createRepairableToolError({
                                 collection,
                                 details: {
                                     issues: preparedData.issues,
                                     titleFieldName,
                                 },
+                                id: repairTargetID,
+                                issues: compactProposalRepairIssues(preparedData.issues),
                                 message: missingTitleField
-                                    ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}. Infer a concise title from the user request and retry.`
-                                    : `Create proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
+                                    ? `Create proposal is missing the required title field "${titleFieldName}" for ${collection}.`
+                                    : `Create proposal data for ${collection} is invalid. Correct only repair.issues and call the same tool once more.`,
                                 tool: "proposeCreateDoc",
                             })
                         }
@@ -1874,13 +1940,19 @@ export const createChatHandler =
                             const missingBlockTypes = requestedBlockTypes.filter((blockType) => !proposalBlockTypes.has(blockType))
 
                             if (missingBlockTypes.length > 0) {
-                                return createToolError({
+                                return createRepairableToolError({
                                     collection,
                                     details: {
                                         missingBlockTypes,
                                         requestedBlockTypes,
                                     },
-                                    message: `Create proposal for ${collection} is missing required block types from the request: ${missingBlockTypes.join(", ")}. Add them to the appropriate blocks field using exact blockType values and complete required fields.`,
+                                    id: repairTargetID,
+                                    issues: missingBlockTypes.map((blockType) => ({
+                                        code: "missing_requested_block",
+                                        hint: `Add a complete "${blockType}" block using the exact blockType and schema fields.`,
+                                        path: "blocks",
+                                    })),
+                                    message: `Create proposal for ${collection} is missing requested block types: ${missingBlockTypes.join(", ")}.`,
                                     tool: "proposeCreateDoc",
                                 })
                             }
@@ -2028,6 +2100,12 @@ export const createChatHandler =
                         }
                         const permissionError = getDisallowedCollectionActionError(collection, "update")
                         if (permissionError) return permissionError
+                        const repairLimitError = getProposalRepairLimitError({
+                            collection,
+                            id,
+                            tool: "proposeUpdateDoc",
+                        })
+                        if (repairLimitError) return repairLimitError
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
@@ -2040,12 +2118,14 @@ export const createChatHandler =
                         })
 
                         if (preparedData.issues.length > 0) {
-                            return createToolError({
+                            return createRepairableToolError({
                                 collection,
                                 details: {
                                     issues: preparedData.issues,
                                 },
-                                message: `Update proposal for ${collection} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
+                                id,
+                                issues: compactProposalRepairIssues(preparedData.issues),
+                                message: `Update proposal data for ${collection}:${id} is invalid. Correct only repair.issues and call the same tool once more.`,
                                 tool: "proposeUpdateDoc",
                             })
                         }
@@ -2160,6 +2240,11 @@ export const createChatHandler =
                                 tool: "proposeUpdateGlobal",
                             })
                         }
+                        const repairLimitError = getProposalRepairLimitError({
+                            slug,
+                            tool: "proposeUpdateGlobal",
+                        })
+                        if (repairLimitError) return repairLimitError
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: {
                                 fields: (globalConfig.fields || []) as ProposalFieldConfig[],
@@ -2173,11 +2258,12 @@ export const createChatHandler =
                         })
 
                         if (preparedData.issues.length > 0) {
-                            return createToolError({
+                            return createRepairableToolError({
                                 details: {
                                     issues: preparedData.issues,
                                 },
-                                message: `Update proposal for global ${slug} is invalid. Retry with exact schema fields and complete array/block objects: ${formatProposalIssuesForRetry(preparedData.issues)}`,
+                                issues: compactProposalRepairIssues(preparedData.issues),
+                                message: `Update proposal data for global ${slug} is invalid. Correct only repair.issues and call the same tool once more.`,
                                 slug,
                                 tool: "proposeUpdateGlobal",
                             })
@@ -2272,6 +2358,7 @@ export const createChatHandler =
                 "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
                 "For arrays: every item must be an object matching the child field schema, not free text.",
                 "If schema details are missing, call listCollections/listGlobals with a slug before proposing. If an inferred collection schema is already present in context, use it directly.",
+                "If a proposal tool returns retryable=true, correct only repair.issues and call the same proposal tool once more. If retryable=false, do not retry that tool target.",
             ]
             const cacheableSystemInstructions = [
                 `Collection aliases: ${JSON.stringify(collectionAliasMap)}.`,

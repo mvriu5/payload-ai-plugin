@@ -212,6 +212,8 @@ describe("chatHandler", () => {
         ).resolves.toEqual(
             expect.objectContaining({
                 error: "Only the current document can be updated in this context.",
+                errorCode: "NON_RETRYABLE_TOOL_ERROR",
+                retryable: false,
             })
         )
     })
@@ -263,6 +265,130 @@ describe("chatHandler", () => {
                 label: "Create post",
             }).success
         ).toBe(false)
+    })
+
+    it("allows one structured repair and accepts the corrected proposal", async () => {
+        let invalidResult: unknown
+        let repairedResult: unknown
+        streamText.mockImplementationOnce((args: ToolInvocationArgs) => ({
+            fullStream: (async function* () {
+                invalidResult = await args.tools.proposeCreateDoc.execute({
+                    collection: "posts",
+                    data: {
+                        unknown: "value",
+                    },
+                    label: "Create repaired post",
+                })
+                repairedResult = await args.tools.proposeCreateDoc.execute({
+                    collection: "posts",
+                    data: {
+                        title: "Repaired post",
+                    },
+                    label: "Create repaired post",
+                })
+                yield {
+                    totalUsage: {
+                        totalTokens: 1,
+                    },
+                    type: "finish",
+                }
+            })(),
+        }))
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [{ slug: "posts", type: "collection" }],
+                    prompt: "Create a repaired post",
+                },
+                collections: [postsCollection],
+            })
+        )
+        await readText(response)
+
+        expect(invalidResult).toMatchObject({
+            errorCode: "INVALID_PROPOSAL_DATA",
+            repair: {
+                attempt: 1,
+                issues: [
+                    {
+                        code: "unknown_field",
+                        path: "unknown",
+                    },
+                ],
+                maxAttempts: 1,
+            },
+            retryable: true,
+        })
+        expect(repairedResult).toMatchObject({
+            action: "create",
+            collection: "posts",
+            data: {
+                title: "Repaired post",
+            },
+        })
+    })
+
+    it("blocks proposal calls after the single repair attempt is exhausted", async () => {
+        const results: unknown[] = []
+        streamText.mockImplementationOnce((args: ToolInvocationArgs) => ({
+            fullStream: (async function* () {
+                results.push(
+                    await args.tools.proposeCreateDoc.execute({
+                        collection: "posts",
+                        data: { firstUnknown: true },
+                        label: "Create exhausted post",
+                    })
+                )
+                results.push(
+                    await args.tools.proposeCreateDoc.execute({
+                        collection: "posts",
+                        data: { secondUnknown: true },
+                        label: "Create exhausted post",
+                    })
+                )
+                results.push(
+                    await args.tools.proposeCreateDoc.execute({
+                        collection: "posts",
+                        data: { title: "Too late" },
+                        label: "Create exhausted post",
+                    })
+                )
+                yield {
+                    totalUsage: {
+                        totalTokens: 1,
+                    },
+                    type: "finish",
+                }
+            })(),
+        }))
+
+        const handler = createChatHandler()
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    mentions: [{ slug: "posts", type: "collection" }],
+                    prompt: "Create a post",
+                },
+                collections: [postsCollection],
+            })
+        )
+        const text = await readText(response)
+
+        expect(results[0]).toMatchObject({
+            errorCode: "INVALID_PROPOSAL_DATA",
+            retryable: true,
+        })
+        expect(results[1]).toMatchObject({
+            errorCode: "REPAIR_EXHAUSTED",
+            retryable: false,
+        })
+        expect(results[2]).toMatchObject({
+            errorCode: "REPAIR_EXHAUSTED",
+            retryable: false,
+        })
+        expect(text).toContain('"proposals":[]')
     })
 
     it("uses depth two only for an explicitly mentioned current document without duplicating its data", async () => {
