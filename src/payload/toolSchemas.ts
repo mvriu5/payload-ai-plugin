@@ -128,10 +128,17 @@ const createFieldValueSchema = (field: ToolSchemaField): z.ZodType => {
 
 export const genericPayloadDataSchema = z.record(z.string(), z.unknown())
 
+const payloadDataSchemaCache = new WeakMap<CollectionConfig, ReturnType<typeof createObjectSchema>>()
+
 export const createPayloadDataSchema = (config?: CollectionConfig | null) => {
     if (!config) return genericPayloadDataSchema
 
-    return createObjectSchema(getSchemaFields(config) as ToolSchemaField[])
+    const cached = payloadDataSchemaCache.get(config)
+    if (cached) return cached
+
+    const schema = createObjectSchema(getSchemaFields(config) as ToolSchemaField[])
+    payloadDataSchemaCache.set(config, schema)
+    return schema
 }
 
 export const createLocalizedPayloadDataSchema = (dataSchema: z.ZodType) => {

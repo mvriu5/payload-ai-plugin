@@ -6,6 +6,7 @@ import { z } from "zod"
 import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSigning.js"
 import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
+import { createCachedSystemMessages, createPromptCacheProviderOptions, splitPromptCacheContext } from "../ai/promptCaching.js"
 import { containsSensitiveData } from "../ai/sensitiveData.js"
 import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
@@ -195,6 +196,7 @@ type ChatOptions = {
     maxOutputTokens?: number
     maxTokenUsage?: ResolvedMaxTokenUsageOptions
     models?: AIModelConfig
+    promptCaching?: boolean
     providers?: ResolvedAIProviderConfig[]
 }
 
@@ -1647,14 +1649,7 @@ export const createChatHandler =
             const focusedCollectionDataSchema = createPayloadDataSchema(inferredCollectionConfig as ProposalCollectionConfig | undefined)
             const focusedCollectionSlugSchema = inferredCollectionSlug ? z.literal(inferredCollectionSlug) : collectionSlugSchema
             const focusedGlobalConfig = requestedGlobalSlug ? globalConfigsBySlug.get(requestedGlobalSlug) : undefined
-            const focusedGlobalDataSchema = createPayloadDataSchema(
-                focusedGlobalConfig
-                    ? {
-                          fields: focusedGlobalConfig.fields as ProposalFieldConfig[],
-                          slug: focusedGlobalConfig.slug,
-                      }
-                    : undefined
-            )
+            const focusedGlobalDataSchema = createPayloadDataSchema(focusedGlobalConfig as ProposalCollectionConfig | undefined)
             const createDataSchema = inferredCollectionConfig ? focusedCollectionDataSchema : genericPayloadDataSchema
             const createLocalizedDataSchema = createLocalizedPayloadDataSchema(createDataSchema)
             const updateHasMultipleTargets = mediaAttachmentContext.length > 0 && !requestedDocumentID
@@ -2261,35 +2256,58 @@ export const createChatHandler =
                 model: providerConfig.modelID,
                 provider,
             })
+            const promptCaching = options.promptCaching !== false
+            const explicitPromptCaching = promptCaching && !managedProvider?.baseURL
+            const { cacheable: cacheableMentionContext, dynamic: dynamicMentionContext } = splitPromptCacheContext(mentionContext)
+            const staticSystemInstructions = [
+                "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
+                "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
+                "Writes are proposals only. Never claim changes were applied before user confirmation.",
+                "Uploaded media attachments appear in context as mediaAttachment entries. Use their exact IDs for upload fields.",
+                "If an uploaded media document has editable descriptive fields, propose an update to that media document with suitable values.",
+                "If a collection has a required `slug` field and the user does not provide it, generate a URL-friendly slug from the title or from the first meaningful word of the prompt.",
+                "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
+                "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",
+                "Put concrete field values only in tool data, not visible text.",
+                "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
+                "For arrays: every item must be an object matching the child field schema, not free text.",
+                "If schema details are missing, call listCollections/listGlobals with a slug before proposing. If an inferred collection schema is already present in context, use it directly.",
+            ]
+            const cacheableSystemInstructions = [
+                `Collection aliases: ${JSON.stringify(collectionAliasMap)}.`,
+                `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
+                `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
+            ]
+            const dynamicSystemInstructions = [
+                `Likely collection matches for this prompt: ${JSON.stringify(likelyCollectionMatches)}.`,
+                `Request intent: ${chatIntent}. Preferred proposal tool: ${intentToolChoice?.toolName || "none"}.`,
+                "Visible response: plain text, under 40 words, no Markdown, no proposed content.",
+            ]
+            const system = createCachedSystemMessages({
+                cacheableContext: cacheableMentionContext,
+                cacheableInstructions: cacheableSystemInstructions,
+                dynamicInstructions: dynamicSystemInstructions,
+                enabled: explicitPromptCaching,
+                provider,
+                staticInstructions: staticSystemInstructions,
+            })
+            const promptCacheProviderOptions = createPromptCacheProviderOptions({
+                cacheKeyParts: [cacheableMentionContext, cacheableSystemInstructions, [...scopedToolNames].sort()],
+                enabled: explicitPromptCaching,
+                model: providerConfig.modelID,
+                provider,
+            })
 
             const result = streamText({
                 maxOutputTokens: options.maxOutputTokens || 700,
                 model,
                 prompt: buildPromptWithMentionContext({
-                    mentionContext,
+                    mentionContext: dynamicMentionContext,
                     prompt,
                 }),
+                ...(promptCacheProviderOptions ? { providerOptions: promptCacheProviderOptions } : {}),
                 stopWhen: stepCountIs(6),
-                system: [
-                    "You are a Payload CMS assistant. Inspect schema/content with tools before proposing writes.",
-                    "Mentions define the active CMS scope. Locale mentions define active locale; multiple locales require localizedData keyed by locale.",
-                    "Writes are proposals only. Never claim changes were applied before user confirmation.",
-                    "Uploaded media attachments appear in context as mediaAttachment entries. Use their exact IDs for upload fields.",
-                    "If an uploaded media document has editable descriptive fields, propose an update to that media document with suitable values.",
-                    "If a collection has a required `slug` field and the user does not provide it, generate a URL‑friendly slug from the title or from the first meaningful word of the prompt.",
-                    "For create/update/delete requests, you must use proposal tools. Do not end with plain text if the user asked for a content change.",
-                    "If the user asks to create, update, refine, translate, remove, or delete content, produce at least one proposal tool call unless blocked by missing schema information or permissions.",
-                    "Put concrete field values only in tool data, not visible text.",
-                    "For blocks fields: use exact blockType values from schema, exact field names, and complete objects for required block fields.",
-                    "For arrays: every item must be an object matching the child field schema, not free text.",
-                    "If schema details are missing, call listCollections/listGlobals with a slug before proposing. If an inferred collection schema is already present in context, use it directly.",
-                    `Collection aliases: ${JSON.stringify(collectionAliasMap)}.`,
-                    `Likely collection matches for this prompt: ${JSON.stringify(likelyCollectionMatches)}.`,
-                    `Focused required create fields: ${JSON.stringify(focusedRequiredFieldsByCollection)}.`,
-                    `Focused title fields: ${JSON.stringify(focusedTitleFieldByCollection)}. Infer concise titles when needed.`,
-                    `Request intent: ${chatIntent}. Preferred proposal tool: ${intentToolChoice?.toolName || "none"}.`,
-                    "Visible response: plain text, under 40 words, no Markdown, no proposed content.",
-                ].join("\n"),
+                system,
                 ...(intentToolChoice ? { toolChoice: intentToolChoice } : {}),
                 tools,
             })

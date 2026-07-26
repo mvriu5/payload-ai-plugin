@@ -38,6 +38,7 @@ export type PayloadAIPluginOptions = {
     }
     models?: AIModelConfig
     maxTokenUsage?: MaxTokenUsageOptions
+    promptCaching?: boolean
     providers?: AIProviderConfig[]
 }
 
@@ -375,6 +376,7 @@ export const payloadAiPlugin =
                 maxOutputTokens,
                 maxTokenUsage,
                 models: modelConfig,
+                promptCaching: pluginOptions.promptCaching !== false,
                 providers: providerConfigs,
             }),
             method: "post",

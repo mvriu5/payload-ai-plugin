@@ -101,6 +101,7 @@ const options: PayloadAIPluginOptions = {
     },
   ],
   maxOutputTokens: 1200,
+  promptCaching: true,
   maxTokenUsage: {
     type: "user",
     perDay: 50_000,
@@ -275,6 +276,18 @@ payloadAiPlugin({
 Use `type: "user"` to enforce separate budgets per authenticated user, or `type: "site"` to share one budget across the entire Payload installation. `perDay` and `perWeek` are optional individually, but at least one must be configured.
 
 Completed model usage is stored in the hidden `payload-ai-usage` collection. Requests made after a limit is reached return HTTP `429`. Because providers report token usage after completion, the request that crosses a limit is allowed to finish and subsequent requests are blocked.
+
+### `promptCaching`
+
+Enables provider prompt-caching hints and defaults to `true`. The chat endpoint keeps static instructions and Payload schemas in a stable prompt prefix, adds Anthropic cache-control breakpoints, and supplies a stable OpenAI prompt cache key. Gemini uses the same stable prefix with its implicit caching.
+
+```ts
+payloadAiPlugin({
+  promptCaching: false,
+})
+```
+
+Disable it when explicit provider-side caching is not desired. Dynamic document data and user prompts are never placed in the cacheable schema section. Managed providers with a custom `baseURL` receive the stable prefix but no provider-specific cache parameters, preserving compatibility with Ollama, vLLM, and other OpenAI-compatible endpoints.
 
 ### `allowUserApiKeys`
 

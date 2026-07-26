@@ -38,6 +38,12 @@ type ToolInvocationArgs = {
 
 type ScopedToolInvocationArgs = {
     prompt?: string
+    providerOptions?: Record<string, unknown>
+    system?: Array<{
+        content: string
+        providerOptions?: Record<string, unknown>
+        role: string
+    }>
     toolChoice?: {
         toolName: string
         type: string
@@ -189,7 +195,11 @@ describe("chatHandler", () => {
         )
         expect(streamText).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: expect.stringContaining('"name":"title"'),
+                system: expect.arrayContaining([
+                    expect.objectContaining({
+                        content: expect.stringContaining('"name":"title"'),
+                    }),
+                ]),
             })
         )
         await expect(
@@ -302,7 +312,11 @@ describe("chatHandler", () => {
         )
         expect(streamText).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: expect.stringContaining('"name":"title"'),
+                system: expect.arrayContaining([
+                    expect.objectContaining({
+                        content: expect.stringContaining('"name":"title"'),
+                    }),
+                ]),
             })
         )
     })
@@ -406,7 +420,7 @@ describe("chatHandler", () => {
                 slug: "site-settings",
             })
         )
-        expect(invocation.prompt).toContain('"name":"siteName"')
+        expect(invocation.system?.map((message) => message.content).join("\n")).toContain('"name":"siteName"')
     })
 
     it("blocks requests when the user token limit is reached", async () => {
@@ -566,6 +580,7 @@ describe("chatHandler", () => {
             model: "llama3.3",
             provider: "openai",
         })
+        expect(streamText.mock.calls.at(-1)?.[0]).not.toHaveProperty("providerOptions")
     })
 
     it("rejects models outside the managed provider configuration", async () => {
@@ -646,7 +661,11 @@ describe("chatHandler", () => {
         )
         expect(streamText).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: expect.stringContaining('"name":"alt"'),
+                system: expect.arrayContaining([
+                    expect.objectContaining({
+                        content: expect.stringContaining('"name":"alt"'),
+                    }),
+                ]),
             })
         )
     })

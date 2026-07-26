@@ -135,4 +135,8 @@ describe("toolSchemas", () => {
         expect(genericPayloadDataSchema.safeParse({ arbitrary: { value: true } }).success).toBe(true)
         expect(createPayloadDataSchema().safeParse({ arbitrary: true }).success).toBe(true)
     })
+
+    it("reuses generated schemas for the same Payload config", () => {
+        expect(createPayloadDataSchema(collection)).toBe(createPayloadDataSchema(collection))
+    })
 })
