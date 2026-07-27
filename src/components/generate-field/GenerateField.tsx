@@ -1,6 +1,6 @@
 "use client"
 
-import { useConfig, useDocumentForm, useDocumentInfo, useField, useLocale } from "@payloadcms/ui"
+import { useAuth, useConfig, useDocumentForm, useDocumentInfo, useField, useLocale } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
 
@@ -57,6 +57,7 @@ const requestGeneratedValue = ({ apiRoute, body, cacheKey }: { apiRoute: string;
 }
 
 const GenerateField = ({ field, generationFieldKey, generationFieldType, path, readOnly }: GenerateFieldProps) => {
+    const { user } = useAuth()
     const configContext = useConfig() as { config?: ClientConfig } | undefined
     const documentForm = useDocumentForm()
     const documentInfo = useDocumentInfo()
@@ -111,7 +112,7 @@ const GenerateField = ({ field, generationFieldKey, generationFieldType, path, r
         }
     }
 
-    if (!scope) return null
+    if (!user || !scope) return null
 
     return (
         <div className={styles.generateField}>

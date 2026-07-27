@@ -1,4 +1,4 @@
-import type { CollectionConfig, Config } from "payload"
+import type { CollectionConfig, Condition, Config } from "payload"
 
 import {
     aiProviders,
@@ -210,6 +210,8 @@ const createAITokenUsageCollection = (): CollectionConfig => ({
     timestamps: true,
 })
 
+const hasAuthenticatedUser: Condition = (_data, _siblingData, { user }) => Boolean(user)
+
 const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: boolean; config: Config }) => {
     const adminUserSlug = config.admin?.user
     if (!adminUserSlug || !config.collections) return
@@ -220,6 +222,9 @@ const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: bool
     userCollection.fields.push({
         name: "aiProvider",
         type: "select",
+        admin: {
+            condition: hasAuthenticatedUser,
+        },
         defaultValue: "openai",
         label: "AI Provider",
         options: aiProviders,
@@ -230,6 +235,7 @@ const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: bool
             name: "aiApiKey",
             type: "text",
             admin: {
+                condition: hasAuthenticatedUser,
                 components: {
                     Field: "@mvriu5/payload-ai/client#AIApiKeyField",
                 },
@@ -244,6 +250,7 @@ const aiField: any = {
     name: "payloadAi",
     type: "ui",
     admin: {
+        condition: hasAuthenticatedUser,
         components: {
             Field: "@mvriu5/payload-ai/client#AIInput",
         },

@@ -73,6 +73,15 @@ describe("payloadAiPlugin options", () => {
 
         expect(userFieldNames).toContain("aiProvider")
         expect(userFieldNames).toContain("aiApiKey")
+
+        const aiProviderField = usersCollection?.fields?.find((field) => "name" in field && field.name === "aiProvider")
+        const aiApiKeyField = usersCollection?.fields?.find((field) => "name" in field && field.name === "aiApiKey")
+        const payloadAIField = usersCollection?.fields?.find((field) => "name" in field && field.name === "payloadAi")
+
+        for (const field of [aiProviderField, aiApiKeyField, payloadAIField]) {
+            expect(field?.admin?.condition?.({}, {}, { user: null } as never)).toBe(false)
+            expect(field?.admin?.condition?.({}, {}, { user: { id: "user-1" } } as never)).toBe(true)
+        }
     })
 
     it("omits the user api key field when allowUserApiKeys is false", () => {

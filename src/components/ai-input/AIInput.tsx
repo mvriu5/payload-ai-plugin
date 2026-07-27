@@ -1,6 +1,6 @@
 "use client"
 
-import { Button, ChevronIcon, useConfig, useDocumentForm, useDocumentInfo, useLocale } from "@payloadcms/ui"
+import { Button, ChevronIcon, useAuth, useConfig, useDocumentForm, useDocumentInfo, useLocale } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import { type AIProvider } from "../../ai/providerOptions.js"
@@ -589,6 +589,9 @@ const DocumentAIInput = () => {
 }
 
 const AIInput = ({ isDashboard = false }: AIInputProps) => {
+    const { user } = useAuth()
+
+    if (!user) return null
     if (isDashboard) return <AIInputCore isDashboard />
 
     return <CollapsibleDocumentAIInput />

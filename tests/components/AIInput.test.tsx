@@ -8,6 +8,7 @@ import { adminConfig } from "../fixtures/payloadConfig.js"
 import { cleanupRoots, render } from "../fixtures/react.js"
 
 const mockUseConfig = vi.hoisted(() => vi.fn())
+const mockUseAuth = vi.hoisted(() => vi.fn())
 const mockUseDocumentForm = vi.hoisted(() => vi.fn())
 const mockUseDocumentInfo = vi.hoisted(() => vi.fn())
 const mockUseLocale = vi.hoisted(() => vi.fn())
@@ -40,6 +41,7 @@ vi.mock("@payloadcms/ui", () => ({
         ),
     ChevronIcon: ({ direction }: { direction?: string }) => <span data-direction={direction} data-testid="chevron-icon" />,
     PaperclipIcon: () => <span data-testid="paperclip-icon" />,
+    useAuth: mockUseAuth,
     useConfig: mockUseConfig,
     useDocumentForm: mockUseDocumentForm,
     useDocumentInfo: mockUseDocumentInfo,
@@ -128,6 +130,7 @@ describe("AIInput", () => {
 
     beforeEach(() => {
         vi.clearAllMocks()
+        mockUseAuth.mockReturnValue({ user: { id: "user-1" } })
         mockUseConfig.mockReturnValue({ config: adminConfig })
         mockUseDocumentInfo.mockReturnValue({
             collectionSlug: "posts",
@@ -220,6 +223,14 @@ describe("AIInput", () => {
             submit: mockSubmit,
             tokenUsage: null,
         })
+    })
+
+    it("does not render without an authenticated user", () => {
+        mockUseAuth.mockReturnValue({ user: null })
+
+        const { container } = render(<AIInput />)
+
+        expect(container.firstChild).toBeNull()
     })
 
     it("is collapsed by default in collections and globals", () => {
