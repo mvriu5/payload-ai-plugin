@@ -106,6 +106,7 @@ const options: PayloadAIPluginOptions = {
     ],
     maxOutputTokens: 1200,
     promptCaching: true,
+    translate: true,
     uploadCollections: {
         aiInput: true,
         generateFields: false,
@@ -162,6 +163,26 @@ payloadAiPlugin({
 ```
 
 The global `aiInput` and `generateFields` options still take precedence when set to `false`.
+
+### `translate`
+
+Controls document translation for localized collections and globals. It defaults to `true`.
+
+```ts
+payloadAiPlugin({
+    translate: false,
+})
+```
+
+When enabled, the plugin adds a `Translate` action to the document header. It is shown only when:
+
+- a non-default locale is selected
+- at least one localized field is empty in that locale
+- the corresponding field in the default locale contains source content
+
+Translation fills only empty localized fields in the current Payload form and marks it as modified. Existing translated values are never overwritten. It does not save the document or global, so the generated values can be reviewed and validated before saving.
+
+When disabled, the plugin does not register the header control or the `/ai-translate-document` endpoint.
 
 ### `collections`
 
