@@ -23,9 +23,15 @@ import { addTextGenerationFields, type TextGenerationPageContext } from "./paylo
 export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
 export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
 
+export type CollectionTypeAIOptions = {
+    aiInput?: boolean
+    generateFields?: boolean
+}
+
 export type PayloadAIPluginOptions = {
     aiInput?: boolean
     allowUserApiKeys?: boolean
+    authCollections?: CollectionTypeAIOptions
     collections?: CollectionPermissionMap
     disabled?: boolean
     generateFields?: boolean
@@ -40,6 +46,7 @@ export type PayloadAIPluginOptions = {
     maxTokenUsage?: MaxTokenUsageOptions
     promptCaching?: boolean
     providers?: AIProviderConfig[]
+    uploadCollections?: CollectionTypeAIOptions
 }
 
 const resolveMediaUploadOptions = (media?: PayloadAIPluginOptions["media"]): MediaUploadOptions | null => {
@@ -270,11 +277,15 @@ const getEntityLabel = (label: unknown, fallback: string) => {
 const addAIFieldsToDocumentsAndGlobals = ({
     addGenerateFields,
     addAIInput,
+    authCollections,
     config,
+    uploadCollections,
 }: {
     addGenerateFields: boolean
     addAIInput: boolean
+    authCollections?: CollectionTypeAIOptions
     config: Config
+    uploadCollections?: CollectionTypeAIOptions
 }) => {
     const pageContexts = new Map<string, TextGenerationPageContext>()
 
@@ -282,7 +293,16 @@ const addAIFieldsToDocumentsAndGlobals = ({
         if (isInternalCollection(collection.slug)) continue
         if (collection.slug === "payload-ai-auditlog") continue
 
-        if (addGenerateFields) {
+        const allowAIInput =
+            addAIInput &&
+            (!collection.auth || authCollections?.aiInput === true) &&
+            (!collection.upload || uploadCollections?.aiInput === true)
+        const allowGenerateFields =
+            addGenerateFields &&
+            (!collection.auth || authCollections?.generateFields === true) &&
+            (!collection.upload || uploadCollections?.generateFields === true)
+
+        if (allowGenerateFields) {
             const pageContext = addTextGenerationFields({
                 fields: collection.fields || [],
                 label: getEntityLabel(collection.labels?.singular, collection.slug),
@@ -291,7 +311,7 @@ const addAIFieldsToDocumentsAndGlobals = ({
             })
             pageContexts.set(`collection:${collection.slug}`, pageContext)
         }
-        if (addAIInput) collection.fields = [aiField, ...(collection.fields || [])]
+        if (allowAIInput) collection.fields = [aiField, ...(collection.fields || [])]
     }
 
     for (const global of config.globals || []) {
@@ -341,7 +361,9 @@ export const payloadAiPlugin =
         const textGenerationPageContexts = addAIFieldsToDocumentsAndGlobals({
             addGenerateFields: generateFields,
             addAIInput: pluginOptions.aiInput !== false,
+            authCollections: pluginOptions.authCollections,
             config,
+            uploadCollections: pluginOptions.uploadCollections,
         })
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
             if (isInternalCollection(collection.slug)) return []

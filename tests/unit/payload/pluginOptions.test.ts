@@ -234,6 +234,69 @@ describe("payloadAiPlugin options", () => {
         expect(config.admin?.components?.beforeDashboard).toContain("@mvriu5/payload-ai/client#Dashboard")
     })
 
+    it("omits AI controls from auth and upload collections by default", () => {
+        const baseConfig = createBaseConfig()
+        baseConfig.collections[0].auth = true as never
+        baseConfig.collections[0].fields = [{ name: "displayName", type: "text" }] as never
+        baseConfig.collections.push({
+            fields: [{ name: "alt", type: "text" }],
+            slug: "media",
+            upload: true,
+        } as never)
+        baseConfig.collections[1].fields = [{ name: "title", type: "text" }] as never
+
+        const config = payloadAiPlugin({})(baseConfig as never)
+        const users = config.collections?.find((collection) => collection.slug === "users")
+        const media = config.collections?.find((collection) => collection.slug === "media")
+        const posts = config.collections?.find((collection) => collection.slug === "posts")
+        const hasAIInput = (fields: NonNullable<typeof users>["fields"]) =>
+            fields.some((field) => "name" in field && field.name === "payloadAi")
+        const generateControls = (fields: NonNullable<typeof users>["fields"], name: string) => {
+            const field = fields.find((candidate) => "name" in candidate && candidate.name === name)
+            return field && "admin" in field ? field.admin?.components?.afterInput : undefined
+        }
+
+        expect(hasAIInput(users?.fields || [])).toBe(false)
+        expect(generateControls(users?.fields || [], "displayName")).toBeUndefined()
+        expect(hasAIInput(media?.fields || [])).toBe(false)
+        expect(generateControls(media?.fields || [], "alt")).toBeUndefined()
+        expect(hasAIInput(posts?.fields || [])).toBe(true)
+        expect(generateControls(posts?.fields || [], "title")).toHaveLength(1)
+    })
+
+    it("can enable AI controls for auth and upload collections", () => {
+        const baseConfig = createBaseConfig()
+        baseConfig.collections[0].auth = true as never
+        baseConfig.collections[0].fields = [{ name: "displayName", type: "text" }] as never
+        baseConfig.collections.push({
+            fields: [{ name: "alt", type: "text" }],
+            slug: "media",
+            upload: true,
+        } as never)
+
+        const config = payloadAiPlugin({
+            authCollections: {
+                aiInput: true,
+                generateFields: true,
+            },
+            uploadCollections: {
+                aiInput: true,
+                generateFields: true,
+            },
+        })(baseConfig as never)
+
+        for (const [slug, fieldName] of [
+            ["users", "displayName"],
+            ["media", "alt"],
+        ] as const) {
+            const collection = config.collections?.find((candidate) => candidate.slug === slug)
+            const field = collection?.fields.find((candidate) => "name" in candidate && candidate.name === fieldName)
+
+            expect(collection?.fields.some((candidate) => "name" in candidate && candidate.name === "payloadAi")).toBe(true)
+            expect(field && "admin" in field ? field.admin?.components?.afterInput : undefined).toHaveLength(1)
+        }
+    })
+
     it("registers a hidden usage collection when token limits are configured", () => {
         const config = payloadAiPlugin({
             maxTokenUsage: {

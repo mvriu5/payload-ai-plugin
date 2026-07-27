@@ -25,18 +25,18 @@ npm add @mvriu5/payload-ai @openrouter/ai-sdk-provider
 ## Usage
 
 ```ts
-import { buildConfig } from "payload";
-import { payloadAiPlugin } from "@mvriu5/payload-ai";
+import { buildConfig } from "payload"
+import { payloadAiPlugin } from "@mvriu5/payload-ai"
 
 export default buildConfig({
-  plugins: [
-    payloadAiPlugin({
-      collections: {
-        posts: true,
-      },
-    }),
-  ],
-});
+    plugins: [
+        payloadAiPlugin({
+            collections: {
+                posts: true,
+            },
+        }),
+    ],
+})
 ```
 
 Without centrally configured providers, the plugin adds two fields to the configured Payload admin user collection:
@@ -51,63 +51,71 @@ When `providers` is configured, provider selection and API keys are managed cent
 ## Options
 
 ```ts
-import type { PayloadAIPluginOptions } from "@mvriu5/payload-ai";
+import type { PayloadAIPluginOptions } from "@mvriu5/payload-ai"
 
 const options: PayloadAIPluginOptions = {
-  aiInput: true,
-  allowUserApiKeys: false,
-  collections: {
+    aiInput: true,
+    allowUserApiKeys: false,
+    authCollections: {
+        aiInput: false,
+        generateFields: false,
+    },
+    collections: {
+        media: {
+            read: true,
+            update: true,
+        },
+        posts: {
+            read: true,
+            create: true,
+            update: true,
+            delete: false,
+        },
+        users: true,
+    },
+    generateFields: true,
     media: {
-      read: true,
-      update: true,
+        enabled: true,
+        collectionSlug: "media",
+        acceptedMimeTypes: ["image/*"],
+        maxFileSize: 10 * 1024 * 1024,
     },
-    posts: {
-      read: true,
-      create: true,
-      update: true,
-      delete: false,
+    providers: [
+        {
+            id: "company-openai",
+            label: "Company OpenAI",
+            provider: "openai",
+            apiKey: process.env.COMPANY_OPENAI_API_KEY,
+            models: [
+                { label: "GPT-4.1 Mini", value: "gpt-4.1-mini" },
+                { label: "GPT-4.1", value: "gpt-4.1" },
+            ],
+            defaultModel: "gpt-4.1-mini",
+        },
+        {
+            id: "ollama",
+            label: "Local Ollama",
+            provider: "openai",
+            baseURL: "http://localhost:11434/v1",
+            apiKey: "ollama",
+            models: [
+                { label: "Llama 3.3", value: "llama3.3" },
+                { label: "Qwen 3", value: "qwen3" },
+            ],
+        },
+    ],
+    maxOutputTokens: 1200,
+    promptCaching: true,
+    uploadCollections: {
+        aiInput: true,
+        generateFields: false,
     },
-    users: true,
-  },
-  generateFields: true,
-  media: {
-    enabled: true,
-    collectionSlug: "media",
-    acceptedMimeTypes: ["image/*"],
-    maxFileSize: 10 * 1024 * 1024,
-  },
-  providers: [
-    {
-      id: "company-openai",
-      label: "Company OpenAI",
-      provider: "openai",
-      apiKey: process.env.COMPANY_OPENAI_API_KEY,
-      models: [
-        { label: "GPT-4.1 Mini", value: "gpt-4.1-mini" },
-        { label: "GPT-4.1", value: "gpt-4.1" },
-      ],
-      defaultModel: "gpt-4.1-mini",
+    maxTokenUsage: {
+        type: "user",
+        perDay: 50_000,
+        perWeek: 250_000,
     },
-    {
-      id: "ollama",
-      label: "Local Ollama",
-      provider: "openai",
-      baseURL: "http://localhost:11434/v1",
-      apiKey: "ollama",
-      models: [
-        { label: "Llama 3.3", value: "llama3.3" },
-        { label: "Qwen 3", value: "qwen3" },
-      ],
-    },
-  ],
-  maxOutputTokens: 1200,
-  promptCaching: true,
-  maxTokenUsage: {
-    type: "user",
-    perDay: 50_000,
-    perWeek: 250_000,
-  },
-};
+}
 ```
 
 `models` configures model choices for the user-selected provider mode. Use `providers` instead when provider selection, credentials, and endpoints should be managed centrally.
@@ -118,7 +126,7 @@ Controls whether the collapsible AI Assistant input is added to collection and g
 
 ```ts
 payloadAiPlugin({
-  aiInput: false,
+    aiInput: false,
 })
 ```
 
@@ -130,11 +138,30 @@ Controls whether supported fields receive a Generate control. It defaults to `tr
 
 ```ts
 payloadAiPlugin({
-  generateFields: false,
+    generateFields: false,
 })
 ```
 
 Generate controls are added to `text`, `textarea`, `richText`, and `json` fields in collection and global edit views. When disabled, the plugin also omits the `/ai-generate-field` endpoint. The embedded AI Assistant and dashboard remain available.
+
+### `authCollections` and `uploadCollections`
+
+Auth and upload collections do not receive the embedded AI Assistant or Generate controls by default. Enable either feature explicitly for the respective collection type:
+
+```ts
+payloadAiPlugin({
+    authCollections: {
+        aiInput: true,
+        generateFields: true,
+    },
+    uploadCollections: {
+        aiInput: true,
+        generateFields: true,
+    },
+})
+```
+
+The global `aiInput` and `generateFields` options still take precedence when set to `false`.
 
 ### `collections`
 
@@ -144,9 +171,9 @@ Use `true` to enable all AI actions for a collection:
 
 ```ts
 payloadAiPlugin({
-  collections: {
-    posts: true,
-  },
+    collections: {
+        posts: true,
+    },
 })
 ```
 
@@ -154,14 +181,14 @@ Use granular permissions to control each action:
 
 ```ts
 payloadAiPlugin({
-  collections: {
-    posts: {
-      read: true,
-      create: true,
-      update: true,
-      delete: false,
+    collections: {
+        posts: {
+            read: true,
+            create: true,
+            update: true,
+            delete: false,
+        },
     },
-  },
 })
 ```
 
@@ -169,14 +196,14 @@ You can mix both forms in the same object:
 
 ```ts
 payloadAiPlugin({
-  collections: {
-    posts: true,
-    pages: true,
-    users: {
-      read: true,
-      update: true,
+    collections: {
+        posts: true,
+        pages: true,
+        users: {
+            read: true,
+            update: true,
+        },
     },
-  },
 })
 ```
 
@@ -188,19 +215,19 @@ Enables media uploads from the AI assistant. Uploaded files are created through 
 
 ```ts
 payloadAiPlugin({
-  collections: {
-    media: {
-      read: true,
-      update: true,
+    collections: {
+        media: {
+            read: true,
+            update: true,
+        },
+        posts: true,
     },
-    posts: true,
-  },
-  media: {
-    enabled: true,
-    collectionSlug: "media",
-    acceptedMimeTypes: ["image/*"],
-    maxFileSize: 10 * 1024 * 1024,
-  },
+    media: {
+        enabled: true,
+        collectionSlug: "media",
+        acceptedMimeTypes: ["image/*"],
+        maxFileSize: 10 * 1024 * 1024,
+    },
 })
 ```
 
@@ -255,7 +282,7 @@ Controls the maximum number of output tokens the chat endpoint may generate per 
 
 ```ts
 payloadAiPlugin({
-  maxOutputTokens: 1200,
+    maxOutputTokens: 1200,
 })
 ```
 
@@ -265,11 +292,11 @@ Limits total AI tokens across rolling 24-hour and 7-day windows.
 
 ```ts
 payloadAiPlugin({
-  maxTokenUsage: {
-    type: "user",
-    perDay: 50_000,
-    perWeek: 250_000,
-  },
+    maxTokenUsage: {
+        type: "user",
+        perDay: 50_000,
+        perWeek: 250_000,
+    },
 })
 ```
 
@@ -283,7 +310,7 @@ Enables provider prompt-caching hints and defaults to `true`. The chat endpoint 
 
 ```ts
 payloadAiPlugin({
-  promptCaching: false,
+    promptCaching: false,
 })
 ```
 
@@ -295,7 +322,7 @@ Controls whether the plugin adds an `aiApiKey` field to the admin user collectio
 
 ```ts
 payloadAiPlugin({
-  allowUserApiKeys: false,
+    allowUserApiKeys: false,
 })
 ```
 
@@ -335,12 +362,12 @@ The apply endpoint returns only minimal status/doc references and does not retur
 ## Exports
 
 ```ts
-import { payloadAiPlugin } from "@mvriu5/payload-ai";
-import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai";
+import { payloadAiPlugin } from "@mvriu5/payload-ai"
+import type { PayloadAiPluginOptions } from "@mvriu5/payload-ai"
 ```
 
 Client components are exported through:
 
 ```ts
-import { AIInput, AIApiKeyField } from "@mvriu5/payload-ai/client";
+import { AIInput, AIApiKeyField } from "@mvriu5/payload-ai/client"
 ```
