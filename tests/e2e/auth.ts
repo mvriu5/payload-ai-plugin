@@ -16,23 +16,6 @@ export const loginAsAdmin = async (page: Page) => {
 
     expect(loginResponse.ok()).toBeTruthy()
 
-    const loginResult = (await loginResponse.json()) as {
-        user?: {
-            id?: number | string
-        }
-    }
-
-    if (loginResult.user?.id === undefined) {
-        throw new Error("Login did not return a user id.")
-    }
-
-    const updateResponse = await page.request.patch(`/api/users/${loginResult.user.id}`, {
-        data: {
-            aiProvider: "openai",
-        },
-    })
-
-    expect(updateResponse.ok()).toBeTruthy()
-
-    return String(loginResult.user.id)
+    const loginResult = (await loginResponse.json()) as { user?: { id?: number | string } }
+    expect(loginResult.user?.id).toBeDefined()
 }

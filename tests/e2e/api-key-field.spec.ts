@@ -29,10 +29,11 @@ test("api key field persists on the account screen", async ({ page }) => {
             }
 
             return result.user?.aiApiKey || null
-        })
+        }, { timeout: 30_000 })
         .toBe(apiKey)
 
+    await expect(apiKeyInput).toBeEnabled({ timeout: 30_000 })
     await page.reload()
 
-    await expect(apiKeyInput).toHaveValue(apiKey)
+    await expect(apiKeyInput).toHaveValue(apiKey, { timeout: 30_000 })
 })

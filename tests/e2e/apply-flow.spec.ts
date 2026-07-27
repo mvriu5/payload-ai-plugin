@@ -7,9 +7,12 @@ test("proposal apply writes an audit entry visible in recent changes", async ({ 
     await loginAsAdmin(page)
     await page.goto("/admin")
 
-    await getEditor(page).click()
-    await page.keyboard.type("Create a post about Mars for apply flow")
-    await page.getByRole("button", { name: "Send" }).click()
+    const editor = getEditor(page)
+    await expect(editor).toHaveAttribute("contenteditable", "true")
+    await editor.fill("Create a post about Mars for apply flow")
+    const sendButton = page.getByRole("button", { name: "Send" })
+    await expect(sendButton).toBeEnabled()
+    await sendButton.click()
 
     await expect(page.getByRole("button", { name: "Apply proposal: Create apply flow draft post about Mars" })).toBeVisible()
 

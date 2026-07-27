@@ -9,8 +9,8 @@ test("mention popover opens immediately and inserts locale badge", async ({ page
 
     const editor = getEditor(page)
 
-    await editor.click()
-    await page.keyboard.type("Translate the content into @")
+    await expect(editor).toHaveAttribute("contenteditable", "true")
+    await editor.fill("Translate the content into @")
 
     await expect(page.getByText("Locales")).toBeVisible()
     await expect(page.getByRole("button").filter({ hasText: "@en" }).first()).toBeVisible()

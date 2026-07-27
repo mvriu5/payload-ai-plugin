@@ -9,8 +9,8 @@ test("multi-locale proposal review shows separate locale sections", async ({ pag
 
     const editor = getEditor(page)
 
-    await editor.click()
-    await page.keyboard.type("Create a post about Mars for locale review in ")
+    await expect(editor).toHaveAttribute("contenteditable", "true")
+    await editor.fill("Create a post about Mars for locale review in ")
     await selectMention({
         page,
         query: "@de",
@@ -24,7 +24,9 @@ test("multi-locale proposal review shows separate locale sections", async ({ pag
     })
     await page.keyboard.type(" please.")
 
-    await page.getByRole("button", { name: "Send" }).click()
+    const sendButton = page.getByRole("button", { name: "Send" })
+    await expect(sendButton).toBeEnabled()
+    await sendButton.click()
 
     await expect(page.getByText("Create localized locale review draft post about Mars", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Review proposal: Create localized locale review draft post about Mars" }).click()

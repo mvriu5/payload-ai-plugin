@@ -11,8 +11,8 @@ test("admin dashboard shows deterministic AI proposal flow", async ({ page }) =>
 
     const input = page.getByRole("textbox")
 
-    await input.click()
-    await page.keyboard.type("Create a post about Mars for proposal review")
+    await expect(input).toHaveAttribute("contenteditable", "true")
+    await input.fill("Create a post about Mars for proposal review")
     await page.getByRole("button", { name: "Send" }).click()
 
     await expect(page.locator("div").filter({ hasText: "Create proposal review draft post about Mars" }).first()).toBeVisible()
