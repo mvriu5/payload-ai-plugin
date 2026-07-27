@@ -69,7 +69,7 @@
         "@ai-sdk/anthropic": "^3.0.81",
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^4.0.13",
-        "@ai-sdk/openai": "^3.0.67",
+        "@ai-sdk/openai": "^4.0.20",
         "@floating-ui/react": "0.27.20",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@payloadcms/db-postgres": "3.86.0",
@@ -101,7 +101,7 @@
         "@ai-sdk/anthropic": "^3.0.81",
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^4.0.13",
-        "@ai-sdk/openai": "^3.0.67",
+        "@ai-sdk/openai": "^4.0.20",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@payloadcms/ui": "^3.84.1",
         "payload": "^3.84.1"
