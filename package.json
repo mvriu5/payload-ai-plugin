@@ -66,7 +66,7 @@
         "knip": "knip"
     },
     "devDependencies": {
-        "@ai-sdk/anthropic": "^3.0.81",
+        "@ai-sdk/anthropic": "^4.0.21",
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^4.0.13",
         "@ai-sdk/openai": "^3.0.67",
@@ -98,7 +98,7 @@
         "vitest": "4.1.10"
     },
     "peerDependencies": {
-        "@ai-sdk/anthropic": "^3.0.81",
+        "@ai-sdk/anthropic": "^4.0.21",
         "@ai-sdk/google": "^3.0.80",
         "@ai-sdk/mistral": "^4.0.13",
         "@ai-sdk/openai": "^3.0.67",
