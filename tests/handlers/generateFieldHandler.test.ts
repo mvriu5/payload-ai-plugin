@@ -87,7 +87,60 @@ describe("generateFieldHandler", () => {
         })
         expect(generateText).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: expect.stringContaining("Current unsaved page data"),
+                prompt: expect.stringContaining("SECONDARY page context"),
+            })
+        )
+    })
+
+    it("prioritizes the concrete block instance over the surrounding page context", async () => {
+        const blockPageContext: TextGenerationPageContext = {
+            ...pageContext,
+            fields: [
+                {
+                    block: {
+                        label: "Feature",
+                        slug: "feature",
+                    },
+                    fieldType: "textarea",
+                    hasMany: false,
+                    key: "posts.layout.feature.body",
+                    label: "Body",
+                    name: "body",
+                },
+            ],
+        }
+        const handler = createGenerateFieldHandler({
+            pageContexts: new Map([["collection:posts", blockPageContext]]),
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    context: {
+                        layout: [
+                            {
+                                blockType: "feature",
+                                body: "",
+                                topic: "Sustainable travel",
+                            },
+                        ],
+                        title: "Pricing",
+                    },
+                    fieldKey: "posts.layout.feature.body",
+                    fieldPath: "layout.0.body",
+                    locale: "en",
+                    scope: {
+                        slug: "posts",
+                        type: "collection",
+                    },
+                },
+            })
+        )
+
+        expect(response.status).toBe(200)
+        expect(generateText).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.stringContaining('PRIMARY block context at layout.0 (feature): {"blockType":"feature","body":"","topic":"Sustainable travel"}'),
+                system: expect.stringContaining("The block may intentionally cover a different topic than the surrounding page"),
             })
         )
     })

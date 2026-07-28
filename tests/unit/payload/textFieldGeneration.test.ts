@@ -100,4 +100,47 @@ describe("textFieldGeneration", () => {
         expect(fields[2].admin.components.afterInput[0].clientProps.generationFieldType).toBe("richText")
         expect(fields[3].admin.components.afterInput[0].clientProps.generationFieldType).toBe("json")
     })
+
+    it("records the nearest block schema for fields inside layout blocks", () => {
+        const fields = [
+            {
+                blocks: [
+                    {
+                        fields: [
+                            {
+                                label: "Body",
+                                name: "body",
+                                type: "textarea",
+                            },
+                        ],
+                        labels: {
+                            plural: "Features",
+                            singular: "Feature",
+                        },
+                        slug: "feature",
+                    },
+                ],
+                name: "layout",
+                type: "blocks",
+            },
+        ] as never
+
+        const context = addTextGenerationFields({
+            fields,
+            label: "Post",
+            slug: "posts",
+            type: "collection",
+        })
+
+        expect(context.fields).toEqual([
+            expect.objectContaining({
+                block: {
+                    label: "Feature",
+                    slug: "feature",
+                },
+                key: "posts.layout.feature.body",
+                name: "body",
+            }),
+        ])
+    })
 })

@@ -81,12 +81,13 @@ const GenerateField = ({ field, generationFieldKey, generationFieldType, path, r
 
         try {
             const context = documentForm.getData()
-            const cacheKey = JSON.stringify([scope.type, scope.slug, generationFieldKey, locale.code, context])
+            const cacheKey = JSON.stringify([scope.type, scope.slug, generationFieldKey, path, locale.code, context])
             const result = await requestGeneratedValue({
                 apiRoute,
                 body: {
                     context,
                     fieldKey: generationFieldKey,
+                    fieldPath: path,
                     locale: locale.code,
                     scope,
                 },

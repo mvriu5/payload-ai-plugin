@@ -3,6 +3,10 @@ import type { CustomComponent, Field } from "payload"
 type GeneratableField = Extract<Field, { type: "json" | "richText" | "text" | "textarea" }>
 
 export type TextGenerationFieldContext = {
+    block?: {
+        label: string
+        slug: string
+    }
     description?: string
     fieldType: GeneratableField["type"]
     hasMany: boolean
@@ -21,14 +25,23 @@ export type TextGenerationPageContext = {
 
 const generateFieldComponent = "@mvriu5/payload-ai/client#GenerateField"
 
+const getTranslatedLabel = (label: unknown, fallback: string) => {
+    if (typeof label === "string") return label
+    if (label && typeof label === "object") {
+        const translatedLabel = Object.values(label).find((value) => typeof value === "string")
+        if (typeof translatedLabel === "string") return translatedLabel
+    }
+
+    return fallback
+}
+
 const getLabel = (field: GeneratableField) => {
-    if (typeof field.label === "string") return field.label
     if (field.label && typeof field.label === "object") {
         const label = Object.values(field.label).find((value) => typeof value === "string")
         if (typeof label === "string") return label
     }
 
-    return field.name
+    return getTranslatedLabel(field.label, field.name)
 }
 
 const getDescription = (field: GeneratableField) => {
@@ -59,11 +72,22 @@ const addGenerateComponent = (field: GeneratableField, key: string) => {
     ]
 }
 
-const visitFields = ({ fields, parentKey, result }: { fields: Field[]; parentKey: string; result: TextGenerationFieldContext[] }) => {
+const visitFields = ({
+    block,
+    fields,
+    parentKey,
+    result,
+}: {
+    block?: TextGenerationFieldContext["block"]
+    fields: Field[]
+    parentKey: string
+    result: TextGenerationFieldContext[]
+}) => {
     for (const field of fields) {
         if (field.type === "tabs") {
             for (const tab of field.tabs) {
                 visitFields({
+                    block,
                     fields: tab.fields,
                     parentKey: "name" in tab ? `${parentKey}.${tab.name}` : parentKey,
                     result,
@@ -76,6 +100,10 @@ const visitFields = ({ fields, parentKey, result }: { fields: Field[]; parentKey
             for (const block of field.blocks) {
                 if (typeof block !== "object") continue
                 visitFields({
+                    block: {
+                        label: getTranslatedLabel(block.labels?.singular, block.slug),
+                        slug: block.slug,
+                    },
                     fields: block.fields,
                     parentKey: `${parentKey}.${field.name}.${block.slug}`,
                     result,
@@ -86,7 +114,7 @@ const visitFields = ({ fields, parentKey, result }: { fields: Field[]; parentKey
 
         if ("fields" in field && Array.isArray(field.fields)) {
             const nextParent = "name" in field && field.name ? `${parentKey}.${field.name}` : parentKey
-            visitFields({ fields: field.fields, parentKey: nextParent, result })
+            visitFields({ block, fields: field.fields, parentKey: nextParent, result })
         }
 
         if (!["json", "richText", "text", "textarea"].includes(field.type) || !("name" in field) || !field.name) continue
@@ -96,6 +124,7 @@ const visitFields = ({ fields, parentKey, result }: { fields: Field[]; parentKey
         if (generatableField.admin?.hidden) continue
         addGenerateComponent(generatableField, key)
         result.push({
+            ...(block ? { block } : {}),
             description: getDescription(generatableField),
             fieldType: generatableField.type,
             hasMany: "hasMany" in generatableField ? Boolean(generatableField.hasMany) : false,
