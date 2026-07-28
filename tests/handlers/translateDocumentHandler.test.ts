@@ -59,11 +59,8 @@ describe("translateDocumentHandler", () => {
         process.env.OPENAI_API_KEY = originalOpenAIKey
     })
 
-    it("offers translation only when the target locale is empty", async () => {
-        const findByID = vi
-            .fn()
-            .mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" })
-            .mockResolvedValueOnce({ excerpt: null, title: "Hallo Welt" })
+    it("offers translation when the default locale has translatable content", async () => {
+        const findByID = vi.fn().mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" }).mockResolvedValueOnce({})
         const handler = createTranslateDocumentHandler({
             pageContexts: new Map([["collection:posts", pageContext]]),
         })
@@ -85,15 +82,13 @@ describe("translateDocumentHandler", () => {
 
         expect(response.status).toBe(200)
         await expect(readJSON(response)).resolves.toEqual({ available: true })
-        expect(findByID).toHaveBeenNthCalledWith(
-            1,
+        expect(findByID).toHaveBeenCalledWith(
             expect.objectContaining({
                 fallbackLocale: false,
                 locale: "en",
                 overrideAccess: false,
             })
         )
-        expect(findByID).toHaveBeenNthCalledWith(2, expect.objectContaining({ locale: "de" }))
         expect(generateText).not.toHaveBeenCalled()
     })
 
@@ -133,11 +128,11 @@ describe("translateDocumentHandler", () => {
         expect(request.payload.updateGlobal).not.toHaveBeenCalled()
     })
 
-    it("offers translation when only some target fields already have content", async () => {
+    it("offers translation when target values still match the default locale", async () => {
         const findByID = vi
             .fn()
             .mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" })
-            .mockResolvedValueOnce({ excerpt: null, title: "Hallo Welt" })
+            .mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" })
         const handler = createTranslateDocumentHandler({
             pageContexts: new Map([["collection:posts", pageContext]]),
         })
@@ -160,7 +155,7 @@ describe("translateDocumentHandler", () => {
         await expect(readJSON(response)).resolves.toEqual({ available: true })
     })
 
-    it("hides translation when every source field has target content", async () => {
+    it("hides translation when every populated target value differs from the default locale", async () => {
         const findByID = vi
             .fn()
             .mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" })
@@ -185,17 +180,42 @@ describe("translateDocumentHandler", () => {
         )
 
         await expect(readJSON(response)).resolves.toEqual({ available: false })
+        expect(generateText).not.toHaveBeenCalled()
     })
 
-    it("translates only localized fields that are empty in the target locale", async () => {
+    it("hides translation when the default locale has no translatable content", async () => {
+        const findByID = vi.fn().mockResolvedValueOnce({ excerpt: null, title: "" })
+        const handler = createTranslateDocumentHandler({
+            pageContexts: new Map([["collection:posts", pageContext]]),
+        })
+        const response = await handler(
+            createMockRequest({
+                body: {
+                    action: "status",
+                    id: "post-1",
+                    locale: "de",
+                    scope: { slug: "posts", type: "collection" },
+                },
+                findByID,
+                localization: {
+                    defaultLocale: "en",
+                    locales: [{ code: "en" }, { code: "de" }],
+                },
+            })
+        )
+
+        await expect(readJSON(response)).resolves.toEqual({ available: false })
+    })
+
+    it("translates only empty or unchanged target fields", async () => {
         generateText.mockResolvedValue({
-            text: '{"translations":{"0":"Deutscher Auszug"}}',
+            text: '{"translations":{"0":"Hallo Welt"}}',
             usage: {},
         })
         const findByID = vi
             .fn()
             .mockResolvedValueOnce({ excerpt: "Source excerpt", title: "Hello world" })
-            .mockResolvedValueOnce({ excerpt: "", title: "Existing German title" })
+            .mockResolvedValueOnce({ excerpt: "Deutscher Auszug", title: "Hello world" })
         const handler = createTranslateDocumentHandler({
             pageContexts: new Map([["collection:posts", pageContext]]),
         })
@@ -220,15 +240,20 @@ describe("translateDocumentHandler", () => {
             available: true,
             values: [
                 {
-                    fieldType: "textarea",
-                    path: "excerpt",
-                    value: "Deutscher Auszug",
+                    fieldType: "text",
+                    path: "title",
+                    value: "Hallo Welt",
                 },
             ],
         })
         expect(generateText).toHaveBeenCalledWith(
             expect.objectContaining({
-                prompt: expect.not.stringContaining("Existing German title"),
+                prompt: expect.stringContaining("Hello world"),
+            })
+        )
+        expect(generateText).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: expect.not.stringContaining("Source excerpt"),
             })
         )
     })

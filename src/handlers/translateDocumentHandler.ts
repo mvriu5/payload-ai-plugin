@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util"
+
 import { generateText } from "ai"
 import type { PayloadHandler } from "payload"
 
@@ -106,12 +108,16 @@ export const createTranslateDocumentHandler =
         try {
             // Payload derives locale state on the request, so reads sharing one req must not run concurrently.
             const sourceDocument = await loadDocument({ context: pageContext, id: body.id, locale: defaultLocale, req })
-            const targetDocument = await loadDocument({ context: pageContext, id: body.id, locale, req })
             const sourceValues = getTranslationValues(pageContext.fields, sourceDocument)
-            const targetValues = getTranslationValues(pageContext.fields, targetDocument)
-            const populatedTargetPaths = new Set(targetValues.map((entry) => entry.path))
-            const missingSourceValues = sourceValues.filter((entry) => !populatedTargetPaths.has(entry.path))
-            const available = missingSourceValues.length > 0
+            if (sourceValues.length === 0) return Response.json({ available: false })
+
+            const targetDocument = await loadDocument({ context: pageContext, id: body.id, locale, req })
+            const targetValuesByPath = new Map(getTranslationValues(pageContext.fields, targetDocument).map((entry) => [entry.path, entry.value]))
+            const translationSourceValues = sourceValues.filter((entry) => {
+                const targetValue = targetValuesByPath.get(entry.path)
+                return targetValue === undefined || isDeepStrictEqual(targetValue, entry.value)
+            })
+            const available = translationSourceValues.length > 0
 
             if (body.action === "status" || !available) return Response.json({ available })
 
@@ -155,7 +161,7 @@ export const createTranslateDocumentHandler =
                 prompt: JSON.stringify({
                     sourceLocale: defaultLocale,
                     targetLocale: locale,
-                    values: missingSourceValues.map((entry, index) => ({
+                    values: translationSourceValues.map((entry, index) => ({
                         id: String(index),
                         value: entry.value,
                     })),
@@ -167,7 +173,7 @@ export const createTranslateDocumentHandler =
                     "Return no Markdown or explanation.",
                 ].join(" "),
             })
-            const translatedValues = parseTranslations(result.text, missingSourceValues.length)
+            const translatedValues = parseTranslations(result.text, translationSourceValues.length)
             if (translatedValues.some((value) => value === undefined)) throw new Error("Translation response is incomplete.")
 
             if (result.usage && options.maxTokenUsage) {
@@ -182,7 +188,7 @@ export const createTranslateDocumentHandler =
 
             return Response.json({
                 available: true,
-                values: missingSourceValues.map((entry, index) => ({
+                values: translationSourceValues.map((entry, index) => ({
                     fieldType: entry.fieldType,
                     path: entry.path,
                     value: translatedValues[index],
