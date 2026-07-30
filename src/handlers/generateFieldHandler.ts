@@ -4,6 +4,7 @@ import type { PayloadHandler } from "payload"
 import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../features/providers/requestContext.js"
 import { redactSensitiveData } from "../features/sensitiveData.js"
 import type { TextGenerationPageContext } from "../features/content/fieldGeneration.js"
+import { jsonError, logHandlerError, readJSONBody, withAuthenticatedHandler } from "./http.js"
 
 type GenerateFieldOptions = AIRequestOptions & {
     maxOutputTokens?: number
@@ -73,24 +74,21 @@ const parseGeneratedValue = (fieldType: TextGenerationPageContext["fields"][numb
     return JSON.parse(withoutFence) as unknown
 }
 
-export const createGenerateFieldHandler =
-    (options: GenerateFieldOptions): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
-        const body = req.json ? ((await req.json().catch(() => null)) as GenerateFieldBody | null) : null
+export const createGenerateFieldHandler = (options: GenerateFieldOptions): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
+        const body = await readJSONBody<GenerateFieldBody>(req)
         const scopeType = body?.scope?.type
         const scopeSlug = body?.scope?.slug?.trim()
         const fieldKey = body?.fieldKey?.trim()
 
         if (!scopeType || !scopeSlug || !fieldKey) {
-            return Response.json({ error: "Page scope and field are required." }, { status: 400 })
+            return jsonError("Page scope and field are required.")
         }
 
         const pageContext = options.pageContexts.get(`${scopeType}:${scopeSlug}`)
         const fieldContext = pageContext?.fields.find((field) => field.key === fieldKey)
         if (!pageContext || !fieldContext) {
-            return Response.json({ error: "This field is not available for AI generation." }, { status: 400 })
+            return jsonError("This field is not available for AI generation.")
         }
 
         const aiRequestResolution = await resolveAIRequestContext({
@@ -101,7 +99,7 @@ export const createGenerateFieldHandler =
             user: req.user as AIRequestUser,
         })
         if (!aiRequestResolution.ok) {
-            return Response.json({ error: aiRequestResolution.error.message }, { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 })
+            return jsonError(aiRequestResolution.error.message, aiRequestResolution.error.code === "token_limit" ? 429 : 400)
         }
         const aiRequest = aiRequestResolution.context
 
@@ -148,11 +146,12 @@ export const createGenerateFieldHandler =
                 value: fieldContext.maxLength && typeof value === "string" ? value.slice(0, fieldContext.maxLength) : value,
             })
         } catch (error) {
-            req.payload.logger.error({
-                err: error,
-                fieldKey,
-                msg: "AI field generation failed",
+            return logHandlerError({
+                details: { fieldKey },
+                error,
+                logMessage: "AI field generation failed",
+                publicMessage: "AI field generation failed.",
+                req,
             })
-            return Response.json({ error: "AI field generation failed." }, { status: 500 })
         }
-    }
+    })

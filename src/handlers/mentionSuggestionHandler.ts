@@ -2,6 +2,7 @@ import type { PayloadHandler } from "payload"
 
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
 import { getDocLabel } from "../utils/data.js"
+import { readJSONBody, withAuthenticatedHandler } from "./http.js"
 
 type MentionSuggestionsBody = {
     collectionSlug?: string | null
@@ -43,12 +44,9 @@ const hasLocalizedFields = (fields: SearchableField[]): boolean => {
     })
 }
 
-export const createMentionSuggestionHandler =
-    (options: MentionSuggestionsOptions = {}): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
-        const body = req.json ? ((await req.json().catch(() => null)) as MentionSuggestionsBody | null) : null
+export const createMentionSuggestionHandler = (options: MentionSuggestionsOptions = {}): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
+        const body = await readJSONBody<MentionSuggestionsBody>(req)
         const query = body?.query?.trim()
         const collectionSlug = body?.collectionSlug?.trim()
 
@@ -143,4 +141,4 @@ export const createMentionSuggestionHandler =
         }
 
         return Response.json({ suggestions: suggestions.slice(0, 5) })
-    }
+    })

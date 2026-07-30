@@ -27,6 +27,7 @@ import { createToolFieldNamesSchema, resolveToolFieldSelection, type ReadCollect
 import { createCollectionAliasMap, getChatIntent, getIntentToolChoice, getLikelyCollectionMatches, getToolNamesForIntent } from "./chat/intent.js"
 import { createChatPromptContext } from "./chat/prompt.js"
 import { createChatToolFactory } from "./chat/toolFactory.js"
+import { jsonError, logHandlerError, readJSONBody, withAuthenticatedHandler } from "./http.js"
 import {
     collectProposalBlockTypes,
     fillMissingCreateFields,
@@ -137,15 +138,12 @@ const getMediaAttachmentContext = async ({
     return contexts
 }
 
-export const createChatHandler =
-    (options: ChatOptions = {}): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
-        const body = req.json ? ((await req.json().catch(() => null)) as ChatBody | null) : null
+export const createChatHandler = (options: ChatOptions = {}): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
+        const body = await readJSONBody<ChatBody>(req)
 
         const prompt = body?.prompt?.trim()
-        if (!prompt) return Response.json({ error: "Prompt is required" }, { status: 400 })
+        if (!prompt) return jsonError("Prompt is required")
 
         const selectedLocales: string[] = []
         const selectedLocaleSet = new Set<string>()
@@ -201,7 +199,7 @@ export const createChatHandler =
             }
 
             if (aiRequestResolution.error.code !== "missing_api_key") {
-                return Response.json({ error: aiRequestResolution.error.message }, { status: 400 })
+                return jsonError(aiRequestResolution.error.message)
             }
 
             const missingKeyError = aiRequestResolution.error
@@ -225,15 +223,12 @@ export const createChatHandler =
                 promptPreview: getLogPreview(prompt),
                 selectedLocales,
             })
-            return Response.json(
-                {
-                    error: missingKeyError.managedProvider
-                        ? `Configure a ${missingKeyError.providerID} API key in the plugin config or server environment first.`
-                        : options.allowUserApiKeys === false
-                          ? `Configure a ${missingKeyError.provider} API key in the server environment first.`
-                          : `Add a ${missingKeyError.provider} API key to your account settings or configure it in the server environment first.`,
-                },
-                { status: 400 }
+            return jsonError(
+                missingKeyError.managedProvider
+                    ? `Configure a ${missingKeyError.providerID} API key in the plugin config or server environment first.`
+                    : options.allowUserApiKeys === false
+                      ? `Configure a ${missingKeyError.provider} API key in the server environment first.`
+                      : `Add a ${missingKeyError.provider} API key to your account settings or configure it in the server environment first.`
             )
         }
         const resolvedAIRequest = aiRequestResolution.context
@@ -268,13 +263,13 @@ export const createChatHandler =
                 requestedDocumentScope?.type === "collection" && typeof requestedDocumentScope.id === "string" ? requestedDocumentScope.id.trim() : undefined
 
             if (requestedDocumentScope?.type === "collection" && (!requestedCollectionSlug || !configuredCollectionSlugSet.has(requestedCollectionSlug))) {
-                return Response.json({ error: "The current collection is not available to the AI assistant." }, { status: 400 })
+                return jsonError("The current collection is not available to the AI assistant.")
             }
             if (
                 requestedDocumentScope?.type === "global" &&
                 (!requestedGlobalSlug || !allGlobalConfigs.some((global) => global.slug === requestedGlobalSlug))
             ) {
-                return Response.json({ error: "The current global is not available to the AI assistant." }, { status: 400 })
+                return jsonError("The current global is not available to the AI assistant.")
             }
 
             const collectionSlugs = requestedDocumentScope ? (requestedCollectionSlug ? [requestedCollectionSlug] : []) : configuredCollectionSlugs
@@ -292,7 +287,7 @@ export const createChatHandler =
                     debug,
                     msg: "AI chat blocked: no AI-enabled collections configured",
                 })
-                return Response.json({ error: "No AI-enabled collections are configured." }, { status: 400 })
+                return jsonError("No AI-enabled collections are configured.")
             }
 
             const schemaRegistry = createSchemaContextRegistry({
@@ -1262,17 +1257,12 @@ export const createChatHandler =
                 },
             })
         } catch (err) {
-            req.payload.logger.error({
-                debug,
-                err,
-                msg: "AI chat request failed",
+            return logHandlerError({
+                details: { debug },
+                error: err,
+                logMessage: "AI chat request failed",
+                publicMessage: "AI request failed.",
+                req,
             })
-
-            return Response.json(
-                {
-                    error: "AI request failed.",
-                },
-                { status: 500 }
-            )
         }
-    }
+    })

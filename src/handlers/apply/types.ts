@@ -1,5 +1,4 @@
 import type { ResolvedCollectionPermissionMap } from "../../features/collectionPermissions.js"
-import type { ActionProposal } from "../../features/proposals/types.js"
 
 export type ApplyActionBody = {
     aiResponse?: string
@@ -9,7 +8,7 @@ export type ApplyActionBody = {
         totalTokens?: unknown
     }
     prompt?: string
-    proposal?: ActionProposal
+    proposal?: unknown
 }
 
 export type ApplyActionOptions = {

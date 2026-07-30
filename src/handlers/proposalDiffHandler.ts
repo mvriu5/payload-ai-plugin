@@ -1,33 +1,32 @@
 import type { PayloadHandler } from "payload"
 
 import { redactSensitiveData } from "../features/sensitiveData.js"
-import type { ActionProposal } from "../features/proposals/types.js"
-import { verifyActionProposal } from "../features/proposals/signing.js"
+import { validateSignedProposal } from "../features/proposals/validation.js"
 import { prepareLocalizedTargetUpdates, prepareProposalTargetData, resolveProposalTarget } from "../features/proposals/target.js"
 import { applyLocalizedRequiredFallbackToPreparedData } from "../features/proposals/data.js"
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
-import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../utils/data.js"
+import { getDefaultLocale, hasLocalizedData, mergeData } from "../utils/data.js"
+import { jsonError, logHandlerError, readJSONBody, withAuthenticatedHandler } from "./http.js"
 
 type ProposalDiffBody = {
     prompt?: string
-    proposal?: ActionProposal
+    proposal?: unknown
 }
 
 type ProposalDiffOptions = {
     collections?: ResolvedCollectionPermissionMap
 }
 
-export const createProposalDiffHandler =
-    (options: ProposalDiffOptions = {}): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
-        const body = req.json ? ((await req.json().catch(() => null)) as ProposalDiffBody | null) : null
-
-        const proposal = body?.proposal
-        if (!proposal) return Response.json({ error: "Proposal is required" }, { status: 400 })
-        if (!verifyActionProposal(proposal)) return Response.json({ error: "Proposal signature is invalid or expired." }, { status: 400 })
-        if (!isActionProposal(proposal)) return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+export const createProposalDiffHandler = (options: ProposalDiffOptions = {}): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
+        const body = await readJSONBody<ProposalDiffBody>(req)
+        const proposalValidation = validateSignedProposal(body?.proposal)
+        if (!proposalValidation.ok) {
+            if (proposalValidation.error === "missing") return jsonError("Proposal is required")
+            if (proposalValidation.error === "invalid_signature") return jsonError("Proposal signature is invalid or expired.")
+            return jsonError("Proposal is invalid.")
+        }
+        const proposal = proposalValidation.proposal
 
         try {
             const inferenceText = body?.prompt
@@ -35,12 +34,12 @@ export const createProposalDiffHandler =
             const target = resolveProposalTarget({ proposal, req })
 
             if (proposal.action === "updateGlobal") {
-                if (!target || target.type !== "global") return Response.json({ error: "Unknown global" }, { status: 400 })
+                if (!target || target.type !== "global") return jsonError("Unknown global")
 
                 if (hasLocalizedData(proposal)) {
                     const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                     if (preparedData.issues.length > 0 || !preparedData.localizedData) {
-                        return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                        return jsonError("Proposal is invalid.")
                     }
                     const localizedResults = await prepareLocalizedTargetUpdates({
                         defaultLocale: defaultLocale || undefined,
@@ -56,7 +55,7 @@ export const createProposalDiffHandler =
 
                 const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                 if (preparedData.issues.length > 0 || !preparedData.data) {
-                    return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                    return jsonError("Proposal is invalid.")
                 }
                 const doc = await target.read({ locale: proposal.locale })
 
@@ -74,9 +73,9 @@ export const createProposalDiffHandler =
                     slug: proposal.collection,
                 })
             )
-                return Response.json({ error: "Unknown collection" }, { status: 400 })
+                return jsonError("Unknown collection")
 
-            if (!target || target.type !== "collection") return Response.json({ error: "Unknown collection" }, { status: 400 })
+            if (!target || target.type !== "collection") return jsonError("Unknown collection")
 
             if (proposal.action === "delete") {
                 const doc = await target.read({ locale: proposal.locale })
@@ -90,7 +89,7 @@ export const createProposalDiffHandler =
             if (hasLocalizedData(proposal)) {
                 const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                 if (preparedData.issues.length > 0 || !preparedData.localizedData) {
-                    return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                    return jsonError("Proposal is invalid.")
                 }
                 const afterByLocale: Record<string, unknown> = {}
                 const beforeByLocale: Record<string, unknown> = {}
@@ -129,7 +128,7 @@ export const createProposalDiffHandler =
 
             const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
             if (preparedData.issues.length > 0 || !preparedData.data) {
-                return Response.json({ error: "Proposal is invalid." }, { status: 400 })
+                return jsonError("Proposal is invalid.")
             }
 
             if (proposal.action === "create") {
@@ -146,16 +145,12 @@ export const createProposalDiffHandler =
                 before: redactSensitiveData(doc),
             })
         } catch (err) {
-            req.payload.logger.error({
-                err,
-                msg: "AI proposal diff failed",
+            return logHandlerError({
+                error: err,
+                logMessage: "AI proposal diff failed",
+                publicMessage: "Could not load proposal diff.",
+                req,
+                status: 400,
             })
-
-            return Response.json(
-                {
-                    error: "Could not load proposal diff.",
-                },
-                { status: 400 }
-            )
         }
-    }
+    })

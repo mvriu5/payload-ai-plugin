@@ -2,9 +2,10 @@ import type { PayloadHandler } from "payload"
 
 import { containsSensitiveData } from "../../features/sensitiveData.js"
 import type { ActionProposal } from "../../features/proposals/types.js"
-import { verifyActionProposal } from "../../features/proposals/signing.js"
-import { getOptionalNumber, hasLocalizedData, isActionProposal } from "../../utils/data.js"
+import { validateSignedProposal } from "../../features/proposals/validation.js"
+import { getOptionalNumber, hasLocalizedData } from "../../utils/data.js"
 import { logHandlerEvent } from "../../utils/logging.js"
+import { readJSONBody } from "../http.js"
 import type { ApplyActionBody, ApplyActionLogContext, ApplyDebugPayload } from "./types.js"
 
 type ProposalMeta = {
@@ -116,32 +117,33 @@ export const resolveApplyRequest = async (req: Parameters<PayloadHandler>[0]): P
         })
     }
 
-    const body = req.json ? ((await req.json().catch(() => null)) as ApplyActionBody | null) : null
-    const proposal = body?.proposal
+    const body = await readJSONBody<ApplyActionBody>(req)
+    const proposalValidation = validateSignedProposal(body?.proposal)
 
-    if (!proposal) {
+    if (!proposalValidation.ok && proposalValidation.error === "missing") {
         return failure({
             error: "Proposal is required",
             logMessage: "AI apply blocked: missing proposal payload",
             reason: "missing_proposal",
         })
     }
-    if (!verifyActionProposal(proposal)) {
+    if (!proposalValidation.ok && proposalValidation.error === "invalid_signature") {
         return failure({
             error: "Proposal signature is invalid or expired.",
             logMessage: "AI apply blocked: invalid proposal signature",
-            proposal: proposal as Partial<ActionProposal>,
+            proposal: proposalValidation.proposal,
             reason: "invalid_signature",
         })
     }
-    if (!isActionProposal(proposal)) {
+    if (!proposalValidation.ok) {
         return failure({
             error: "Proposal is invalid.",
             logMessage: "AI apply blocked: invalid proposal shape",
-            proposal: proposal as Partial<ActionProposal>,
+            proposal: proposalValidation.proposal,
             reason: "invalid_proposal_shape",
         })
     }
+    const proposal = proposalValidation.proposal
     if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
         return failure({
             error: "Proposal contains sensitive fields and cannot be applied.",

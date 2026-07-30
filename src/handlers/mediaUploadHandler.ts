@@ -1,6 +1,7 @@
 import { addDataAndFileToRequest, type PayloadHandler } from "payload"
 
 import { getNumber, getString, isRecord } from "../utils/data.js"
+import { jsonError, logHandlerError } from "./http.js"
 
 export type MediaUploadOptions = {
     acceptedMimeTypes?: string[]
@@ -66,29 +67,29 @@ export const createMediaUploadHandler =
             const collectionConfig = uploadReq.payload.config.collections.find((collection) => collection.slug === collectionSlug)
 
             if (!collectionConfig) {
-                return Response.json({ error: `Upload collection not found: ${collectionSlug}` }, { status: 400 })
+                return jsonError(`Upload collection not found: ${collectionSlug}`)
             }
 
             if (!collectionConfig.upload) {
-                return Response.json({ error: `Collection is not upload-enabled: ${collectionSlug}` }, { status: 400 })
+                return jsonError(`Collection is not upload-enabled: ${collectionSlug}`)
             }
 
             const file = uploadReq.file
 
             if (!file) {
-                return Response.json({ error: "File is required" }, { status: 400 })
+                return jsonError("File is required")
             }
 
             const fileSize = typeof file.size === "number" && Number.isFinite(file.size) ? file.size : 0
 
             if (maxFileSize && fileSize > maxFileSize) {
-                return Response.json({ error: `File exceeds max size of ${maxFileSize} bytes` }, { status: 413 })
+                return jsonError(`File exceeds max size of ${maxFileSize} bytes`, 413)
             }
 
             const mimeType = file.mimetype || ""
 
             if (mimeType && !isAcceptedMimeType(mimeType, acceptedMimeTypes)) {
-                return Response.json({ error: `File type is not accepted: ${mimeType}` }, { status: 415 })
+                return jsonError(`File type is not accepted: ${mimeType}`, 415)
             }
 
             const doc = await uploadReq.payload.create({
@@ -108,11 +109,11 @@ export const createMediaUploadHandler =
                 doc,
             })
         } catch (err) {
-            uploadReq.payload.logger.error({
-                err,
-                msg: "AI media upload failed",
+            return logHandlerError({
+                error: err,
+                logMessage: "AI media upload failed",
+                publicMessage: "Media upload failed.",
+                req: uploadReq,
             })
-
-            return Response.json({ error: "Media upload failed." }, { status: 500 })
         }
     }

@@ -46,6 +46,16 @@ describe("proposalDiffHandler", () => {
         )
         expect(unsignedResponse.status).toBe(400)
         await expect(readJSON(unsignedResponse)).resolves.toEqual({ error: "Proposal signature is invalid or expired." })
+
+        const malformedResponse = await handler(
+            createMockRequest({
+                body: {
+                    proposal: "not-a-proposal",
+                },
+            })
+        )
+        expect(malformedResponse.status).toBe(400)
+        await expect(readJSON(malformedResponse)).resolves.toEqual({ error: "Proposal is invalid." })
     })
 
     it("builds before and after state for signed collection updates", async () => {

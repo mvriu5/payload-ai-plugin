@@ -1,15 +1,13 @@
 import type { PayloadHandler } from "payload"
 import { getNumber, getString } from "../utils/data.js"
+import { withAuthenticatedHandler } from "./http.js"
 
 type AuditLogOptions = {
     changeLogCollection: string
 }
 
-export const createAuditLogHandler =
-    (options: AuditLogOptions): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
+export const createAuditLogHandler = (options: AuditLogOptions): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
         const result = await req.payload.find({
             collection: options.changeLogCollection as never,
             depth: 0,
@@ -42,4 +40,4 @@ export const createAuditLogHandler =
                 url: getString(doc.targetURL),
             })),
         })
-    }
+    })

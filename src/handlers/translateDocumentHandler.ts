@@ -5,6 +5,7 @@ import type { PayloadHandler } from "payload"
 
 import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../features/providers/requestContext.js"
 import { getTranslationValues, type TranslationPageContext } from "../features/content/documentTranslation.js"
+import { jsonError, logHandlerError, readJSONBody, withAuthenticatedHandler } from "./http.js"
 
 type TranslateDocumentOptions = AIRequestOptions & {
     maxOutputTokens?: number
@@ -74,17 +75,14 @@ const parseTranslations = (text: string, sourceCount: number) => {
     return Array.from({ length: sourceCount }, (_, index) => parsed.translations?.[String(index)])
 }
 
-export const createTranslateDocumentHandler =
-    (options: TranslateDocumentOptions): PayloadHandler =>
-    async (req) => {
-        if (!req.user) return Response.json({ error: "Unauthorized" }, { status: 401 })
-
-        const body = req.json ? ((await req.json().catch(() => null)) as TranslateDocumentBody | null) : null
+export const createTranslateDocumentHandler = (options: TranslateDocumentOptions): PayloadHandler =>
+    withAuthenticatedHandler(async (req) => {
+        const body = await readJSONBody<TranslateDocumentBody>(req)
         const locale = body?.locale?.trim()
         const scopeSlug = body?.scope?.slug?.trim()
         const scopeType = body?.scope?.type
         if (!body?.action || !locale || !scopeSlug || !scopeType) {
-            return Response.json({ error: "Action, locale, and page scope are required." }, { status: 400 })
+            return jsonError("Action, locale, and page scope are required.")
         }
 
         const pageContext = options.pageContexts.get(`${scopeType}:${scopeSlug}`)
@@ -117,10 +115,7 @@ export const createTranslateDocumentHandler =
                 user: req.user as AIRequestUser,
             })
             if (!aiRequestResolution.ok) {
-                return Response.json(
-                    { error: aiRequestResolution.error.message },
-                    { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 }
-                )
+                return jsonError(aiRequestResolution.error.message, aiRequestResolution.error.code === "token_limit" ? 429 : 400)
             }
             const aiRequest = aiRequestResolution.context
             const model = await aiRequest.loadModel()
@@ -156,12 +151,12 @@ export const createTranslateDocumentHandler =
                 })),
             })
         } catch (error) {
-            req.payload.logger.error({
-                err: error,
-                msg: "AI document translation failed",
-                scopeSlug,
-                scopeType,
+            return logHandlerError({
+                details: { scopeSlug, scopeType },
+                error,
+                logMessage: "AI document translation failed",
+                publicMessage: "AI document translation failed.",
+                req,
             })
-            return Response.json({ error: "AI document translation failed." }, { status: 500 })
         }
-    }
+    })
