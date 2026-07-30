@@ -101,6 +101,7 @@ describe("applyActionHandler", () => {
             collection: "posts",
             depth: 2,
             id: postJupiter.id,
+            overrideAccess: false,
             req,
         })
         expect(update).toHaveBeenCalledWith({

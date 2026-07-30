@@ -3,8 +3,8 @@ import type { PayloadHandler } from "payload"
 import { redactSensitiveData } from "../features/sensitiveData.js"
 import type { ActionProposal } from "../features/proposals/types.js"
 import { verifyActionProposal } from "../features/proposals/signing.js"
-import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../features/schema/normalize.js"
-import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../features/proposals/data.js"
+import { prepareLocalizedTargetUpdates, prepareProposalTargetData, resolveProposalTarget } from "../features/proposals/target.js"
+import { applyLocalizedRequiredFallbackToPreparedData } from "../features/proposals/data.js"
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
 import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../utils/data.js"
 
@@ -32,93 +32,33 @@ export const createProposalDiffHandler =
         try {
             const inferenceText = body?.prompt
             const defaultLocale = getDefaultLocale(req)
+            const target = resolveProposalTarget({ proposal, req })
 
             if (proposal.action === "updateGlobal") {
-                const globalConfig = req.payload.config.globals?.find((global) => global.slug === proposal.slug)
-                if (!globalConfig) return Response.json({ error: "Unknown global" }, { status: 400 })
+                if (!target || target.type !== "global") return Response.json({ error: "Unknown global" }, { status: 400 })
 
                 if (hasLocalizedData(proposal)) {
-                    const beforeByLocale: Record<string, unknown> = {}
-                    const afterByLocale: Record<string, unknown> = {}
-                    const globalFields = getSchemaFields({
-                        fields: (globalConfig.fields || []) as FieldConfig[],
-                        slug: proposal.slug,
-                    })
-                    const preparedData = prepareProposalWriteData({
-                        collectionConfig: {
-                            fields: (globalConfig.fields || []) as FieldConfig[],
-                            slug: proposal.slug,
-                        },
-                        inferenceText,
-                        label: proposal.label,
-                        localizedData: proposal.localizedData,
-                        mode: "update",
-                    })
+                    const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                     if (preparedData.issues.length > 0 || !preparedData.localizedData) {
                         return Response.json({ error: "Proposal is invalid." }, { status: 400 })
                     }
-                    const defaultLocaleDoc = defaultLocale
-                        ? ((await req.payload.findGlobal({
-                              depth: 2,
-                              fallbackLocale: false,
-                              locale: defaultLocale,
-                              overrideAccess: false,
-                              req,
-                              slug: proposal.slug as never,
-                          })) as Record<string, unknown>)
-                        : null
-
-                    const localizedResults = await Promise.all(
-                        Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
-                            const doc = (await req.payload.findGlobal({
-                                depth: 2,
-                                fallbackLocale: false,
-                                locale,
-                                overrideAccess: false,
-                                req,
-                                slug: proposal.slug as never,
-                            })) as Record<string, unknown>
-                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                                fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || doc,
-                                fields: globalFields,
-                                preparedData: localeData,
-                            })
-
-                            return { completedData, doc, locale }
-                        })
-                    )
-
-                    localizedResults.forEach(({ completedData, doc, locale }) => {
-                        beforeByLocale[locale] = redactSensitiveData(doc)
-                        afterByLocale[locale] = redactSensitiveData(mergeData(doc, completedData))
+                    const localizedResults = await prepareLocalizedTargetUpdates({
+                        defaultLocale: defaultLocale || undefined,
+                        localizedData: preparedData.localizedData,
+                        target,
                     })
 
                     return Response.json({
-                        after: afterByLocale,
-                        before: beforeByLocale,
+                        after: Object.fromEntries(localizedResults.map(({ after, locale }) => [locale, redactSensitiveData(after)])),
+                        before: Object.fromEntries(localizedResults.map(({ before, locale }) => [locale, redactSensitiveData(before)])),
                     })
                 }
 
-                const preparedData = prepareProposalWriteData({
-                    collectionConfig: {
-                        fields: (globalConfig.fields || []) as FieldConfig[],
-                        slug: proposal.slug,
-                    },
-                    data: proposal.data,
-                    inferenceText,
-                    label: proposal.label,
-                    mode: "update",
-                })
+                const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                 if (preparedData.issues.length > 0 || !preparedData.data) {
                     return Response.json({ error: "Proposal is invalid." }, { status: 400 })
                 }
-                const doc = (await req.payload.findGlobal({
-                    depth: 2,
-                    ...(proposal.locale ? { locale: proposal.locale } : {}),
-                    overrideAccess: false,
-                    req,
-                    slug: proposal.slug as never,
-                })) as Record<string, unknown>
+                const doc = await target.read({ locale: proposal.locale })
 
                 return Response.json({
                     after: redactSensitiveData(mergeData(doc, preparedData.data)),
@@ -136,15 +76,10 @@ export const createProposalDiffHandler =
             )
                 return Response.json({ error: "Unknown collection" }, { status: 400 })
 
+            if (!target || target.type !== "collection") return Response.json({ error: "Unknown collection" }, { status: 400 })
+
             if (proposal.action === "delete") {
-                const doc = await req.payload.findByID({
-                    collection: proposal.collection as never,
-                    depth: 2,
-                    id: proposal.id,
-                    ...(proposal.locale ? { locale: proposal.locale } : {}),
-                    overrideAccess: false,
-                    req,
-                })
+                const doc = await target.read({ locale: proposal.locale })
 
                 return Response.json({
                     after: {},
@@ -152,42 +87,20 @@ export const createProposalDiffHandler =
                 })
             }
 
-            const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === proposal.collection) as
-                CollectionConfig | undefined
-            const collectionFields = getSchemaFields(collectionConfig)
-
             if (hasLocalizedData(proposal)) {
-                const preparedData = prepareProposalWriteData({
-                    collectionConfig,
-                    inferenceText,
-                    label: proposal.label,
-                    localizedData: proposal.localizedData,
-                    mode: proposal.action,
-                })
+                const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
                 if (preparedData.issues.length > 0 || !preparedData.localizedData) {
                     return Response.json({ error: "Proposal is invalid." }, { status: 400 })
                 }
                 const afterByLocale: Record<string, unknown> = {}
                 const beforeByLocale: Record<string, unknown> = {}
-                const defaultLocaleDoc =
-                    proposal.action === "update" && defaultLocale
-                        ? ((await req.payload.findByID({
-                              collection: proposal.collection as never,
-                              depth: 2,
-                              fallbackLocale: false,
-                              id: proposal.id,
-                              locale: defaultLocale,
-                              overrideAccess: false,
-                              req,
-                          })) as Record<string, unknown>)
-                        : null
                 let createFallbackSource: Record<string, unknown> | null = null
 
                 if (proposal.action === "create") {
                     for (const [locale, localeData] of Object.entries(preparedData.localizedData)) {
                         const completedData = applyLocalizedRequiredFallbackToPreparedData({
                             fallbackSource: createFallbackSource || {},
-                            fields: collectionFields,
+                            fields: target.fields,
                             preparedData: localeData,
                         })
 
@@ -196,30 +109,15 @@ export const createProposalDiffHandler =
                         createFallbackSource = mergeData(createFallbackSource || {}, completedData)
                     }
                 } else {
-                    const localizedResults = await Promise.all(
-                        Object.entries(preparedData.localizedData).map(async ([locale, localeData]) => {
-                            const doc = (await req.payload.findByID({
-                                collection: proposal.collection as never,
-                                depth: 2,
-                                fallbackLocale: false,
-                                id: proposal.id,
-                                locale,
-                                overrideAccess: false,
-                                req,
-                            })) as Record<string, unknown>
-                            const completedData = applyLocalizedRequiredFallbackToPreparedData({
-                                fallbackSource: locale === defaultLocale ? doc : defaultLocaleDoc || {},
-                                fields: collectionFields,
-                                preparedData: localeData,
-                            })
+                    const localizedResults = await prepareLocalizedTargetUpdates({
+                        defaultLocale: defaultLocale || undefined,
+                        localizedData: preparedData.localizedData,
+                        target,
+                    })
 
-                            return { completedData, doc, locale }
-                        })
-                    )
-
-                    localizedResults.forEach(({ completedData, doc, locale }) => {
-                        beforeByLocale[locale] = redactSensitiveData(doc)
-                        afterByLocale[locale] = redactSensitiveData(mergeData(doc, completedData))
+                    localizedResults.forEach(({ after, before, locale }) => {
+                        beforeByLocale[locale] = redactSensitiveData(before)
+                        afterByLocale[locale] = redactSensitiveData(after)
                     })
                 }
 
@@ -229,13 +127,7 @@ export const createProposalDiffHandler =
                 })
             }
 
-            const preparedData = prepareProposalWriteData({
-                collectionConfig,
-                data: proposal.data,
-                inferenceText,
-                label: proposal.label,
-                mode: proposal.action,
-            })
+            const preparedData = prepareProposalTargetData({ inferenceText, proposal, target })
             if (preparedData.issues.length > 0 || !preparedData.data) {
                 return Response.json({ error: "Proposal is invalid." }, { status: 400 })
             }
@@ -247,14 +139,7 @@ export const createProposalDiffHandler =
                 })
             }
 
-            const doc = (await req.payload.findByID({
-                collection: proposal.collection as never,
-                depth: 2,
-                id: proposal.id,
-                ...(proposal.locale ? { locale: proposal.locale } : {}),
-                overrideAccess: false,
-                req,
-            })) as Record<string, unknown>
+            const doc = await target.read({ locale: proposal.locale })
 
             return Response.json({
                 after: redactSensitiveData(mergeData(doc, preparedData.data)),
