@@ -12,7 +12,7 @@ import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as Propo
 import { prepareProposalWriteData } from "../features/proposals/data.js"
 import {
     buildPromptWithMentionContext,
-    collectBlocks,
+    createSchemaContextRegistry,
     describeCollectionLikeConfig,
     describeCollectionLikeSummary,
     getAllowedCollectionSlugs,
@@ -285,9 +285,7 @@ export const createChatHandler =
                     : []
                 : allGlobalConfigs
             const globalSlugs = globalConfigs.map((global) => global.slug)
-            const globalConfigsBySlug = new Map(globalConfigs.map((global) => [global.slug, global]))
             const allowedCollections = req.payload.config.collections.filter((collection) => collectionSlugSet.has(collection.slug))
-            const allowedCollectionsBySlug = new Map(allowedCollections.map((collection) => [collection.slug, collection]))
 
             if (collectionSlugs.length === 0 && globalConfigs.length === 0) {
                 logHandlerEvent(req, "warn", {
@@ -297,20 +295,12 @@ export const createChatHandler =
                 return Response.json({ error: "No AI-enabled collections are configured." }, { status: 400 })
             }
 
-            const blockContexts = [
-                ...allowedCollections.flatMap((collection) =>
-                    collectBlocks({
-                        fields: collection.fields as FieldConfig[],
-                        parent: collection.slug,
-                    })
-                ),
-                ...globalConfigs.flatMap((global) =>
-                    collectBlocks({
-                        fields: global.fields as FieldConfig[],
-                        parent: global.slug,
-                    })
-                ),
-            ]
+            const schemaRegistry = createSchemaContextRegistry({
+                collections: allowedCollections,
+                globals: globalConfigs,
+                req,
+            })
+            const { collectionConfigsBySlug: allowedCollectionsBySlug, globalConfigsBySlug } = schemaRegistry
             const explicitlyMentionedDocumentKeys = new Set(
                 (body?.mentions || []).flatMap((mention) =>
                     mention.type === "doc" && mention.collection && mention.id ? [`${mention.collection}:${mention.id}`] : []
@@ -320,11 +310,9 @@ export const createChatHandler =
                 (body?.mentions || []).flatMap((mention) => (mention.type === "global" && mention.slug ? [mention.slug] : []))
             )
             const mentionContext = await getMentionContext({
-                blockContexts,
-                collectionSlugs,
                 collections: options.collections,
-                globalSlugs,
                 mentions: body?.mentions,
+                registry: schemaRegistry,
                 req,
             })
             if (requestedCollectionSlug && requestedDocumentID) {
