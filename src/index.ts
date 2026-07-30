@@ -1,375 +1,18 @@
-import type { CollectionConfig, Condition, Config } from "payload"
+import type { Config } from "payload"
 
-import {
-    aiProviders,
-    getResolvedAIModelConfig,
-    resolveAIProviderConfigs,
-    toClientAIProviderProfiles,
-    type AIModelConfig,
-    type AIProviderConfig,
-} from "./ai/providerOptions.js"
-import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug, type MaxTokenUsageOptions } from "./ai/tokenUsage.js"
-import { createApplyActionHandler } from "./handlers/applyActionHandler.js"
-import { createChatHandler } from "./handlers/chatHandler.js"
-import { createGenerateFieldHandler } from "./handlers/generateFieldHandler.js"
-import { createTranslateDocumentHandler } from "./handlers/translateDocumentHandler.js"
-import { createMentionSuggestionHandler } from "./handlers/mentionSuggestionHandler.js"
-import { createMediaUploadHandler, type MediaUploadOptions } from "./handlers/mediaUploadHandler.js"
-import { createProposalDiffHandler } from "./handlers/proposalDiffHandler.js"
-import { createAuditLogHandler } from "./handlers/auditLogHandler.js"
-import { resolveCollectionPermissions, type CollectionPermissionMap } from "./payload/collectionPermissions.js"
+import { getResolvedAIModelConfig, resolveAIProviderConfigs } from "./ai/providerOptions.js"
+import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug } from "./ai/tokenUsage.js"
 import { isInternalCollection } from "./payload/shared.js"
-import { addTextGenerationFields, type TextGenerationPageContext } from "./payload/textFieldGeneration.js"
-import { hasLocalizedFields, type TranslationPageContext } from "./payload/documentTranslation.js"
+import { resolveCollectionPermissions } from "./payload/collectionPermissions.js"
+import { addAccountFields, addAIFieldsToDocumentsAndGlobals, configureAIAdmin } from "./plugin/admin.js"
+import { createAIChangesCollection, createAITokenUsageCollection } from "./plugin/collections.js"
+import { registerAIEndpoints } from "./plugin/endpoints.js"
+import { resolveMaxOutputTokens, resolveMediaUploadOptions } from "./plugin/options.js"
+import type { PayloadAIPluginOptions } from "./plugin/types.js"
 
 export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
 export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
-
-export type CollectionTypeAIOptions = {
-    aiInput?: boolean
-    generateFields?: boolean
-}
-
-export type PayloadAIPluginOptions = {
-    aiInput?: boolean
-    allowUserApiKeys?: boolean
-    authCollections?: CollectionTypeAIOptions
-    collections?: CollectionPermissionMap
-    disabled?: boolean
-    generateFields?: boolean
-    maxOutputTokens?: number
-    media?: {
-        acceptedMimeTypes?: string[]
-        collectionSlug?: string
-        enabled?: boolean
-        maxFileSize?: number
-    }
-    models?: AIModelConfig
-    maxTokenUsage?: MaxTokenUsageOptions
-    promptCaching?: boolean
-    providers?: AIProviderConfig[]
-    translate?: boolean
-    uploadCollections?: CollectionTypeAIOptions
-}
-
-const resolveMediaUploadOptions = (media?: PayloadAIPluginOptions["media"]): MediaUploadOptions | null => {
-    if (!media || media.enabled === false) return null
-
-    return {
-        ...(media.acceptedMimeTypes ? { acceptedMimeTypes: media.acceptedMimeTypes } : {}),
-        collectionSlug: media.collectionSlug || "media",
-        ...(typeof media.maxFileSize === "number" && Number.isFinite(media.maxFileSize) && media.maxFileSize > 0
-            ? { maxFileSize: Math.floor(media.maxFileSize) }
-            : {}),
-    }
-}
-
-const createAIChangesCollection = (): CollectionConfig => ({
-    slug: "payload-ai-auditlog",
-    access: {
-        create: () => false,
-        delete: () => false,
-        read: ({ req }) => Boolean(req.user),
-        update: () => false,
-    },
-    admin: {
-        defaultColumns: ["title", "action", "additions", "removals", "createdAt"],
-        group: "AI",
-        useAsTitle: "title",
-    },
-    labels: {
-        plural: "AI Changes",
-        singular: "AI Change",
-    },
-    fields: [
-        {
-            name: "title",
-            type: "text",
-            required: true,
-        },
-        {
-            name: "action",
-            type: "select",
-            options: ["create", "update", "delete", "updateGlobal"],
-            required: true,
-        },
-        {
-            name: "targetType",
-            type: "select",
-            options: ["collection", "global"],
-            required: true,
-        },
-        {
-            name: "collection",
-            type: "text",
-        },
-        {
-            name: "slug",
-            type: "text",
-        },
-        {
-            name: "documentID",
-            type: "text",
-        },
-        {
-            name: "targetURL",
-            type: "text",
-        },
-        {
-            name: "additions",
-            type: "number",
-            defaultValue: 0,
-        },
-        {
-            name: "removals",
-            type: "number",
-            defaultValue: 0,
-        },
-        {
-            name: "before",
-            type: "json",
-        },
-        {
-            name: "after",
-            type: "json",
-        },
-        {
-            name: "proposal",
-            type: "json",
-        },
-        {
-            name: "prompt",
-            type: "textarea",
-        },
-        {
-            name: "inputTokens",
-            type: "number",
-        },
-        {
-            name: "outputTokens",
-            type: "number",
-        },
-        {
-            name: "totalTokens",
-            type: "number",
-        },
-        {
-            name: "aiResponse",
-            type: "textarea",
-        },
-        {
-            name: "userID",
-            type: "text",
-        },
-        {
-            name: "userLabel",
-            type: "text",
-        },
-    ],
-    timestamps: true,
-})
-
-const createAITokenUsageCollection = (): CollectionConfig => ({
-    slug: tokenUsageCollectionSlug,
-    access: {
-        create: () => false,
-        delete: () => false,
-        read: () => false,
-        update: () => false,
-    },
-    admin: {
-        hidden: true,
-    },
-    fields: [
-        {
-            name: "userID",
-            type: "text",
-            index: true,
-            required: true,
-        },
-        {
-            name: "provider",
-            type: "text",
-            required: true,
-        },
-        {
-            name: "model",
-            type: "text",
-            required: true,
-        },
-        {
-            name: "inputTokens",
-            type: "number",
-        },
-        {
-            name: "outputTokens",
-            type: "number",
-        },
-        {
-            name: "totalTokens",
-            type: "number",
-            required: true,
-        },
-        {
-            name: "recordedAt",
-            type: "date",
-            index: true,
-            required: true,
-        },
-    ],
-    timestamps: true,
-})
-
-const hasAuthenticatedUser: Condition = (_data, _siblingData, { user }) => Boolean(user)
-
-const addAccountFields = ({ allowUserApiKeys, config }: { allowUserApiKeys: boolean; config: Config }) => {
-    const adminUserSlug = config.admin?.user
-    if (!adminUserSlug || !config.collections) return
-
-    const userCollection = config.collections.find((c) => c.slug === adminUserSlug)
-    if (!userCollection) return
-
-    userCollection.fields.push({
-        name: "aiProvider",
-        type: "select",
-        admin: {
-            condition: hasAuthenticatedUser,
-        },
-        defaultValue: "openai",
-        label: "AI Provider",
-        options: aiProviders,
-    })
-
-    if (allowUserApiKeys) {
-        userCollection.fields.push({
-            name: "aiApiKey",
-            type: "text",
-            admin: {
-                condition: hasAuthenticatedUser,
-                components: {
-                    Field: "@mvriu5/payload-ai/client#AIApiKeyField",
-                },
-                description: "Optional. If empty, the plugin uses the provider API key from environment variables.",
-            },
-            label: "AI API Key",
-        })
-    }
-}
-
-const aiField: any = {
-    name: "payloadAi",
-    type: "ui",
-    admin: {
-        condition: hasAuthenticatedUser,
-        components: {
-            Field: "@mvriu5/payload-ai/client#AIInput",
-        },
-    },
-}
-
-const translateDocumentComponent = "@mvriu5/payload-ai/client#TranslateDocumentButton"
-
-const getEntityLabel = (label: unknown, fallback: string) => {
-    if (typeof label === "string") return label
-    if (label && typeof label === "object") {
-        const translatedLabel = Object.values(label).find((value) => typeof value === "string")
-        if (typeof translatedLabel === "string") return translatedLabel
-    }
-
-    return fallback
-}
-
-const addAIFieldsToDocumentsAndGlobals = ({
-    addGenerateFields,
-    addAIInput,
-    addTranslation,
-    authCollections,
-    config,
-    uploadCollections,
-}: {
-    addGenerateFields: boolean
-    addAIInput: boolean
-    addTranslation: boolean
-    authCollections?: CollectionTypeAIOptions
-    config: Config
-    uploadCollections?: CollectionTypeAIOptions
-}) => {
-    const pageContexts = new Map<string, TextGenerationPageContext>()
-    const translationPageContexts = new Map<string, TranslationPageContext>()
-
-    for (const collection of config.collections || []) {
-        if (isInternalCollection(collection.slug)) continue
-        if (collection.slug === "payload-ai-auditlog") continue
-
-        const allowAIInput =
-            addAIInput &&
-            (!collection.auth || authCollections?.aiInput === true) &&
-            (!collection.upload || uploadCollections?.aiInput === true)
-        const allowGenerateFields =
-            addGenerateFields &&
-            (!collection.auth || authCollections?.generateFields === true) &&
-            (!collection.upload || uploadCollections?.generateFields === true)
-
-        if (allowGenerateFields) {
-            const pageContext = addTextGenerationFields({
-                fields: collection.fields || [],
-                label: getEntityLabel(collection.labels?.singular, collection.slug),
-                slug: collection.slug,
-                type: "collection",
-            })
-            pageContexts.set(`collection:${collection.slug}`, pageContext)
-        }
-        if (allowAIInput) collection.fields = [aiField, ...(collection.fields || [])]
-        if (addTranslation && hasLocalizedFields(collection.fields || [])) {
-            translationPageContexts.set(`collection:${collection.slug}`, {
-                fields: collection.fields || [],
-                label: getEntityLabel(collection.labels?.singular, collection.slug),
-                slug: collection.slug,
-                type: "collection",
-            })
-            collection.admin = collection.admin || {}
-            collection.admin.components = collection.admin.components || {}
-            collection.admin.components.edit = collection.admin.components.edit || {}
-            const controls = collection.admin.components.edit.beforeDocumentControls || []
-            if (!controls.includes(translateDocumentComponent)) {
-                collection.admin.components.edit.beforeDocumentControls = [...controls, translateDocumentComponent]
-            }
-        }
-    }
-
-    for (const global of config.globals || []) {
-        if (addGenerateFields) {
-            const pageContext = addTextGenerationFields({
-                fields: global.fields || [],
-                label: getEntityLabel(global.label, global.slug),
-                slug: global.slug,
-                type: "global",
-            })
-            pageContexts.set(`global:${global.slug}`, pageContext)
-        }
-        if (addAIInput) global.fields = [aiField, ...(global.fields || [])]
-        if (addTranslation && hasLocalizedFields(global.fields || [])) {
-            translationPageContexts.set(`global:${global.slug}`, {
-                fields: global.fields || [],
-                label: getEntityLabel(global.label, global.slug),
-                slug: global.slug,
-                type: "global",
-            })
-            global.admin = global.admin || {}
-            global.admin.components = global.admin.components || {}
-            global.admin.components.elements = global.admin.components.elements || {}
-            const controls = global.admin.components.elements.beforeDocumentControls || []
-            if (!controls.includes(translateDocumentComponent)) {
-                global.admin.components.elements.beforeDocumentControls = [...controls, translateDocumentComponent]
-            }
-        }
-    }
-
-    return {
-        textGenerationPageContexts: pageContexts,
-        translationPageContexts,
-    }
-}
+export type { CollectionTypeAIOptions, PayloadAIPluginOptions } from "./plugin/types.js"
 
 export const payloadAiPlugin =
     (pluginOptions: PayloadAIPluginOptions) =>
@@ -382,10 +25,7 @@ export const payloadAiPlugin =
         const modelConfig = getResolvedAIModelConfig(pluginOptions.models)
         const maxTokenUsage = resolveMaxTokenUsageOptions(pluginOptions.maxTokenUsage)
         const mediaUploadOptions = resolveMediaUploadOptions(pluginOptions.media)
-        const maxOutputTokens =
-            typeof pluginOptions.maxOutputTokens === "number" && Number.isFinite(pluginOptions.maxOutputTokens) && pluginOptions.maxOutputTokens > 0
-                ? Math.floor(pluginOptions.maxOutputTokens)
-                : undefined
+        const maxOutputTokens = resolveMaxOutputTokens(pluginOptions.maxOutputTokens)
 
         if (!config.collections) config.collections = []
         if (!config.collections.some((collection) => collection.slug === "payload-ai-auditlog")) {
@@ -396,12 +36,12 @@ export const payloadAiPlugin =
         }
 
         if (!managedProviders) addAccountFields({ allowUserApiKeys, config })
-
         if (pluginOptions.disabled) return config
+
         const generateFields = pluginOptions.generateFields !== false
         const { textGenerationPageContexts, translationPageContexts } = addAIFieldsToDocumentsAndGlobals({
-            addGenerateFields: generateFields,
             addAIInput: pluginOptions.aiInput !== false,
+            addGenerateFields: generateFields,
             addTranslation: pluginOptions.translate !== false,
             authCollections: pluginOptions.authCollections,
             config,
@@ -410,113 +50,32 @@ export const payloadAiPlugin =
         const mentionCollectionSlugs = config.collections.flatMap((collection) => {
             if (isInternalCollection(collection.slug)) return []
             if (collectionPermissions && !collectionPermissions[collection.slug]?.read) return []
-
             return [collection.slug]
         })
 
-        if (!config.endpoints) config.endpoints = []
-        if (!config.admin) config.admin = {}
-        config.admin.custom = {
-            ...(config.admin.custom || {}),
-            payloadAiPlugin: {
-                ...((config.admin.custom?.payloadAiPlugin as Record<string, unknown> | undefined) || {}),
-                collectionSlugs: mentionCollectionSlugs,
-                allowUserApiKeys,
-                managedProviders,
-                ...(mediaUploadOptions
-                    ? {
-                          media: {
-                              ...mediaUploadOptions,
-                              enabled: true,
-                          },
-                      }
-                    : {}),
-                models: modelConfig,
-                providers: toClientAIProviderProfiles(providerConfigs),
-            },
-        }
-        if (!config.admin.components) config.admin.components = {}
-
-        if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = []
-        config.admin.components.beforeDashboard.push(`@mvriu5/payload-ai/client#Dashboard`)
-
-        config.endpoints.push({
-            handler: createChatHandler({
-                allowUserApiKeys,
-                collections: collectionPermissions,
-                maxOutputTokens,
-                maxTokenUsage,
-                models: modelConfig,
-                promptCaching: pluginOptions.promptCaching !== false,
-                providers: providerConfigs,
-            }),
-            method: "post",
-            path: "/ai-chat",
+        configureAIAdmin({
+            allowUserApiKeys,
+            collectionSlugs: mentionCollectionSlugs,
+            config,
+            managedProviders,
+            mediaUploadOptions,
+            modelConfig,
+            providerConfigs,
         })
-        config.endpoints.push({
-            handler: createApplyActionHandler({
-                changeLogCollection: "payload-ai-auditlog",
-                collections: collectionPermissions,
-            }),
-            method: "post",
-            path: "/ai-apply-action",
+        registerAIEndpoints({
+            allowUserApiKeys,
+            collectionPermissions,
+            config,
+            generateFields,
+            maxOutputTokens,
+            maxTokenUsage,
+            mediaUploadOptions,
+            modelConfig,
+            promptCaching: pluginOptions.promptCaching !== false,
+            providerConfigs,
+            textGenerationPageContexts,
+            translationPageContexts,
         })
-        config.endpoints.push({
-            handler: createAuditLogHandler({
-                changeLogCollection: "payload-ai-auditlog",
-            }),
-            method: "get",
-            path: "/ai-audit-log",
-        })
-        config.endpoints.push({
-            handler: createProposalDiffHandler({
-                collections: collectionPermissions,
-            }),
-            method: "post",
-            path: "/ai-proposal-diff",
-        })
-        config.endpoints.push({
-            handler: createMentionSuggestionHandler({
-                collections: collectionPermissions,
-            }),
-            method: "post",
-            path: "/ai-mention-suggestion",
-        })
-        if (generateFields) {
-            config.endpoints.push({
-                handler: createGenerateFieldHandler({
-                    allowUserApiKeys,
-                    maxOutputTokens,
-                    maxTokenUsage,
-                    models: modelConfig,
-                    pageContexts: textGenerationPageContexts,
-                    providers: providerConfigs,
-                }),
-                method: "post",
-                path: "/ai-generate-field",
-            })
-        }
-        if (translationPageContexts.size > 0) {
-            config.endpoints.push({
-                handler: createTranslateDocumentHandler({
-                    allowUserApiKeys,
-                    maxOutputTokens,
-                    maxTokenUsage,
-                    models: modelConfig,
-                    pageContexts: translationPageContexts,
-                    providers: providerConfigs,
-                }),
-                method: "post",
-                path: "/ai-translate-document",
-            })
-        }
-        if (mediaUploadOptions) {
-            config.endpoints.push({
-                handler: createMediaUploadHandler(mediaUploadOptions),
-                method: "post",
-                path: "/ai-upload-media",
-            })
-        }
 
         if (incomingOnInit) {
             config.onInit = async (payload) => {
