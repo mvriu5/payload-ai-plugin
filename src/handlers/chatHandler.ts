@@ -3,12 +3,11 @@ import type { PayloadHandler } from "payload"
 import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
-import { compactProposalRepairIssues, createProposalRepairTracker, type CompactProposalRepairIssue } from "../features/proposals/repair.js"
-import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../features/sensitiveData.js"
+import { compactProposalRepairIssues } from "../features/proposals/repair.js"
+import { isSensitiveKey, redactSensitiveData } from "../features/sensitiveData.js"
 import { resolveAIRequestContext, type AIRequestUser } from "../features/providers/requestContext.js"
 import type { ActionProposal, LocalizedDataInput } from "../features/proposals/types.js"
-import { signAIActionProposal } from "../features/proposals/signing.js"
-import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
+import type { ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../features/schema/normalize.js"
 import { prepareProposalWriteData } from "../features/proposals/data.js"
 import {
@@ -22,11 +21,12 @@ import {
     type FieldConfig,
 } from "../features/schema/context.js"
 import { getLogPreview, logHandlerEvent } from "../utils/logging.js"
-import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../utils/data.js"
+import { getOptionValue, getSafeProposalLabel, hasValueAtPath, isRecord, setValueAtPath } from "../utils/data.js"
 import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../features/schema/toolSchemas.js"
 import { createToolFieldNamesSchema, resolveToolFieldSelection, type ReadCollectionConfig } from "../features/schema/fieldSelection.js"
 import { createCollectionAliasMap, getChatIntent, getIntentToolChoice, getLikelyCollectionMatches, getToolNamesForIntent } from "./chat/intent.js"
 import { createChatPromptContext } from "./chat/prompt.js"
+import { createChatToolFactory } from "./chat/toolFactory.js"
 import {
     collectProposalBlockTypes,
     fillMissingCreateFields,
@@ -35,12 +35,11 @@ import {
     getProposalSummary,
     getRequestedBlockTypes,
     getRequiredFieldInfos,
-    getUploadTargetsOutsideAttachments,
-    validateRelationshipTargetsExist,
+    validateProposalReferences,
     type BlockFieldConfig,
 } from "./chat/proposalTools.js"
 import { createDebugPayload, createE2EChatResponse, createInitialChatDebug, getChatCompletionReason } from "./chat/streaming.js"
-import type { ChatBody, ChatMediaAttachment, ChatOptions, TokenUsage, ToolFailure } from "./chat/types.js"
+import type { ChatBody, ChatMediaAttachment, ChatOptions, TokenUsage } from "./chat/types.js"
 
 const e2eModeEnabled = () => process.env.PAYLOAD_AI_E2E_MODE === "true"
 
@@ -255,126 +254,6 @@ export const createChatHandler =
         })
 
         try {
-            const proposals: ActionProposal[] = []
-            const toolFailures: ToolFailure[] = []
-            const proposalRepairTracker = createProposalRepairTracker()
-            const registerToolFailure = (failure: ToolFailure) => {
-                toolFailures.push(failure)
-                logHandlerEvent(req, "warn", {
-                    debug,
-                    ...failure,
-                    msg: "AI tool validation failed",
-                    promptPreview: getLogPreview(prompt),
-                })
-            }
-            const createToolError = ({ collection, details, errorCode = "NON_RETRYABLE_TOOL_ERROR", message, slug, tool }: ToolFailure) => {
-                registerToolFailure({
-                    collection,
-                    details,
-                    errorCode,
-                    message,
-                    retryable: false,
-                    slug,
-                    tool,
-                })
-
-                return {
-                    error: message,
-                    errorCode,
-                    retryable: false,
-                }
-            }
-            const createRepairableToolError = ({
-                collection,
-                details,
-                id,
-                issues,
-                message,
-                slug,
-                tool,
-            }: ToolFailure & {
-                id?: string
-                issues: CompactProposalRepairIssue[]
-            }) => {
-                const repair = proposalRepairTracker.registerFailure({
-                    collection,
-                    id,
-                    slug,
-                    tool,
-                })
-                const responseMessage = repair.retryable
-                    ? message
-                    : "The single proposal repair attempt failed. Do not call the same proposal tool for this target again."
-                registerToolFailure({
-                    collection,
-                    details,
-                    errorCode: repair.errorCode,
-                    message: responseMessage,
-                    retryable: repair.retryable,
-                    slug,
-                    tool,
-                })
-
-                return {
-                    error: responseMessage,
-                    errorCode: repair.errorCode,
-                    repair: {
-                        attempt: repair.attempt,
-                        issues,
-                        maxAttempts: repair.maxAttempts,
-                    },
-                    retryable: repair.retryable,
-                }
-            }
-            const getProposalRepairLimitError = ({ collection, id, slug, tool }: { collection?: string; id?: string; slug?: string; tool: string }) => {
-                const callState = proposalRepairTracker.beginCall({
-                    collection,
-                    id,
-                    slug,
-                    tool,
-                })
-
-                if (callState !== "blocked") return null
-
-                return createToolError({
-                    collection,
-                    errorCode: "REPAIR_EXHAUSTED",
-                    message: "The single proposal repair attempt was already used. Do not call this proposal tool for the same target again.",
-                    slug,
-                    tool,
-                })
-            }
-            const addSignedProposal = <Proposal extends ActionProposal>(proposal: Proposal) => {
-                if ("data" in proposal && proposal.data && containsSensitiveData(proposal.data)) {
-                    return createToolError({
-                        details: getProposalSummary(proposal),
-                        message: "Proposal contains sensitive fields and cannot be created.",
-                        tool: `propose${proposal.action[0]?.toUpperCase()}${proposal.action.slice(1)}`,
-                    })
-                }
-
-                if (
-                    "localizedData" in proposal &&
-                    hasLocalizedData(proposal.localizedData) &&
-                    Object.values(proposal.localizedData).some((value) => containsSensitiveData(value))
-                ) {
-                    return createToolError({
-                        details: getProposalSummary(proposal),
-                        message: "Proposal contains sensitive fields and cannot be created.",
-                        tool: `propose${proposal.action[0]?.toUpperCase()}${proposal.action.slice(1)}`,
-                    })
-                }
-
-                const signedProposal = signAIActionProposal(proposal)
-
-                proposals.push(signedProposal)
-                logHandlerEvent(req, "info", {
-                    debug,
-                    msg: "AI proposal created",
-                    proposal: getProposalSummary(signedProposal),
-                })
-                return signedProposal
-            }
             const requestedDocumentScope = body?.documentScope
             const configuredCollectionSlugs = getAllowedCollectionSlugs(req, options.collections)
             const configuredCollectionSlugSet = new Set(configuredCollectionSlugs)
@@ -624,40 +503,42 @@ export const createChatHandler =
             const updateLocalizedDataSchema = createLocalizedPayloadDataSchema(updateDataSchema)
             const globalDataSchema = focusedGlobalConfig ? focusedGlobalDataSchema : genericPayloadDataSchema
             const globalLocalizedDataSchema = createLocalizedPayloadDataSchema(globalDataSchema)
-            const getDisallowedCollectionActionError = (collection: string, action: CollectionAction) => {
-                if (
-                    isCollectionActionAllowed({
-                        action,
-                        permissions: options.collections,
-                        req,
-                        slug: collection,
-                    })
-                )
-                    return null
-
-                return createToolError({
-                    collection,
-                    message: `${action} is not enabled for collection: ${collection}`,
-                    tool: "collectionPermissionCheck",
-                })
-            }
-            const allTools = {
-                getDoc: {
+            const {
+                addProposal: addSignedProposal,
+                collectionTool,
+                error: createToolError,
+                proposalCollectionTool,
+                proposalTool,
+                proposals,
+                repairableError: createRepairableToolError,
+                toolFailures,
+            } = createChatToolFactory({
+                collections: options.collections,
+                currentDocument:
+                    requestedCollectionSlug && requestedDocumentID
+                        ? {
+                              collection: requestedCollectionSlug,
+                              id: requestedDocumentID,
+                          }
+                        : undefined,
+                debug,
+                prompt,
+                req,
+            })
+            const toolRegistry = {
+                getDoc: collectionTool({
+                    action: "read",
+                    currentDocumentOnly: Boolean(requestedDocumentScope),
                     description:
                         "Read a compact document by collection and id. Optionally request up to 12 exact top-level schema fields. Explicitly @-mentioned documents remain complete.",
+                    getDocumentID: ({ id }) => id,
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         fields: collectionReadFieldsSchema,
                         id: z.string().min(1),
                     }),
+                    name: "getDoc",
                     execute: async ({ collection, fields, id }: CollectionInput & DocIDInput & FieldsInput) => {
-                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
-                            return createToolError({
-                                collection,
-                                message: "Only the current document can be read in this context.",
-                                tool: "getDoc",
-                            })
-                        }
                         const explicitlyMentioned = explicitlyMentionedDocumentKeys.has(`${collection}:${id}`)
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const fieldSelection = resolveToolFieldSelection({
@@ -687,7 +568,7 @@ export const createChatHandler =
 
                         return redactSensitiveData(document)
                     },
-                },
+                }),
                 listCollections: {
                     description: "List collections; pass slug for one full schema.",
                     inputSchema: z.object({
@@ -802,8 +683,13 @@ export const createChatHandler =
                         )
                     },
                 },
-                proposeCreateDoc: {
+                proposeCreateDoc: proposalCollectionTool({
+                    action: "create",
                     description: "Propose document creation. Use exact schema fields; include required fields. Use localizedData for multi-locale writes.",
+                    getRepairTarget: ({ collection, label }) => ({
+                        collection,
+                        id: getSafeProposalLabel(label),
+                    }),
                     inputSchema: z
                         .object({
                             collection: focusedCollectionSlugSchema,
@@ -814,21 +700,14 @@ export const createChatHandler =
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
                         }),
+                    name: "proposeCreateDoc",
                     execute: async ({
                         collection,
                         data,
                         label,
                         localizedData,
                     }: CollectionInput & Partial<DataInput> & LabelInput & { localizedData?: LocalizedDataInput }) => {
-                        const permissionError = getDisallowedCollectionActionError(collection, "create")
-                        if (permissionError) return permissionError
                         const repairTargetID = getSafeProposalLabel(label)
-                        const repairLimitError = getProposalRepairLimitError({
-                            collection,
-                            id: repairTargetID,
-                            tool: "proposeCreateDoc",
-                        })
-                        if (repairLimitError) return repairLimitError
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
@@ -911,24 +790,14 @@ export const createChatHandler =
                             }
                         }
 
-                        const uploadTargetsOutsideAttachments = [
-                            ...(preparedData.data
-                                ? getUploadTargetsOutsideAttachments({
-                                      allowedAttachmentKeys,
-                                      data: preparedData.data,
-                                      fields: collectionFields,
-                                  })
-                                : []),
-                            ...(preparedData.localizedData
-                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
-                                      getUploadTargetsOutsideAttachments({
-                                          allowedAttachmentKeys,
-                                          data: localeData,
-                                          fields: collectionFields,
-                                      })
-                                  )
-                                : []),
-                        ]
+                        const { invalidRelationshipTargets, uploadTargetsOutsideAttachments } = await validateProposalReferences({
+                            allowedAttachmentKeys,
+                            data: preparedData.data,
+                            fields: collectionFields,
+                            localizedData: preparedData.localizedData,
+                            priority: "attachments",
+                            req,
+                        })
 
                         if (uploadTargetsOutsideAttachments.length > 0) {
                             return createToolError({
@@ -941,29 +810,6 @@ export const createChatHandler =
                                 tool: "proposeCreateDoc",
                             })
                         }
-
-                        const invalidRelationshipTargets = [
-                            ...(preparedData.data
-                                ? await validateRelationshipTargetsExist({
-                                      data: preparedData.data,
-                                      fields: collectionFields,
-                                      req,
-                                  })
-                                : []),
-                            ...(preparedData.localizedData
-                                ? (
-                                      await Promise.all(
-                                          Object.values(preparedData.localizedData).map((localeData) =>
-                                              validateRelationshipTargetsExist({
-                                                  data: localeData,
-                                                  fields: collectionFields,
-                                                  req,
-                                              })
-                                          )
-                                      )
-                                  ).flat()
-                                : []),
-                        ]
 
                         if (invalidRelationshipTargets.length > 0) {
                             return createToolError({
@@ -994,25 +840,19 @@ export const createChatHandler =
 
                         return addSignedProposal(proposal)
                     },
-                },
-                proposeDeleteDoc: {
+                }),
+                proposeDeleteDoc: collectionTool({
+                    action: "delete",
+                    currentDocumentOnly: Boolean(requestedDocumentScope),
                     description: "Propose document deletion.",
+                    getDocumentID: ({ id }) => id,
                     inputSchema: z.object({
                         collection: collectionSlugSchema,
                         id: z.string().min(1),
                         label: z.string().min(1),
                     }),
+                    name: "proposeDeleteDoc",
                     execute: async ({ collection, id, label }: CollectionInput & DocIDInput & LabelInput) => {
-                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
-                            return createToolError({
-                                collection,
-                                message: "Only the current document can be deleted in this context.",
-                                tool: "proposeDeleteDoc",
-                            })
-                        }
-                        const permissionError = getDisallowedCollectionActionError(collection, "delete")
-                        if (permissionError) return permissionError
-
                         const proposal: ActionProposal = {
                             action: "delete",
                             collection,
@@ -1023,9 +863,13 @@ export const createChatHandler =
 
                         return addSignedProposal(proposal)
                     },
-                },
-                proposeUpdateDoc: {
+                }),
+                proposeUpdateDoc: proposalCollectionTool({
+                    action: "update",
+                    currentDocumentOnly: Boolean(requestedDocumentScope),
                     description: "Propose document update. Use exact schema fields. Use localizedData for multi-locale writes.",
+                    getDocumentID: ({ id }) => id,
+                    getRepairTarget: ({ collection, id }) => ({ collection, id }),
                     inputSchema: z
                         .object({
                             collection: updateHasMultipleTargets ? collectionSlugSchema : focusedCollectionSlugSchema,
@@ -1037,6 +881,7 @@ export const createChatHandler =
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
                         }),
+                    name: "proposeUpdateDoc",
                     execute: async ({
                         collection,
                         data,
@@ -1044,21 +889,6 @@ export const createChatHandler =
                         label,
                         localizedData,
                     }: CollectionInput & Partial<DataInput> & DocIDInput & LabelInput & { localizedData?: LocalizedDataInput }) => {
-                        if (requestedDocumentScope && (collection !== requestedCollectionSlug || id !== requestedDocumentID)) {
-                            return createToolError({
-                                collection,
-                                message: "Only the current document can be updated in this context.",
-                                tool: "proposeUpdateDoc",
-                            })
-                        }
-                        const permissionError = getDisallowedCollectionActionError(collection, "update")
-                        if (permissionError) return permissionError
-                        const repairLimitError = getProposalRepairLimitError({
-                            collection,
-                            id,
-                            tool: "proposeUpdateDoc",
-                        })
-                        if (repairLimitError) return repairLimitError
                         const collectionConfig = allowedCollectionsBySlug.get(collection)
                         const collectionFields = (collectionConfig?.fields || []) as BlockFieldConfig[]
                         const preparedData = prepareProposalWriteData({
@@ -1083,28 +913,14 @@ export const createChatHandler =
                             })
                         }
 
-                        const invalidRelationshipTargets = [
-                            ...(preparedData.data
-                                ? await validateRelationshipTargetsExist({
-                                      data: preparedData.data,
-                                      fields: collectionFields,
-                                      req,
-                                  })
-                                : []),
-                            ...(preparedData.localizedData
-                                ? (
-                                      await Promise.all(
-                                          Object.values(preparedData.localizedData).map((localeData) =>
-                                              validateRelationshipTargetsExist({
-                                                  data: localeData,
-                                                  fields: collectionFields,
-                                                  req,
-                                              })
-                                          )
-                                      )
-                                  ).flat()
-                                : []),
-                        ]
+                        const { invalidRelationshipTargets, uploadTargetsOutsideAttachments } = await validateProposalReferences({
+                            allowedAttachmentKeys,
+                            data: preparedData.data,
+                            fields: collectionFields,
+                            localizedData: preparedData.localizedData,
+                            priority: "relationships",
+                            req,
+                        })
 
                         if (invalidRelationshipTargets.length > 0) {
                             return createToolError({
@@ -1116,25 +932,6 @@ export const createChatHandler =
                                 tool: "proposeUpdateDoc",
                             })
                         }
-
-                        const uploadTargetsOutsideAttachments = [
-                            ...(preparedData.data
-                                ? getUploadTargetsOutsideAttachments({
-                                      allowedAttachmentKeys,
-                                      data: preparedData.data,
-                                      fields: collectionFields,
-                                  })
-                                : []),
-                            ...(preparedData.localizedData
-                                ? Object.values(preparedData.localizedData).flatMap((localeData) =>
-                                      getUploadTargetsOutsideAttachments({
-                                          allowedAttachmentKeys,
-                                          data: localeData,
-                                          fields: collectionFields,
-                                      })
-                                  )
-                                : []),
-                        ]
 
                         if (uploadTargetsOutsideAttachments.length > 0) {
                             return createToolError({
@@ -1159,9 +956,28 @@ export const createChatHandler =
 
                         return addSignedProposal(proposal)
                     },
-                },
-                proposeUpdateGlobal: {
+                }),
+                proposeUpdateGlobal: proposalTool({
+                    beforeRepair: ({ slug }) => {
+                        if (requestedDocumentScope && slug !== requestedGlobalSlug) {
+                            return createToolError({
+                                message: "Only the current global can be updated in this context.",
+                                slug,
+                                tool: "proposeUpdateGlobal",
+                            })
+                        }
+                        if (!globalConfigsBySlug.has(slug)) {
+                            return createToolError({
+                                message: `Unknown global: ${slug}`,
+                                slug,
+                                tool: "proposeUpdateGlobal",
+                            })
+                        }
+
+                        return null
+                    },
                     description: "Propose global update. Use localizedData for multi-locale writes.",
+                    getRepairTarget: ({ slug }) => ({ slug }),
                     inputSchema: z
                         .object({
                             data: globalDataSchema.optional(),
@@ -1172,32 +988,15 @@ export const createChatHandler =
                         .refine((value) => Boolean(value.data || value.localizedData), {
                             message: "Either data or localizedData is required.",
                         }),
+                    name: "proposeUpdateGlobal",
                     execute: async ({
                         data,
                         label,
                         localizedData,
                         slug,
                     }: Partial<DataInput> & LabelInput & SlugInput & { localizedData?: LocalizedDataInput }) => {
-                        if (requestedDocumentScope && slug !== requestedGlobalSlug) {
-                            return createToolError({
-                                message: "Only the current global can be updated in this context.",
-                                slug,
-                                tool: "proposeUpdateGlobal",
-                            })
-                        }
                         const globalConfig = globalConfigsBySlug.get(slug)
-                        if (!globalConfig) {
-                            return createToolError({
-                                message: `Unknown global: ${slug}`,
-                                slug,
-                                tool: "proposeUpdateGlobal",
-                            })
-                        }
-                        const repairLimitError = getProposalRepairLimitError({
-                            slug,
-                            tool: "proposeUpdateGlobal",
-                        })
-                        if (repairLimitError) return repairLimitError
+                        if (!globalConfig) return null
                         const preparedData = prepareProposalWriteData({
                             collectionConfig: {
                                 fields: (globalConfig.fields || []) as ProposalFieldConfig[],
@@ -1232,7 +1031,7 @@ export const createChatHandler =
 
                         return addSignedProposal(proposal)
                     },
-                },
+                }),
                 searchDocs: {
                     description:
                         "Search compact documents in one collection. Returns default identity fields or up to 12 requested exact top-level schema fields.",
@@ -1304,7 +1103,7 @@ export const createChatHandler =
                 hasCurrentGlobal: Boolean(requestedGlobalSlug),
                 intent: chatIntent,
             })
-            const tools = Object.fromEntries(Object.entries(allTools).filter(([name]) => scopedToolNames.has(name)))
+            const tools = Object.fromEntries(Object.entries(toolRegistry).filter(([name]) => scopedToolNames.has(name)))
             debug.tools = Object.keys(tools)
             if (intentToolChoice && !scopedToolNames.has(intentToolChoice.toolName)) {
                 intentToolChoice = undefined

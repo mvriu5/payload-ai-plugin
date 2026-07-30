@@ -615,3 +615,47 @@ export const getUploadTargetsOutsideAttachments = ({
         fields,
     }).filter((target) => !allowedAttachmentKeys.has(`${target.collection}:${String(target.id)}`))
 }
+
+export const validateProposalReferences = async ({
+    allowedAttachmentKeys,
+    data,
+    fields,
+    localizedData,
+    priority,
+    req,
+}: {
+    allowedAttachmentKeys: Set<string>
+    data?: Record<string, unknown>
+    fields: readonly BlockFieldConfig[]
+    localizedData?: LocalizedDataInput
+    priority: "attachments" | "relationships"
+    req: Parameters<PayloadHandler>[0]
+}) => {
+    const records = [...(data ? [data] : []), ...Object.values(localizedData || {})]
+    const uploadTargetsOutsideAttachments = records.flatMap((record) =>
+        getUploadTargetsOutsideAttachments({
+            allowedAttachmentKeys,
+            data: record,
+            fields,
+        })
+    )
+    const invalidRelationshipTargets =
+        priority === "attachments" && uploadTargetsOutsideAttachments.length > 0
+            ? []
+            : (
+                  await Promise.all(
+                      records.map((record) =>
+                          validateRelationshipTargetsExist({
+                              data: record,
+                              fields,
+                              req,
+                          })
+                      )
+                  )
+              ).flat()
+
+    return {
+        invalidRelationshipTargets,
+        uploadTargetsOutsideAttachments,
+    }
+}
