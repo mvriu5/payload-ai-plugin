@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 
-import { getSerializableLabel, isInternalCollection } from "../../payload/shared.js"
+import { getSerializableLabel, isInternalCollection } from "../../utils/data.js"
 import type { MentionOption } from "../mention-popover/MentionPopover.js"
 import { createBadgePrefix, getTextNodeAtOffset, replaceTextRangeWithBadge } from "../ai-input/badge.js"
 import { useDocumentMentionSuggestions } from "../hooks/useDocumentMentionSuggestions.js"

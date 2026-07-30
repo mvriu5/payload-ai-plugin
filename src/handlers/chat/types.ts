@@ -1,6 +1,6 @@
-import type { AIRequestOptions } from "../../ai/requestContext.js"
-import type { ResolvedCollectionPermissionMap } from "../../payload/collectionPermissions.js"
-import type { ChatMention } from "../../payload/schemaContext.js"
+import type { AIRequestOptions } from "../../features/providers/requestContext.js"
+import type { ResolvedCollectionPermissionMap } from "../../features/collectionPermissions.js"
+import type { ChatMention } from "../../features/schema/context.js"
 
 export type ChatMediaAttachment = {
     collection?: string

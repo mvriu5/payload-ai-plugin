@@ -1,6 +1,6 @@
 import { addDataAndFileToRequest, type PayloadHandler } from "payload"
 
-import { getNumber, getString, isRecord } from "../payload/shared.js"
+import { getNumber, getString, isRecord } from "../utils/data.js"
 
 export type MediaUploadOptions = {
     acceptedMimeTypes?: string[]

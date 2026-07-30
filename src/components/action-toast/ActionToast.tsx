@@ -2,7 +2,7 @@ import { Button, CheckIcon, SwapIcon } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
 
-import { redactSensitiveData } from "../../ai/sensitiveData.js"
+import { redactSensitiveData } from "../../features/sensitiveData.js"
 import type { ActionProposal, ProposalDiff } from "../../features/proposals/types.js"
 import type { ActiveDiff } from "../audit-log-list/AuditLogList.js"
 import { DiffDialog } from "../diff-dialog/DiffDialog.js"

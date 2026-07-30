@@ -3,7 +3,7 @@ import type { CSSProperties } from "react"
 import { useEffect, useRef, useState } from "react"
 
 import type { ActionProposalReference, ProposalDiff } from "../../features/proposals/types.js"
-import { getJSONLineKey } from "../../payload/shared.js"
+import { getJSONLineKey } from "../../utils/data.js"
 import styles from "./DiffDialog.module.css"
 import type { AppliedChange } from "../audit-log-list/AuditLogList.js"
 import { Button } from "@payloadcms/ui"

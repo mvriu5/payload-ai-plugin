@@ -2,8 +2,8 @@
 
 import { formatAdminURL } from "payload/shared"
 import { useEffect, useState } from "react"
-import type { AIProviderProfile } from "../../ai/providerOptions.js"
-import { isAbortError } from "../../payload/shared.js"
+import type { AIProviderProfile } from "../../features/providers/options.js"
+import { isAbortError } from "../../utils/data.js"
 
 type CurrentUserResponse = {
     user?: {

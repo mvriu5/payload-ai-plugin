@@ -1,6 +1,6 @@
-import type { AIModelConfig, AIProviderConfig } from "../ai/providerOptions.js"
-import type { MaxTokenUsageOptions } from "../ai/tokenUsage.js"
-import type { CollectionPermissionMap } from "../payload/collectionPermissions.js"
+import type { AIModelConfig, AIProviderConfig } from "../features/providers/options.js"
+import type { MaxTokenUsageOptions } from "../features/tokenUsage.js"
+import type { CollectionPermissionMap } from "../features/collectionPermissions.js"
 
 export type CollectionTypeAIOptions = {
     aiInput?: boolean

@@ -1,12 +1,12 @@
 import type { PayloadHandler } from "payload"
 
-import { verifyActionProposal } from "../ai/proposalSigning.js"
-import { redactSensitiveData } from "../ai/sensitiveData.js"
+import { redactSensitiveData } from "../features/sensitiveData.js"
 import type { ActionProposal } from "../features/proposals/types.js"
-import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../payload/normalizeData.js"
-import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../payload/proposalData.js"
-import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
-import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../payload/shared.js"
+import { verifyActionProposal } from "../features/proposals/signing.js"
+import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../features/schema/normalize.js"
+import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../features/proposals/data.js"
+import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
+import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../utils/data.js"
 
 type ProposalDiffBody = {
     prompt?: string
@@ -153,8 +153,7 @@ export const createProposalDiffHandler =
             }
 
             const collectionConfig = req.payload.config.collections.find((collection) => collection.slug === proposal.collection) as
-                | CollectionConfig
-                | undefined
+                CollectionConfig | undefined
             const collectionFields = getSchemaFields(collectionConfig)
 
             if (hasLocalizedData(proposal)) {

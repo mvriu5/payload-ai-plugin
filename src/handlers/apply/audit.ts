@@ -1,8 +1,8 @@
 import type { PayloadHandler } from "payload"
 
-import { redactSensitiveData } from "../../ai/sensitiveData.js"
+import { redactSensitiveData } from "../../features/sensitiveData.js"
 import type { ActionProposal } from "../../features/proposals/types.js"
-import { getJSONLineKey } from "../../payload/shared.js"
+import { getJSONLineKey } from "../../utils/data.js"
 import type { ApplyActionLogContext } from "./types.js"
 import { getProposalMeta } from "./validation.js"
 
@@ -195,5 +195,3 @@ export const logAIChange = async ({
         return null
     }
 }
-
-

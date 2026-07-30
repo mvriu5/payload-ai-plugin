@@ -1,13 +1,13 @@
 import type { SystemModelMessage } from "ai"
 
-import type { AIProvider } from "../../ai/providerOptions.js"
+import type { AIProvider } from "../../features/providers/options.js"
 import {
     createCachedSystemMessages,
     createPromptCacheProviderOptions,
     splitPromptCacheContext,
     type PromptCacheProviderOptions,
-} from "../../ai/promptCaching.js"
-import { redactSensitiveData } from "../../ai/sensitiveData.js"
+} from "../../features/promptCaching.js"
+import { redactSensitiveData } from "../../features/sensitiveData.js"
 
 export const createChatPromptContext = ({
     chatIntent,

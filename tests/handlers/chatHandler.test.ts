@@ -17,8 +17,8 @@ vi.mock("ai", async () => {
     }
 })
 
-vi.mock("../../src/ai/providerRuntime.js", async () => {
-    const actual = await vi.importActual<typeof import("../../src/ai/providerRuntime.js")>("../../src/ai/providerRuntime.js")
+vi.mock("../../src/features/providers/runtime.js", async () => {
+    const actual = await vi.importActual<typeof import("../../src/features/providers/runtime.js")>("../../src/features/providers/runtime.js")
 
     return {
         ...actual,

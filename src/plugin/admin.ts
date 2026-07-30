@@ -5,11 +5,11 @@ import {
     type getResolvedAIModelConfig,
     type ResolvedAIProviderConfig,
     toClientAIProviderProfiles,
-} from "../ai/providerOptions.js"
+} from "../features/providers/options.js"
 import type { MediaUploadOptions } from "../handlers/mediaUploadHandler.js"
-import { hasLocalizedFields, type TranslationPageContext } from "../payload/documentTranslation.js"
-import { isInternalCollection } from "../payload/shared.js"
-import { addTextGenerationFields, type TextGenerationPageContext } from "../payload/textFieldGeneration.js"
+import { hasLocalizedFields, type TranslationPageContext } from "../features/content/documentTranslation.js"
+import { addTextGenerationFields, type TextGenerationPageContext } from "../features/content/fieldGeneration.js"
+import { isInternalCollection } from "../utils/data.js"
 import type { CollectionTypeAIOptions } from "./types.js"
 
 const hasAuthenticatedUser: Condition = (_data, _siblingData, { user }) => Boolean(user)
@@ -204,4 +204,3 @@ export const configureAIAdmin = ({
     if (!config.admin.components.beforeDashboard) config.admin.components.beforeDashboard = []
     config.admin.components.beforeDashboard.push("@mvriu5/payload-ai/client#Dashboard")
 }
-

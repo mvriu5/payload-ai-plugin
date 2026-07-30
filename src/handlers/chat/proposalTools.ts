@@ -1,9 +1,9 @@
 import type { PayloadHandler } from "payload"
 
 import type { ActionProposal, LocalizedDataInput } from "../../features/proposals/types.js"
-import type { FieldConfig as ProposalFieldConfig } from "../../payload/normalizeData.js"
-import type { ChatMention, FieldConfig } from "../../payload/schemaContext.js"
-import { getOptionValue, getSafeProposalLabel, hasValueAtPath, isRecord, setValueAtPath } from "../../payload/shared.js"
+import type { FieldConfig as ProposalFieldConfig } from "../../features/schema/normalize.js"
+import type { ChatMention, FieldConfig } from "../../features/schema/context.js"
+import { getOptionValue, getSafeProposalLabel, hasValueAtPath, isRecord, setValueAtPath } from "../../utils/data.js"
 
 type RequiredFieldInfo = {
     defaultValue?: unknown
@@ -615,4 +615,3 @@ export const getUploadTargetsOutsideAttachments = ({
         fields,
     }).filter((target) => !allowedAttachmentKeys.has(`${target.collection}:${String(target.id)}`))
 }
-

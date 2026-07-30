@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createGenerateFieldHandler } from "../../src/handlers/generateFieldHandler.js"
-import type { TextGenerationPageContext } from "../../src/payload/textFieldGeneration.js"
+import type { TextGenerationPageContext } from "../../src/features/content/fieldGeneration.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
 
 const generateText = vi.hoisted(() => vi.fn())
@@ -16,8 +16,8 @@ vi.mock("ai", async () => {
     }
 })
 
-vi.mock("../../src/ai/providerRuntime.js", async () => {
-    const actual = await vi.importActual<typeof import("../../src/ai/providerRuntime.js")>("../../src/ai/providerRuntime.js")
+vi.mock("../../src/features/providers/runtime.js", async () => {
+    const actual = await vi.importActual<typeof import("../../src/features/providers/runtime.js")>("../../src/features/providers/runtime.js")
     return {
         ...actual,
         getModel,

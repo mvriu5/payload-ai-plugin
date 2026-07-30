@@ -1,11 +1,11 @@
 import type { PayloadHandler } from "payload"
 
 import type { ActionProposal } from "../../features/proposals/types.js"
-import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../../payload/normalizeData.js"
-import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../../payload/proposalData.js"
-import { isCollectionActionAllowed, type CollectionAction } from "../../payload/collectionPermissions.js"
-import { getDefaultLocale, hasLocalizedData, isKnownGlobal, mergeData } from "../../payload/shared.js"
-import { logHandlerEvent } from "../../payload/logging.js"
+import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../../features/schema/normalize.js"
+import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../../features/proposals/data.js"
+import { isCollectionActionAllowed, type CollectionAction } from "../../features/collectionPermissions.js"
+import { getDefaultLocale, hasLocalizedData, isKnownGlobal, mergeData } from "../../utils/data.js"
+import { logHandlerEvent } from "../../utils/logging.js"
 import { getAppliedDocReference, logAIChange } from "./audit.js"
 import type { ApplyActionLogContext, ApplyActionOptions, ApplyDebugPayload } from "./types.js"
 import { createApplyDebugPayload, getProposalLogSummary } from "./validation.js"
@@ -552,4 +552,3 @@ export const applyActionProposal = async ({
     })
     
 }
-

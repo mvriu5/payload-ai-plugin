@@ -3,8 +3,8 @@ import { isDeepStrictEqual } from "node:util"
 import { generateText } from "ai"
 import type { PayloadHandler } from "payload"
 
-import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../ai/requestContext.js"
-import { getTranslationValues, type TranslationPageContext } from "../payload/documentTranslation.js"
+import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../features/providers/requestContext.js"
+import { getTranslationValues, type TranslationPageContext } from "../features/content/documentTranslation.js"
 
 type TranslateDocumentOptions = AIRequestOptions & {
     maxOutputTokens?: number

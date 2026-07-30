@@ -1,4 +1,4 @@
-import { signAIActionProposal } from "../../src/ai/proposalSigning.js"
+import { signAIActionProposal } from "../../src/features/proposals/signing.js"
 
 type ProposalOptions = {
     id?: string

@@ -1,9 +1,9 @@
 import { generateText } from "ai"
 import type { PayloadHandler } from "payload"
 
-import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../ai/requestContext.js"
-import { redactSensitiveData } from "../ai/sensitiveData.js"
-import type { TextGenerationPageContext } from "../payload/textFieldGeneration.js"
+import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../features/providers/requestContext.js"
+import { redactSensitiveData } from "../features/sensitiveData.js"
+import type { TextGenerationPageContext } from "../features/content/fieldGeneration.js"
 
 type GenerateFieldOptions = AIRequestOptions & {
     maxOutputTokens?: number
@@ -101,10 +101,7 @@ export const createGenerateFieldHandler =
             user: req.user as AIRequestUser,
         })
         if (!aiRequestResolution.ok) {
-            return Response.json(
-                { error: aiRequestResolution.error.message },
-                { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 }
-            )
+            return Response.json({ error: aiRequestResolution.error.message }, { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 })
         }
         const aiRequest = aiRequestResolution.context
 
@@ -125,13 +122,11 @@ export const createGenerateFieldHandler =
                         ? "Write prose suitable for a rich text editor. Separate paragraphs with a blank line."
                         : fieldContext.fieldType === "json"
                           ? "Return one valid JSON value matching the field's purpose. Do not use Markdown code fences."
-                        : fieldContext.fieldType === "textarea"
-                          ? "Write content suitable for a multiline textarea."
-                          : "Write a concise value suitable for a single-line text input.",
+                          : fieldContext.fieldType === "textarea"
+                            ? "Write content suitable for a multiline textarea."
+                            : "Write a concise value suitable for a single-line text input.",
                     body?.locale ? `Locale: ${body.locale}` : "",
-                    blockContext
-                        ? `PRIMARY block context at ${blockContext.path} (${blockContext.type}): ${getCompactContext(blockContext.data)}`
-                        : "",
+                    blockContext ? `PRIMARY block context at ${blockContext.path} (${blockContext.type}): ${getCompactContext(blockContext.data)}` : "",
                     `SECONDARY page context: ${getCompactContext(body?.context || {})}`,
                 ]
                     .filter(Boolean)

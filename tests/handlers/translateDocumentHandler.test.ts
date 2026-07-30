@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createTranslateDocumentHandler } from "../../src/handlers/translateDocumentHandler.js"
-import type { TranslationPageContext } from "../../src/payload/documentTranslation.js"
+import type { TranslationPageContext } from "../../src/features/content/documentTranslation.js"
 import { createMockRequest, readJSON } from "../fixtures/handler.js"
 
 const generateText = vi.hoisted(() => vi.fn())
@@ -13,8 +13,8 @@ vi.mock("ai", async () => ({
     generateText,
 }))
 
-vi.mock("../../src/ai/providerRuntime.js", async () => ({
-    ...(await vi.importActual<typeof import("../../src/ai/providerRuntime.js")>("../../src/ai/providerRuntime.js")),
+vi.mock("../../src/features/providers/runtime.js", async () => ({
+    ...(await vi.importActual<typeof import("../../src/features/providers/runtime.js")>("../../src/features/providers/runtime.js")),
     getModel,
 }))
 

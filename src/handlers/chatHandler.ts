@@ -3,18 +3,14 @@ import type { PayloadHandler } from "payload"
 import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
-import { signAIActionProposal } from "../ai/proposalSigning.js"
-import {
-    compactProposalRepairIssues,
-    createProposalRepairTracker,
-    type CompactProposalRepairIssue,
-} from "../ai/proposalRepair.js"
-import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../ai/sensitiveData.js"
-import { resolveAIRequestContext, type AIRequestUser } from "../ai/requestContext.js"
+import { compactProposalRepairIssues, createProposalRepairTracker, type CompactProposalRepairIssue } from "../features/proposals/repair.js"
+import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../features/sensitiveData.js"
+import { resolveAIRequestContext, type AIRequestUser } from "../features/providers/requestContext.js"
 import type { ActionProposal, LocalizedDataInput } from "../features/proposals/types.js"
-import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
-import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
-import { prepareProposalWriteData } from "../payload/proposalData.js"
+import { signAIActionProposal } from "../features/proposals/signing.js"
+import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
+import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../features/schema/normalize.js"
+import { prepareProposalWriteData } from "../features/proposals/data.js"
 import {
     buildPromptWithMentionContext,
     collectBlocks,
@@ -24,11 +20,11 @@ import {
     getMentionContext,
     type ChatMention,
     type FieldConfig,
-} from "../payload/schemaContext.js"
-import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
-import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../payload/shared.js"
-import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../payload/toolSchemas.js"
-import { createToolFieldNamesSchema, resolveToolFieldSelection, type ReadCollectionConfig } from "../payload/toolFieldSelection.js"
+} from "../features/schema/context.js"
+import { getLogPreview, logHandlerEvent } from "../utils/logging.js"
+import { getOptionValue, getSafeProposalLabel, hasLocalizedData, hasValueAtPath, isRecord, setValueAtPath } from "../utils/data.js"
+import { createLocalizedPayloadDataSchema, createPayloadDataSchema, genericPayloadDataSchema } from "../features/schema/toolSchemas.js"
+import { createToolFieldNamesSchema, resolveToolFieldSelection, type ReadCollectionConfig } from "../features/schema/fieldSelection.js"
 import { createCollectionAliasMap, getChatIntent, getIntentToolChoice, getLikelyCollectionMatches, getToolNamesForIntent } from "./chat/intent.js"
 import { createChatPromptContext } from "./chat/prompt.js"
 import {
@@ -330,17 +326,7 @@ export const createChatHandler =
                     retryable: repair.retryable,
                 }
             }
-            const getProposalRepairLimitError = ({
-                collection,
-                id,
-                slug,
-                tool,
-            }: {
-                collection?: string
-                id?: string
-                slug?: string
-                tool: string
-            }) => {
+            const getProposalRepairLimitError = ({ collection, id, slug, tool }: { collection?: string; id?: string; slug?: string; tool: string }) => {
                 const callState = proposalRepairTracker.beginCall({
                     collection,
                     id,
@@ -1276,12 +1262,7 @@ export const createChatHandler =
                         }
                         const searchableFields =
                             collectionConfig?.fields.flatMap((field) => {
-                                if (
-                                    !("name" in field) ||
-                                    !["email", "text", "textarea"].includes(field.type) ||
-                                    !field.name ||
-                                    isSensitiveKey(field.name)
-                                )
+                                if (!("name" in field) || !["email", "text", "textarea"].includes(field.type) || !field.name || isSensitiveKey(field.name))
                                     return []
 
                                 return [field.name]

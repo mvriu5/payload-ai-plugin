@@ -4,7 +4,7 @@ import React from "react"
 import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { AIProviderProfile } from "../../src/ai/providerOptions.js"
+import type { AIProviderProfile } from "../../src/features/providers/options.js"
 import { useAISettings } from "../../src/components/hooks/useAISettings.js"
 import { installLocalStorageMock } from "../fixtures/localStorage.js"
 import { cleanupRoots, render } from "../fixtures/react.js"

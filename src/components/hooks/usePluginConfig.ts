@@ -4,7 +4,7 @@ import {
     getResolvedAIModelConfig,
     type AIModelConfig,
     type AIProviderProfile,
-} from "../../ai/providerOptions.js"
+} from "../../features/providers/options.js"
 
 type PayloadAIAdminCustom = {
     payloadAiPlugin?: {

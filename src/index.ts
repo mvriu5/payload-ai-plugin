@@ -1,17 +1,17 @@
 import type { Config } from "payload"
 
-import { getResolvedAIModelConfig, resolveAIProviderConfigs } from "./ai/providerOptions.js"
-import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug } from "./ai/tokenUsage.js"
-import { isInternalCollection } from "./payload/shared.js"
-import { resolveCollectionPermissions } from "./payload/collectionPermissions.js"
+import { getResolvedAIModelConfig, resolveAIProviderConfigs } from "./features/providers/options.js"
+import { resolveMaxTokenUsageOptions, tokenUsageCollectionSlug } from "./features/tokenUsage.js"
+import { isInternalCollection } from "./utils/data.js"
+import { resolveCollectionPermissions } from "./features/collectionPermissions.js"
 import { addAccountFields, addAIFieldsToDocumentsAndGlobals, configureAIAdmin } from "./plugin/admin.js"
 import { createAIChangesCollection, createAITokenUsageCollection } from "./plugin/collections.js"
 import { registerAIEndpoints } from "./plugin/endpoints.js"
 import { resolveMaxOutputTokens, resolveMediaUploadOptions } from "./plugin/options.js"
 import type { PayloadAIPluginOptions } from "./plugin/types.js"
 
-export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./ai/providerOptions.js"
-export type { MaxTokenUsageOptions } from "./ai/tokenUsage.js"
+export type { AIModelConfig, AIProviderConfig, AIProviderModelOption } from "./features/providers/options.js"
+export type { MaxTokenUsageOptions } from "./features/tokenUsage.js"
 export type { CollectionTypeAIOptions, PayloadAIPluginOptions } from "./plugin/types.js"
 
 export const payloadAiPlugin =

@@ -1,10 +1,10 @@
 import type { PayloadHandler } from "payload"
 
-import { verifyActionProposal } from "../../ai/proposalSigning.js"
-import { containsSensitiveData } from "../../ai/sensitiveData.js"
+import { containsSensitiveData } from "../../features/sensitiveData.js"
 import type { ActionProposal } from "../../features/proposals/types.js"
-import { getOptionalNumber, hasLocalizedData, isActionProposal } from "../../payload/shared.js"
-import { logHandlerEvent } from "../../payload/logging.js"
+import { verifyActionProposal } from "../../features/proposals/signing.js"
+import { getOptionalNumber, hasLocalizedData, isActionProposal } from "../../utils/data.js"
+import { logHandlerEvent } from "../../utils/logging.js"
 import type { ApplyActionBody, ApplyActionLogContext, ApplyDebugPayload } from "./types.js"
 
 type ProposalMeta = {

@@ -1,7 +1,7 @@
 import type { PayloadHandler } from "payload"
 
-import { getLogPreview, logHandlerEvent } from "../payload/logging.js"
-import { isRecord } from "../payload/shared.js"
+import { getLogPreview, logHandlerEvent } from "../utils/logging.js"
+import { isRecord } from "../utils/data.js"
 import { applyActionProposal } from "./apply/operations.js"
 import type { ApplyActionOptions } from "./apply/types.js"
 import {

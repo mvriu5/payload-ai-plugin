@@ -3,7 +3,7 @@
 import { formatAdminURL } from "payload/shared"
 import { useEffect, useState } from "react"
 import type { MentionOption } from "../mention-popover/MentionPopover.js"
-import { isAbortError } from "../../payload/shared.js"
+import { isAbortError } from "../../utils/data.js"
 
 type MentionRange = {
     end: number

@@ -1,7 +1,7 @@
 import type { Config } from "payload"
 
-import type { getResolvedAIModelConfig, ResolvedAIProviderConfig } from "../ai/providerOptions.js"
-import type { ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
+import type { getResolvedAIModelConfig, ResolvedAIProviderConfig } from "../features/providers/options.js"
+import type { ResolvedMaxTokenUsageOptions } from "../features/tokenUsage.js"
 import { createApplyActionHandler } from "../handlers/applyActionHandler.js"
 import { createAuditLogHandler } from "../handlers/auditLogHandler.js"
 import { createChatHandler } from "../handlers/chatHandler.js"
@@ -10,9 +10,9 @@ import { createMediaUploadHandler, type MediaUploadOptions } from "../handlers/m
 import { createMentionSuggestionHandler } from "../handlers/mentionSuggestionHandler.js"
 import { createProposalDiffHandler } from "../handlers/proposalDiffHandler.js"
 import { createTranslateDocumentHandler } from "../handlers/translateDocumentHandler.js"
-import type { ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
-import type { TranslationPageContext } from "../payload/documentTranslation.js"
-import type { TextGenerationPageContext } from "../payload/textFieldGeneration.js"
+import type { ResolvedCollectionPermissionMap } from "../features/collectionPermissions.js"
+import type { TranslationPageContext } from "../features/content/documentTranslation.js"
+import type { TextGenerationPageContext } from "../features/content/fieldGeneration.js"
 
 type RegisterAIEndpointsOptions = {
     allowUserApiKeys: boolean

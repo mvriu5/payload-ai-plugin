@@ -1,4 +1,4 @@
-import { signAIActionProposal } from "../../ai/proposalSigning.js"
+import { signAIActionProposal } from "../../features/proposals/signing.js"
 import type { ChatDebug, TokenUsage, ToolFailure } from "./types.js"
 
 type ChatDebugPayload = {

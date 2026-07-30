@@ -1,4 +1,4 @@
-import type { ResolvedCollectionPermissionMap } from "../../payload/collectionPermissions.js"
+import type { ResolvedCollectionPermissionMap } from "../../features/collectionPermissions.js"
 import type { ActionProposal } from "../../features/proposals/types.js"
 
 export type ApplyActionBody = {

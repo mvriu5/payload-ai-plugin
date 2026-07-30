@@ -1,6 +1,6 @@
 import type { CollectionConfig } from "payload"
 
-import { tokenUsageCollectionSlug } from "../ai/tokenUsage.js"
+import { tokenUsageCollectionSlug } from "../features/tokenUsage.js"
 
 export const createAIChangesCollection = (): CollectionConfig => ({
     slug: "payload-ai-auditlog",
@@ -157,5 +157,3 @@ export const createAITokenUsageCollection = (): CollectionConfig => ({
     ],
     timestamps: true,
 })
-
-
