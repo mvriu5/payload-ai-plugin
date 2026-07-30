@@ -362,6 +362,62 @@ describe("prepareProposalWriteData", () => {
         })
     })
 
+    it("wraps primitive array items using the array label field", () => {
+        const result = prepareProposalWriteData({
+            collectionConfig: pageCollection,
+            data: {
+                items: ["First item"],
+            },
+            label: "Update items",
+            mode: "update",
+        })
+
+        expect(result.issues).toEqual([])
+        expect(result.data).toMatchObject({
+            items: [{ label: "First item" }],
+        })
+    })
+
+    it("normalizes grouped checkbox and date fields through their field strategies", () => {
+        const result = prepareProposalWriteData({
+            collectionConfig: {
+                fields: [
+                    {
+                        fields: [
+                            {
+                                name: "enabled",
+                                type: "checkbox",
+                            },
+                            {
+                                name: "publishedAt",
+                                type: "date",
+                            },
+                        ],
+                        name: "settings",
+                        type: "group",
+                    },
+                ],
+                slug: "settings",
+            },
+            data: {
+                settings: {
+                    enabled: "true",
+                    publishedAt: "2026-07-30",
+                },
+            },
+            label: "Update settings",
+            mode: "update",
+        })
+
+        expect(result.issues).toEqual([])
+        expect(result.data).toEqual({
+            settings: {
+                enabled: true,
+                publishedAt: "2026-07-30T00:00:00.000Z",
+            },
+        })
+    })
+
     it("rejects unknown fields on update proposals", () => {
         const result = prepareProposalWriteData({
             collectionConfig: pageCollection,

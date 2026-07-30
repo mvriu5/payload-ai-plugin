@@ -2,7 +2,7 @@ import { isActionProposal, isRecord } from "../../utils/data.js"
 import { verifyActionProposal } from "./signing.js"
 import type { ActionProposal } from "./types.js"
 
-export type ProposalValidationError = "invalid_shape" | "invalid_signature" | "missing"
+type ProposalValidationError = "invalid_shape" | "invalid_signature" | "missing"
 
 export type SignedProposalValidation =
     | {
