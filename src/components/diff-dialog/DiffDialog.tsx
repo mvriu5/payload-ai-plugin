@@ -2,22 +2,17 @@ import { XIcon } from "@payloadcms/ui/icons/X"
 import type { CSSProperties } from "react"
 import { useEffect, useRef, useState } from "react"
 
+import type { ActionProposalReference, ProposalDiff } from "../../features/proposals/types.js"
 import { getJSONLineKey } from "../../payload/shared.js"
 import styles from "./DiffDialog.module.css"
-import type { ActionProposal } from "../action-toast/ActionToast.js"
 import type { AppliedChange } from "../audit-log-list/AuditLogList.js"
 import { Button } from "@payloadcms/ui"
-
-export type ProposalDiff = {
-    after: unknown
-    before: unknown
-}
 
 type DiffDialogProps = {
     change?: AppliedChange
     diff: ProposalDiff
     onClose: () => void
-    proposal: ActionProposal
+    proposal: ActionProposalReference
     tokenUsage?: {
         inputTokens?: number
         outputTokens?: number

@@ -1,11 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 
+import type { AIActionSignature } from "../features/proposals/types.js"
 import { isRecord } from "../payload/shared.js"
 
-export type AIActionSignature = {
-    expiresAt: string
-    value: string
-}
+export type { AIActionSignature } from "../features/proposals/types.js"
 
 type SignableProposal = Record<string, unknown> & {
     _aiSignature?: AIActionSignature

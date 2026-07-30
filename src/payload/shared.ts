@@ -1,17 +1,6 @@
 import type { PayloadHandler } from "payload"
 
-export type LocalizedDataInput = Record<string, Record<string, unknown>>
-
-export type AIActionProposalLike = {
-    action: "create" | "delete" | "update" | "updateGlobal"
-    collection?: string
-    data?: Record<string, unknown>
-    id?: string
-    label: string
-    locale?: string
-    localizedData?: LocalizedDataInput
-    slug?: string
-}
+import type { ActionProposal, LocalizedDataInput } from "../features/proposals/types.js"
 
 const maxProposalLabelLength = 90
 
@@ -85,7 +74,7 @@ const hasWriteData = (proposal: Record<string, unknown>) => {
     return hasData !== hasLocalizedProposalData
 }
 
-export const isActionProposal = (proposal: unknown): proposal is AIActionProposalLike => {
+export const isActionProposal = (proposal: unknown): proposal is ActionProposal => {
     if (!isRecord(proposal) || !isNonEmptyString(proposal.label)) return false
 
     if (proposal.action === "create") {

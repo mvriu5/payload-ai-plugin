@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Button, ExternalLinkIcon, useConfig } from "@payloadcms/ui"
-import type { ActionProposal } from "../action-toast/ActionToast.js"
-import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
+import type { ActionProposal, ActionProposalReference, ProposalDiff } from "../../features/proposals/types.js"
+import { DiffDialog } from "../diff-dialog/DiffDialog.js"
 import styles from "./AuditLogList.module.css"
 import { useAuditLog } from "../hooks/useAuditLog.js"
 
@@ -30,10 +30,10 @@ export type AppliedChange = {
 export type ActiveDiff = {
     change: AppliedChange | null
     diff: ProposalDiff
-    proposal: ActionProposal
+    proposal: ActionProposalReference
 }
 
-const getChangeProposal = (change: AppliedChange): ActionProposal => ({
+const getChangeProposal = (change: AppliedChange): ActionProposalReference => ({
     action: change.action || "update",
     collection: change.collection || undefined,
     id: change.documentID || undefined,

@@ -1,6 +1,7 @@
 import { formatAdminURL } from "payload/shared"
 import { RefObject, useCallback, useState } from "react"
-import type { ActionProposal } from "../action-toast/ActionToast.js"
+
+import type { ActionProposal } from "../../features/proposals/types.js"
 import type { Mention } from "./useMentions.js"
 
 export type TokenUsage = {

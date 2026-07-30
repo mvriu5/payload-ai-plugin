@@ -3,7 +3,7 @@ import type { PayloadHandler } from "payload"
 import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
-import { signAIActionProposal, type AIActionSignature } from "../ai/proposalSigning.js"
+import { signAIActionProposal } from "../ai/proposalSigning.js"
 import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
 import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { createCachedSystemMessages, createPromptCacheProviderOptions, splitPromptCacheContext } from "../ai/promptCaching.js"
@@ -14,6 +14,7 @@ import {
 } from "../ai/proposalRepair.js"
 import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../ai/sensitiveData.js"
 import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
+import type { ActionProposal, LocalizedDataInput } from "../features/proposals/types.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
 import { prepareProposalWriteData } from "../payload/proposalData.js"
@@ -121,8 +122,6 @@ type FieldsInput = {
     fields?: string[]
 }
 
-type LocalizedDataInput = Record<string, Record<string, unknown>>
-
 type TokenUsage = {
     inputTokens?: number
     outputTokens?: number
@@ -161,44 +160,6 @@ type RelationshipTargetReference = {
     collection: string
     id: number | string
     path: string
-}
-
-type ProposalWritePayload =
-    | {
-          data: Record<string, unknown>
-          localizedData?: never
-      }
-    | {
-          data?: never
-          localizedData: LocalizedDataInput
-      }
-
-export type ActionProposal = (
-    | ({
-          action: "create"
-          collection: string
-          label: string
-      } & ProposalWritePayload)
-    | {
-          action: "delete"
-          collection: string
-          id: string
-          label: string
-      }
-    | ({
-          action: "update"
-          collection: string
-          id: string
-          label: string
-      } & ProposalWritePayload)
-    | ({
-          action: "updateGlobal"
-          label: string
-          slug: string
-      } & ProposalWritePayload)
-) & {
-    _aiSignature?: AIActionSignature
-    locale?: string
 }
 
 type ChatOptions = {

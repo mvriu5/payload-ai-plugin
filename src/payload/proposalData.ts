@@ -1,4 +1,5 @@
-import { getSafeProposalLabel, getOptionValue, isRecord, type LocalizedDataInput } from "./shared.js"
+import type { LocalizedDataInput } from "../features/proposals/types.js"
+import { getSafeProposalLabel, getOptionValue, isRecord } from "./shared.js"
 import { createLexicalText, getSchemaFields, normalizeAuthData, normalizeDataForFields, type CollectionConfig, type FieldConfig } from "./normalizeData.js"
 
 type ProposalMode = "create" | "update"

@@ -2,11 +2,11 @@ import type { PayloadHandler } from "payload"
 
 import { verifyActionProposal } from "../ai/proposalSigning.js"
 import { redactSensitiveData } from "../ai/sensitiveData.js"
+import type { ActionProposal } from "../features/proposals/types.js"
 import { type CollectionConfig, type FieldConfig, getSchemaFields } from "../payload/normalizeData.js"
 import { applyLocalizedRequiredFallbackToPreparedData, prepareProposalWriteData } from "../payload/proposalData.js"
 import { isCollectionActionAllowed, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import { getDefaultLocale, hasLocalizedData, isActionProposal, mergeData } from "../payload/shared.js"
-import type { ActionProposal } from "./chatHandler.js"
 
 type ProposalDiffBody = {
     prompt?: string

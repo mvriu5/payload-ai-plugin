@@ -1,9 +1,11 @@
 import { Button, CheckIcon, SwapIcon } from "@payloadcms/ui"
 import { formatAdminURL } from "payload/shared"
 import { useState } from "react"
+
 import { redactSensitiveData } from "../../ai/sensitiveData.js"
+import type { ActionProposal, ProposalDiff } from "../../features/proposals/types.js"
 import type { ActiveDiff } from "../audit-log-list/AuditLogList.js"
-import { DiffDialog, type ProposalDiff } from "../diff-dialog/DiffDialog.js"
+import { DiffDialog } from "../diff-dialog/DiffDialog.js"
 import { TextShimmer } from "../text-shimmer/TextShimmer.js"
 import styles from "./ActionToast.module.css"
 
@@ -28,21 +30,6 @@ const ACTION_TOAST_TEXT = {
 const PROPOSAL_DIFF_ENDPOINT = "/ai-proposal-diff"
 const JSON_CONTENT_TYPE = "application/json"
 const POST_METHOD = "POST"
-
-export type ActionProposal = {
-    _aiSignature?: {
-        expiresAt: string
-        value: string
-    }
-    action: "create" | "delete" | "update" | "updateGlobal"
-    collection?: string
-    data?: Record<string, unknown>
-    id?: string
-    label: string
-    locale?: string
-    localizedData?: Record<string, Record<string, unknown>>
-    slug?: string
-}
 
 type ActionToastProps = {
     apiRoute: string
