@@ -9,7 +9,7 @@ type PromptCacheContext = {
     dynamic: Record<string, unknown>[]
 }
 
-type PromptCacheProviderOptions = NonNullable<SystemModelMessage["providerOptions"]>
+export type PromptCacheProviderOptions = NonNullable<SystemModelMessage["providerOptions"]>
 
 const getContextKey = (context: Record<string, unknown>) => {
     return [context.type, context.parent, context.collection, context.slug].filter(Boolean).join(":") || JSON.stringify(context)
