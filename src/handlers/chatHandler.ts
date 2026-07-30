@@ -4,8 +4,6 @@ import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
 import { signAIActionProposal } from "../ai/proposalSigning.js"
-import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
-import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
 import { createCachedSystemMessages, createPromptCacheProviderOptions, splitPromptCacheContext } from "../ai/promptCaching.js"
 import {
     compactProposalRepairIssues,
@@ -13,7 +11,7 @@ import {
     type CompactProposalRepairIssue,
 } from "../ai/proposalRepair.js"
 import { containsSensitiveData, isSensitiveKey, redactSensitiveData } from "../ai/sensitiveData.js"
-import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
+import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../ai/requestContext.js"
 import type { ActionProposal, LocalizedDataInput } from "../features/proposals/types.js"
 import { isCollectionActionAllowed, type CollectionAction, type ResolvedCollectionPermissionMap } from "../payload/collectionPermissions.js"
 import type { CollectionConfig as ProposalCollectionConfig, FieldConfig as ProposalFieldConfig } from "../payload/normalizeData.js"
@@ -61,17 +59,27 @@ type ChatMediaAttachment = {
     url?: string
 }
 
-type User = {
-    aiApiKey?: string | null
-    aiProvider?: AIProvider | string | null
-    id: number | string
-}
-
 type ChatDebug = {
     model: string
     provider: string
     tools: string[]
 }
+
+const createInitialChatDebug = ({ model, provider }: { model: string; provider: string }): ChatDebug => ({
+    model,
+    provider,
+    tools: [
+        "getDoc",
+        "getGlobal",
+        "listCollections",
+        "listGlobals",
+        "proposeCreateDoc",
+        "proposeDeleteDoc",
+        "proposeUpdateDoc",
+        "proposeUpdateGlobal",
+        "searchDocs",
+    ],
+})
 
 type ToolFailure = {
     collection?: string
@@ -162,14 +170,10 @@ type RelationshipTargetReference = {
     path: string
 }
 
-type ChatOptions = {
-    allowUserApiKeys?: boolean
+type ChatOptions = AIRequestOptions & {
     collections?: ResolvedCollectionPermissionMap
     maxOutputTokens?: number
-    maxTokenUsage?: ResolvedMaxTokenUsageOptions
-    models?: AIModelConfig
     promptCaching?: boolean
-    providers?: ResolvedAIProviderConfig[]
 }
 
 const e2eModeEnabled = () => process.env.PAYLOAD_AI_E2E_MODE === "true"
@@ -1214,89 +1218,59 @@ export const createChatHandler =
             })
         }
 
-        const user = req.user as User
-        const exceededTokenUsageLimit = await getExceededTokenUsageLimit({
-            maxTokenUsage: options.maxTokenUsage,
+        const user = req.user as AIRequestUser
+        const aiRequestResolution = await resolveAIRequestContext({
+            options,
             req,
-            userID: user.id,
+            requestedModel: body?.model,
+            requestedProvider: body?.provider,
+            user,
         })
 
-        if (exceededTokenUsageLimit) {
-            const scope = options.maxTokenUsage?.type === "site" ? "site" : "user"
-            const periodLabel = exceededTokenUsageLimit.period === "day" ? "Daily" : "Weekly"
+        if (!aiRequestResolution.ok) {
+            if (aiRequestResolution.error.code === "token_limit") {
+                const exceededTokenUsageLimit = aiRequestResolution.error.tokenLimit
+                const scope = options.maxTokenUsage?.type === "site" ? "site" : "user"
+                const periodLabel = exceededTokenUsageLimit.period === "day" ? "Daily" : "Weekly"
 
-            logHandlerEvent(req, "warn", {
-                limit: exceededTokenUsageLimit.limit,
-                msg: "AI chat blocked: token usage limit reached",
-                period: exceededTokenUsageLimit.period,
-                scope,
-                used: exceededTokenUsageLimit.used,
-                userID: String(user.id),
-            })
-
-            return Response.json(
-                {
-                    error: `${periodLabel} AI token limit reached for this ${scope}.`,
+                logHandlerEvent(req, "warn", {
                     limit: exceededTokenUsageLimit.limit,
+                    msg: "AI chat blocked: token usage limit reached",
                     period: exceededTokenUsageLimit.period,
+                    scope,
                     used: exceededTokenUsageLimit.used,
-                },
-                { status: 429 }
-            )
-        }
+                    userID: String(user.id),
+                })
 
-        const managedProviders = options.providers?.length ? options.providers : null
-        const requestedProvider = body?.provider || (managedProviders ? managedProviders[0].id : user.aiProvider || "openai")
-        const managedProvider = managedProviders?.find((providerConfig) => providerConfig.id === requestedProvider)
+                return Response.json(
+                    {
+                        error: `${periodLabel} AI token limit reached for this ${scope}.`,
+                        limit: exceededTokenUsageLimit.limit,
+                        period: exceededTokenUsageLimit.period,
+                        used: exceededTokenUsageLimit.used,
+                    },
+                    { status: 429 }
+                )
+            }
 
-        if (managedProviders && !managedProvider) {
-            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
-        }
-        if (!managedProvider && !isAIProvider(requestedProvider)) {
-            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
-        }
+            if (aiRequestResolution.error.code !== "missing_api_key") {
+                return Response.json({ error: aiRequestResolution.error.message }, { status: 400 })
+            }
 
-        const provider = (managedProvider?.provider || requestedProvider) as AIProvider
-        const requestedModel = body?.model || managedProvider?.defaultModel
-
-        if (managedProvider && requestedModel && !managedProvider.models.some((model) => model.value === requestedModel)) {
-            return Response.json({ error: `Unsupported model "${requestedModel}" for AI provider "${managedProvider.id}".` }, { status: 400 })
-        }
-
-        const userApiKey = managedProvider ? managedProvider.apiKey : options.allowUserApiKeys === false ? null : user.aiApiKey
-        const providerConfig = getProviderConfig({
-            apiKey: userApiKey,
-            defaultModels: options.models?.defaults,
-            model: requestedModel,
-            provider,
-        })
-        const debug: ChatDebug = {
-            model: providerConfig.modelID,
-            provider: managedProvider?.id || provider,
-            tools: [
-                "getDoc",
-                "getGlobal",
-                "listCollections",
-                "listGlobals",
-                "proposeCreateDoc",
-                "proposeDeleteDoc",
-                "proposeUpdateDoc",
-                "proposeUpdateGlobal",
-                "searchDocs",
-            ],
-        }
-
-        logHandlerEvent(req, "info", {
-            activeLocale,
-            debug,
-            mentionCount: mentionSummary.length,
-            mentions: mentionSummary,
-            msg: "AI chat started",
-            promptPreview: getLogPreview(prompt),
-            selectedLocales,
-        })
-
-        if (!providerConfig.apiKey) {
+            const missingKeyError = aiRequestResolution.error
+            const debug = createInitialChatDebug({
+                model: missingKeyError.modelID,
+                provider: missingKeyError.providerID,
+            })
+            logHandlerEvent(req, "info", {
+                activeLocale,
+                debug,
+                mentionCount: mentionSummary.length,
+                mentions: mentionSummary,
+                msg: "AI chat started",
+                promptPreview: getLogPreview(prompt),
+                selectedLocales,
+            })
             logHandlerEvent(req, "warn", {
                 activeLocale,
                 debug,
@@ -1306,15 +1280,31 @@ export const createChatHandler =
             })
             return Response.json(
                 {
-                    error: managedProvider
-                        ? `Configure a ${managedProvider?.id || provider} API key in the plugin config or server environment first.`
+                    error: missingKeyError.managedProvider
+                        ? `Configure a ${missingKeyError.providerID} API key in the plugin config or server environment first.`
                         : options.allowUserApiKeys === false
-                          ? `Configure a ${provider} API key in the server environment first.`
-                          : `Add a ${provider} API key to your account settings or configure it in the server environment first.`,
+                          ? `Configure a ${missingKeyError.provider} API key in the server environment first.`
+                          : `Add a ${missingKeyError.provider} API key to your account settings or configure it in the server environment first.`,
                 },
                 { status: 400 }
             )
         }
+        const resolvedAIRequest = aiRequestResolution.context
+        const provider = resolvedAIRequest.provider
+        const managedProvider = resolvedAIRequest.managedProvider
+        const debug = createInitialChatDebug({
+            model: resolvedAIRequest.modelID,
+            provider: resolvedAIRequest.providerID,
+        })
+        logHandlerEvent(req, "info", {
+            activeLocale,
+            debug,
+            mentionCount: mentionSummary.length,
+            mentions: mentionSummary,
+            msg: "AI chat started",
+            promptPreview: getLogPreview(prompt),
+            selectedLocales,
+        })
 
         try {
             const proposals: ActionProposal[] = []
@@ -2391,12 +2381,7 @@ export const createChatHandler =
                 controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
             }
 
-            const model = await getModel({
-                apiKey: providerConfig.apiKey,
-                ...(managedProvider?.baseURL ? { baseURL: managedProvider.baseURL } : {}),
-                model: providerConfig.modelID,
-                provider,
-            })
+            const model = await resolvedAIRequest.loadModel()
             const promptCaching = options.promptCaching !== false
             const explicitPromptCaching = promptCaching && !managedProvider?.baseURL
             const sanitizedMentionContext = redactSensitiveData(mentionContext) as Record<string, unknown>[]
@@ -2438,7 +2423,7 @@ export const createChatHandler =
             const promptCacheProviderOptions = createPromptCacheProviderOptions({
                 cacheKeyParts: [cacheableMentionContext, cacheableSystemInstructions, [...scopedToolNames].sort()],
                 enabled: explicitPromptCaching,
-                model: providerConfig.modelID,
+                model: resolvedAIRequest.modelID,
                 provider,
             })
 
@@ -2483,15 +2468,9 @@ export const createChatHandler =
                                 }
 
                                 usage = finishPart.totalUsage || finishPart.usage || null
-                                if (usage && options.maxTokenUsage) {
+                                if (usage) {
                                     try {
-                                        await recordTokenUsage({
-                                            model: providerConfig.modelID,
-                                            provider: managedProvider?.id || provider,
-                                            req,
-                                            usage,
-                                            userID: user.id,
-                                        })
+                                        await resolvedAIRequest.recordUsage(usage)
                                     } catch (err) {
                                         req.payload.logger.error({
                                             err,

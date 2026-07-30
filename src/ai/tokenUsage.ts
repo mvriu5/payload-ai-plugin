@@ -23,7 +23,7 @@ type TokenUsageDocument = {
     totalTokens?: number
 }
 
-type TokenUsageLimit = {
+export type TokenUsageLimit = {
     limit: number
     period: "day" | "week"
     used: number

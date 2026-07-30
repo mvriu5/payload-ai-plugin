@@ -3,18 +3,12 @@ import { isDeepStrictEqual } from "node:util"
 import { generateText } from "ai"
 import type { PayloadHandler } from "payload"
 
-import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
-import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
-import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
+import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../ai/requestContext.js"
 import { getTranslationValues, type TranslationPageContext } from "../payload/documentTranslation.js"
 
-type TranslateDocumentOptions = {
-    allowUserApiKeys?: boolean
+type TranslateDocumentOptions = AIRequestOptions & {
     maxOutputTokens?: number
-    maxTokenUsage?: ResolvedMaxTokenUsageOptions
-    models?: AIModelConfig
     pageContexts: Map<string, TranslationPageContext>
-    providers?: ResolvedAIProviderConfig[]
 }
 
 type TranslateDocumentBody = {
@@ -27,12 +21,6 @@ type TranslateDocumentBody = {
         slug?: string
         type?: "collection" | "global"
     }
-}
-
-type User = {
-    aiApiKey?: string | null
-    aiProvider?: AIProvider | string | null
-    id: number | string
 }
 
 const getDefaultLocale = (req: Parameters<PayloadHandler>[0]) => {
@@ -121,40 +109,21 @@ export const createTranslateDocumentHandler =
 
             if (body.action === "status" || !available) return Response.json({ available })
 
-            const user = req.user as User
-            const exceededLimit = await getExceededTokenUsageLimit({
-                maxTokenUsage: options.maxTokenUsage,
+            const aiRequestResolution = await resolveAIRequestContext({
+                options,
                 req,
-                userID: user.id,
+                requestedModel: body.model,
+                requestedProvider: body.provider,
+                user: req.user as AIRequestUser,
             })
-            if (exceededLimit) return Response.json({ error: "AI token usage limit reached." }, { status: 429 })
-
-            const managedProviders = options.providers?.length ? options.providers : null
-            const requestedProvider = body.provider || (managedProviders ? managedProviders[0].id : user.aiProvider || "openai")
-            const managedProvider = managedProviders?.find((provider) => provider.id === requestedProvider)
-            if (managedProviders && !managedProvider) {
-                return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
+            if (!aiRequestResolution.ok) {
+                return Response.json(
+                    { error: aiRequestResolution.error.message },
+                    { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 }
+                )
             }
-            if (!managedProvider && !isAIProvider(requestedProvider)) {
-                return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
-            }
-
-            const provider = (managedProvider?.provider || requestedProvider) as AIProvider
-            const requestedModel = body.model || managedProvider?.defaultModel
-            const providerConfig = getProviderConfig({
-                apiKey: managedProvider ? managedProvider.apiKey : options.allowUserApiKeys === false ? null : user.aiApiKey,
-                defaultModels: options.models?.defaults,
-                model: requestedModel,
-                provider,
-            })
-            if (!providerConfig.apiKey) return Response.json({ error: "Configure an AI provider API key first." }, { status: 400 })
-
-            const model = await getModel({
-                apiKey: providerConfig.apiKey,
-                ...(managedProvider?.baseURL ? { baseURL: managedProvider.baseURL } : {}),
-                model: providerConfig.modelID,
-                provider,
-            })
+            const aiRequest = aiRequestResolution.context
+            const model = await aiRequest.loadModel()
             const result = await generateText({
                 maxOutputTokens: options.maxOutputTokens || 700,
                 model,
@@ -176,15 +145,7 @@ export const createTranslateDocumentHandler =
             const translatedValues = parseTranslations(result.text, translationSourceValues.length)
             if (translatedValues.some((value) => value === undefined)) throw new Error("Translation response is incomplete.")
 
-            if (result.usage && options.maxTokenUsage) {
-                await recordTokenUsage({
-                    model: providerConfig.modelID,
-                    provider: managedProvider?.id || provider,
-                    req,
-                    usage: result.usage,
-                    userID: user.id,
-                })
-            }
+            if (result.usage) await aiRequest.recordUsage(result.usage)
 
             return Response.json({
                 available: true,

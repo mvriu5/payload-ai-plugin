@@ -1,19 +1,13 @@
 import { generateText } from "ai"
 import type { PayloadHandler } from "payload"
 
-import { getExceededTokenUsageLimit, recordTokenUsage, type ResolvedMaxTokenUsageOptions } from "../ai/tokenUsage.js"
-import { isAIProvider, type AIModelConfig, type AIProvider, type ResolvedAIProviderConfig } from "../ai/providerOptions.js"
-import { getModel, getProviderConfig } from "../ai/providerRuntime.js"
+import { resolveAIRequestContext, type AIRequestOptions, type AIRequestUser } from "../ai/requestContext.js"
 import { redactSensitiveData } from "../ai/sensitiveData.js"
 import type { TextGenerationPageContext } from "../payload/textFieldGeneration.js"
 
-type GenerateFieldOptions = {
-    allowUserApiKeys?: boolean
+type GenerateFieldOptions = AIRequestOptions & {
     maxOutputTokens?: number
-    maxTokenUsage?: ResolvedMaxTokenUsageOptions
-    models?: AIModelConfig
     pageContexts: Map<string, TextGenerationPageContext>
-    providers?: ResolvedAIProviderConfig[]
 }
 
 type GenerateFieldBody = {
@@ -27,12 +21,6 @@ type GenerateFieldBody = {
         slug?: string
         type?: "collection" | "global"
     }
-}
-
-type User = {
-    aiApiKey?: string | null
-    aiProvider?: AIProvider | string | null
-    id: number | string
 }
 
 const maxContextLength = 12000
@@ -105,51 +93,24 @@ export const createGenerateFieldHandler =
             return Response.json({ error: "This field is not available for AI generation." }, { status: 400 })
         }
 
-        const user = req.user as User
-        const exceededLimit = await getExceededTokenUsageLimit({
-            maxTokenUsage: options.maxTokenUsage,
+        const aiRequestResolution = await resolveAIRequestContext({
+            options,
             req,
-            userID: user.id,
+            requestedModel: body?.model,
+            requestedProvider: body?.provider,
+            user: req.user as AIRequestUser,
         })
-        if (exceededLimit) {
-            return Response.json({ error: "AI token usage limit reached." }, { status: 429 })
+        if (!aiRequestResolution.ok) {
+            return Response.json(
+                { error: aiRequestResolution.error.message },
+                { status: aiRequestResolution.error.code === "token_limit" ? 429 : 400 }
+            )
         }
-
-        const managedProviders = options.providers?.length ? options.providers : null
-        const requestedProvider = body?.provider || (managedProviders ? managedProviders[0].id : user.aiProvider || "openai")
-        const managedProvider = managedProviders?.find((provider) => provider.id === requestedProvider)
-
-        if (managedProviders && !managedProvider) {
-            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
-        }
-        if (!managedProvider && !isAIProvider(requestedProvider)) {
-            return Response.json({ error: `Unsupported AI provider: ${requestedProvider}` }, { status: 400 })
-        }
-
-        const provider = (managedProvider?.provider || requestedProvider) as AIProvider
-        const requestedModel = body?.model || managedProvider?.defaultModel
-        if (managedProvider && requestedModel && !managedProvider.models.some((model) => model.value === requestedModel)) {
-            return Response.json({ error: `Unsupported model "${requestedModel}" for AI provider "${managedProvider.id}".` }, { status: 400 })
-        }
-
-        const providerConfig = getProviderConfig({
-            apiKey: managedProvider ? managedProvider.apiKey : options.allowUserApiKeys === false ? null : user.aiApiKey,
-            defaultModels: options.models?.defaults,
-            model: requestedModel,
-            provider,
-        })
-        if (!providerConfig.apiKey) {
-            return Response.json({ error: "Configure an AI provider API key first." }, { status: 400 })
-        }
+        const aiRequest = aiRequestResolution.context
 
         try {
             const blockContext = getBlockContext(body?.context, body?.fieldPath)
-            const model = await getModel({
-                apiKey: providerConfig.apiKey,
-                ...(managedProvider?.baseURL ? { baseURL: managedProvider.baseURL } : {}),
-                model: providerConfig.modelID,
-                provider,
-            })
+            const model = await aiRequest.loadModel()
             const result = await generateText({
                 maxOutputTokens: Math.min(options.maxOutputTokens || 300, 600),
                 model,
@@ -185,15 +146,7 @@ export const createGenerateFieldHandler =
                 ].join(" "),
             })
 
-            if (result.usage && options.maxTokenUsage) {
-                await recordTokenUsage({
-                    model: providerConfig.modelID,
-                    provider: managedProvider?.id || provider,
-                    req,
-                    usage: result.usage,
-                    userID: user.id,
-                })
-            }
+            if (result.usage) await aiRequest.recordUsage(result.usage)
 
             const value = parseGeneratedValue(fieldContext.fieldType, result.text)
             return Response.json({
