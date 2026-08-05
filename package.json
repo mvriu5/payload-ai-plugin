@@ -67,7 +67,7 @@
     },
     "devDependencies": {
         "@ai-sdk/anthropic": "^4.0.21",
-        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/google": "^4.0.31",
         "@ai-sdk/mistral": "^4.0.13",
         "@ai-sdk/openai": "^4.0.20",
         "@floating-ui/react": "0.27.20",
@@ -99,7 +99,7 @@
     },
     "peerDependencies": {
         "@ai-sdk/anthropic": "^4.0.21",
-        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/google": "^4.0.31",
         "@ai-sdk/mistral": "^4.0.13",
         "@ai-sdk/openai": "^4.0.20",
         "@openrouter/ai-sdk-provider": "^3.0.0",
