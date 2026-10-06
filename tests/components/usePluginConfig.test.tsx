@@ -92,7 +92,7 @@ describe("usePluginConfig", () => {
         expect(container.querySelector('[data-testid="pages-enabled"]')?.textContent).toBe("true")
         expect(container.querySelector('[data-testid="has-slug-filter"]')?.textContent).toBe("false")
         expect(container.querySelector('[data-testid="media-enabled"]')?.textContent).toBe("false")
-        expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("gpt-4.1-mini")
+        expect(container.querySelector('[data-testid="openai-default"]')?.textContent).toBe("gpt-6-luna")
     })
 
     it("exposes configured provider profiles in managed mode", () => {

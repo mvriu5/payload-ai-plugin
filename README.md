@@ -268,13 +268,21 @@ Overrides the model list shown in the admin UI and the default model per provide
 
 Built-in providers are `openai`, `openrouter`, `claude`, `mistral`, and `google`.
 
-OpenRouter includes these built-in model options:
+The built-in model selection was checked on October 6, 2026 against the official [OpenAI](https://developers.openai.com/api/docs/models/all), [Anthropic](https://platform.claude.com/docs/en/models/overview), [Google](https://ai.google.dev/gemini-api/docs/models), [Mistral](https://docs.mistral.ai/models), and [OpenRouter](https://openrouter.ai/api/v1/models) catalogs. It includes a broad selection of current and older text models for the streaming tool loop. Preview and deprecated direct-provider models are labeled explicitly and are not defaults.
 
-- `openrouter/auto`
-- `openai/gpt-oss-120b`
-- `openai/gpt-4o-mini`
-- `anthropic/claude-3.5-sonnet`
-- `google/gemini-2.0-flash-001`
+The defaults are `gpt-6-luna`, `claude-haiku-4-5`, `gemini-3.8-flash`, `mistral-small-2603`, and `openrouter/auto`. Each provider's first model is used unless you configure a different default.
+
+The built-in options cover these model families:
+
+- **OpenAI:** GPT-6, GPT-5.6, GPT-5.5, GPT-5.4, GPT-5.3 Codex, GPT-5.2, GPT-5.1, GPT-5, GPT-4.1, GPT-4o, o3, o3 Mini, o4 Mini, and o1.
+- **Claude:** Haiku 4.5, Sonnet 4.5–5.5, Opus 4.5–5.5, and Fable 5/5.1.
+- **Google:** Gemini 2.5, Gemini 3 Flash, Gemini 3.1 Pro/Flash Lite, and Gemini 3.5–3.8 Flash variants.
+- **Mistral:** Small, Medium, Large, Ministral, Codestral, and older Pixtral, Nemo, Magistral, Devstral, and Small Creative models.
+- **OpenRouter:** `openrouter/auto`, current and older OpenAI/Claude/Gemini/Mistral models, GPT-OSS, DeepSeek, Qwen, Grok, Llama, GLM, Kimi, and MiniMax.
+
+The exact model IDs are defined in [`src/features/providers/options.ts`](src/features/providers/options.ts). This is a static selection, not an automatically synchronized catalog. Models known to be retired on the direct APIs are excluded; OpenRouter is checked separately because it may still serve older models through other providers. Its listed models advertise support for both `tools` and `tool_choice`.
+
+Deprecated models are retained as optional choices for existing integrations and may be removed by their provider. Availability also depends on your account: for example, [Gemini 2.5 is restricted to existing users](https://ai.google.dev/gemini-api/docs/models). Live inference is not verified by the model list.
 
 ### `providers`
 
