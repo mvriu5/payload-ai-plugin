@@ -73,7 +73,7 @@
         "@floating-ui/react": "0.27.20",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@payloadcms/db-postgres": "3.86.0",
-        "@payloadcms/next": "3.86.0",
+        "@payloadcms/next": "3.90.2",
         "@payloadcms/richtext-lexical": "3.86.0",
         "@payloadcms/ui": "3.86.0",
         "@playwright/test": "^1.56.1",
@@ -87,15 +87,15 @@
         "graphql": "^16.8.1",
         "jsdom": "^30.0.0",
         "knip": "^6.18.0",
-        "next": "16.2.12",
-        "payload": "3.86.0",
+        "next": "16.3.6",
+        "payload": "3.90.0",
         "prettier": "^3.8.4",
         "react": "19.2.8",
         "react-dom": "19.2.8",
         "rimraf": "6.1.3",
-        "sharp": "0.35.3",
+        "sharp": "0.35.5",
         "typescript": "6.0.3",
-        "vitest": "4.1.10"
+        "vitest": "5.0.3"
     },
     "peerDependencies": {
         "@ai-sdk/anthropic": "^4.0.21",
